@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
 import '../../../core/storage/session_storage.dart';
 import '../../../core/theme/celadon_colors.dart';
+import '../../../core/widgets/botanical_background.dart';
+import '../../../core/widgets/brand_logo.dart';
 import '../../auth/presentation/login_screen.dart';
 import '../../dashboard/presentation/dashboard_screen.dart';
 
-/// ReGen Mobile Splash Screen
+/// ReGen Premium Celadon Splash Screen
 ///
-/// Serves as the visual entry point of the app with an animated logo,
-/// brand identity, and session verification.
+/// Matches Screen 1 of the official UI specification:
+/// - Official ReGen brand emblem
+/// - Subtitle: "Staff & Employee Management"
+/// - Tagline: "People • Process • Performance"
+/// - Bottom loading bar pill
 class SplashScreen extends StatefulWidget {
   final VoidCallback? onInitializationComplete;
 
@@ -22,13 +27,14 @@ class _SplashScreenState extends State<SplashScreen>
   late final AnimationController _animController;
   late final Animation<double> _fadeAnimation;
   late final Animation<double> _scaleAnimation;
+  late final Animation<double> _progressAnimation;
 
   @override
   void initState() {
     super.initState();
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
+      duration: const Duration(milliseconds: 1400),
     );
 
     _fadeAnimation = CurvedAnimation(
@@ -36,10 +42,17 @@ class _SplashScreenState extends State<SplashScreen>
       curve: Curves.easeOut,
     );
 
-    _scaleAnimation = Tween<double>(begin: 0.88, end: 1.0).animate(
+    _scaleAnimation = Tween<double>(begin: 0.85, end: 1.0).animate(
       CurvedAnimation(
         parent: _animController,
         curve: Curves.easeOutBack,
+      ),
+    );
+
+    _progressAnimation = Tween<double>(begin: 0.1, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animController,
+        curve: Curves.easeInOut,
       ),
     );
 
@@ -48,8 +61,8 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _checkInitialRoute() async {
-    // Wait for the animation to play out
-    await Future.delayed(const Duration(milliseconds: 1600));
+    // Wait for the splash experience
+    await Future.delayed(const Duration(milliseconds: 1800));
 
     if (!mounted) return;
 
@@ -58,7 +71,6 @@ class _SplashScreenState extends State<SplashScreen>
       return;
     }
 
-    // Check if an existing session is persisted
     final savedUser = await SessionStorage.getUserSession();
 
     if (!mounted) return;
@@ -94,146 +106,108 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Scaffold(
-      backgroundColor: CeladonColors.background,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            // Subtle botanical background gradient circles
-            Positioned(
-              top: -80,
-              right: -80,
-              child: Container(
-                width: 220,
-                height: 220,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: CeladonColors.primaryContainer,
-                ),
-              ),
-            ),
-            Positioned(
-              bottom: -60,
-              left: -60,
-              child: Container(
-                width: 180,
-                height: 180,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: CeladonColors.primaryContainer,
-                ),
-              ),
-            ),
+      body: BotanicalBackground(
+        showLeaves: true,
+        child: SafeArea(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const SizedBox(height: 40),
 
-            // Main Centered Content
-            Center(
-              child: FadeTransition(
-                opacity: _fadeAnimation,
-                child: ScaleTransition(
-                  scale: _scaleAnimation,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // ReGen Logo Badge
-                      Container(
-                        width: 110,
-                        height: 110,
-                        decoration: BoxDecoration(
-                          color: CeladonColors.surface,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: CeladonColors.border,
-                            width: 1.5,
-                          ),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x141B5E4B),
-                              blurRadius: 20,
-                              offset: Offset(0, 8),
-                            ),
-                          ],
+              // Center Logo & Brand Identity
+              Center(
+                child: FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: ScaleTransition(
+                    scale: _scaleAnimation,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Official ReGen Logo
+                        const BrandLogo(
+                          size: 110,
+                          borderRadius: 28,
+                          backgroundColor: CeladonColors.primaryDark,
                         ),
-                        padding: const EdgeInsets.all(18),
-                        child: Image.asset(
-                          'assets/images/logo.png',
-                          fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) {
-                            return const Icon(
-                              Icons.spa_rounded,
-                              size: 48,
-                              color: CeladonColors.primary,
-                            );
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 24),
+                        const SizedBox(height: 18),
 
-                      // App Title
-                      Text(
-                        'ReGen',
-                        style: theme.textTheme.displayMedium?.copyWith(
-                          color: CeladonColors.primaryDark,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.5,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-
-                      // App Subtitle / Tagline
-                      Text(
-                        'Workforce & Office Management System',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: CeladonColors.textSecondary,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 48),
-
-                      // Loading indicator with celadon styling
-                      const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.4,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            CeladonColors.primary,
+                        // Title: ReGen
+                        const Text(
+                          'ReGen',
+                          style: TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.5,
+                            color: CeladonColors.primaryDark,
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 14),
+                        const SizedBox(height: 8),
 
-                      Text(
-                        'Initializing workspace...',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: CeladonColors.textMuted,
-                          fontSize: 12,
+                        // Subtitle matching reference: "Staff & Employee Management"
+                        const Text(
+                          'Staff & Employee\nManagement',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: CeladonColors.textSecondary,
+                            height: 1.35,
+                            letterSpacing: 0.2,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
 
-            // Version Footer
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 24,
-              child: Text(
-                'v1.0.0 • ReGen Enterprise',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: CeladonColors.textMuted,
-                  fontSize: 11,
-                  letterSpacing: 0.3,
+              // Bottom Section: Tagline & Progress Bar
+              Padding(
+                padding: const EdgeInsets.only(bottom: 32),
+                child: Column(
+                  children: [
+                    const Text(
+                      'People\nProcess\nPerformance',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: CeladonColors.textSecondary,
+                        letterSpacing: 0.4,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Thin loading bar pill matching reference
+                    AnimatedBuilder(
+                      animation: _progressAnimation,
+                      builder: (context, child) {
+                        return Container(
+                          width: 120,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: CeladonColors.border,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          alignment: Alignment.centerLeft,
+                          child: Container(
+                            width: 120 * _progressAnimation.value,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: CeladonColors.primary,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

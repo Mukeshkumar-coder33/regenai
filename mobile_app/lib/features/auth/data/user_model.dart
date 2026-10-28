@@ -67,6 +67,8 @@ class UserModel {
   bool get isCompanyAdmin => role == 'owner' || role == 'admin';
   bool get isEmployee => role == 'staff' || role == 'intern';
 
+  String? get companyName => company;
+
   String get roleDisplayName {
     switch (role) {
       case 'param':

@@ -24,7 +24,12 @@ class _VirtualDeviceFrameState extends State<VirtualDeviceFrame> {
 
   @override
   Widget build(BuildContext context) {
-    // Only show the virtual device frame on Web/Desktop when screen is wider than a phone
+    // On native mobile platforms (Android / iOS), always render full-screen natively
+    if (!kIsWeb) {
+      return widget.child;
+    }
+
+    // On Web / Desktop, only show virtual phone chassis when screen is wider than a phone
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 

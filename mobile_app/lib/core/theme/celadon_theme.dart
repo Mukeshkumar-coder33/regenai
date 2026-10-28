@@ -10,29 +10,34 @@ abstract final class CeladonTheme {
     const textTheme = TextTheme(
       displayLarge: TextStyle(
         fontSize: 32,
-        fontWeight: FontWeight.w700,
+        fontWeight: FontWeight.w800,
         color: CeladonColors.textPrimary,
         letterSpacing: -0.5,
       ),
       displayMedium: TextStyle(
         fontSize: 26,
-        fontWeight: FontWeight.w700,
+        fontWeight: FontWeight.w800,
         color: CeladonColors.textPrimary,
         letterSpacing: -0.3,
       ),
       headlineMedium: TextStyle(
         fontSize: 20,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w700,
         color: CeladonColors.textPrimary,
       ),
       titleLarge: TextStyle(
         fontSize: 18,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w700,
         color: CeladonColors.textPrimary,
       ),
       titleMedium: TextStyle(
         fontSize: 16,
-        fontWeight: FontWeight.w500,
+        fontWeight: FontWeight.w600,
+        color: CeladonColors.textPrimary,
+      ),
+      titleSmall: TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
         color: CeladonColors.textPrimary,
       ),
       bodyLarge: TextStyle(
@@ -53,9 +58,14 @@ abstract final class CeladonTheme {
         color: CeladonColors.textMuted,
       ),
       labelLarge: TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
+        fontSize: 15,
+        fontWeight: FontWeight.w700,
         letterSpacing: 0.1,
+      ),
+      labelMedium: TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: CeladonColors.textPrimary,
       ),
     );
 
@@ -79,10 +89,10 @@ abstract final class CeladonTheme {
       ),
       textTheme: textTheme,
       appBarTheme: const AppBarTheme(
-        backgroundColor: CeladonColors.surface,
+        backgroundColor: Colors.transparent,
         foregroundColor: CeladonColors.textPrimary,
         elevation: 0,
-        scrolledUnderElevation: 1,
+        scrolledUnderElevation: 0,
         centerTitle: false,
         systemOverlayStyle: SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
@@ -106,11 +116,11 @@ abstract final class CeladonTheme {
           shadowColor: Colors.transparent,
           minimumSize: const Size.fromHeight(50),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
           ),
           textStyle: const TextStyle(
             fontSize: 15,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w700,
           ),
         ),
       ),
@@ -120,7 +130,7 @@ abstract final class CeladonTheme {
           minimumSize: const Size.fromHeight(50),
           side: const BorderSide(color: CeladonColors.border, width: 1.2),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
           ),
           textStyle: const TextStyle(
             fontSize: 15,
@@ -131,27 +141,36 @@ abstract final class CeladonTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: CeladonColors.surface,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: CeladonColors.border),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: CeladonColors.border),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: CeladonColors.primary, width: 1.8),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: CeladonColors.error),
         ),
         hintStyle: const TextStyle(
           color: CeladonColors.textMuted,
           fontSize: 14,
         ),
+      ),
+      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+        backgroundColor: Colors.white,
+        selectedItemColor: CeladonColors.primary,
+        unselectedItemColor: CeladonColors.textMuted,
+        selectedLabelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+        unselectedLabelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+        elevation: 8,
+        type: BottomNavigationBarType.fixed,
       ),
       dividerTheme: const DividerThemeData(
         color: CeladonColors.divider,

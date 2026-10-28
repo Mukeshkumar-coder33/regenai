@@ -16,3 +16,4 @@
 ## ADR-004: Native Flutter Typography vs External Font CDN
 - **Decision:** Use native Flutter `TextTheme` configured with high-contrast weights instead of dynamic CDN font fetchers during development.
 - **Reason:** Eliminates Windows symlink developer mode requirements, avoids third-party package conflicts, ensures offline testing reliability, and compiles cleanly across Web, Android, and iOS.
+

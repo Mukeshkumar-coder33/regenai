@@ -38,3 +38,4 @@ mobile_app/
 - The PostgreSQL Auth Service runs on `PORT 3004`.
 - When port 3004 is active, the backend automatically performs dual authentication and synchronizes company owner and employee credentials between MongoDB and PostgreSQL (`auth_service` database, `public."User"` table).
 - The Flutter mobile client connects exclusively through the backend REST API (`POST /api/auth/login`) and Socket.IO gateway on port 5006, ensuring client simplicity and backend security.
+

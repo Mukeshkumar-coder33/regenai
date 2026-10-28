@@ -40,3 +40,4 @@ abstract final class CeladonColors {
   static const Color badgeText = Color(0xFF1B5E4B);
   static const Color glow = Color(0x191B5E4B);
 }
+

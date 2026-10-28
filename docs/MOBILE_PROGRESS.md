@@ -38,3 +38,4 @@
 - [x] Creation of widget smoke test in `test/widget_test.dart` (Passing).
 - [x] Passing `flutter analyze` with 0 issues.
 - [x] Created `AGENTS.md`, `docs/MOBILE_ARCHITECTURE.md`, `docs/MOBILE_API_MAPPING.md`, `docs/MOBILE_DECISIONS.md`, and learning notes.
+

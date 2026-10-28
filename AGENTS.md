@@ -32,3 +32,4 @@
 ## 5. Verification Protocol
 - Run `flutter analyze` and `flutter test` after every feature milestone.
 - Verify Git branch references and `git status` before committing.
+

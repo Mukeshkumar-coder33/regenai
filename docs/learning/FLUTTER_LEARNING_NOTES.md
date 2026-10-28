@@ -18,3 +18,4 @@ In this milestone, we set up the foundation of the ReGen mobile app:
 2. **Flutter is declarative**: You don't mutate HTML elements; you describe what the UI should look like for a given state.
 3. **The widget tree is composed of small building blocks**: A button is an `ElevatedButton` wrapping a `Row` wrapping an `Icon` and `Text`.
 4. **ThemeData controls global look-and-feel**: By configuring `ThemeData` once in `MaterialApp`, every button, card, and text field across the entire app automatically conforms to the Premium Celadon design system.
+

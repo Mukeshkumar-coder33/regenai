@@ -18,3 +18,4 @@ This document tracks all backend REST endpoints and Socket.IO events verified fr
 
 ## Port 3004 PostgreSQL Authentication Note
 When the PostgreSQL Auth Service on port 3004 is active, `POST /api/auth/login` automatically synchronizes and validates against PostgreSQL (`auth_service` database). No direct PostgreSQL client configuration is needed on mobile.
+

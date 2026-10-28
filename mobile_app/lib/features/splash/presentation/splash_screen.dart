@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import '../../../core/storage/session_storage.dart';
 import '../../../core/theme/celadon_colors.dart';
+import '../../auth/presentation/login_screen.dart';
+import '../../dashboard/presentation/dashboard_screen.dart';
 
 /// ReGen Mobile Splash Screen
 ///
 /// Serves as the visual entry point of the app with an animated logo,
-/// brand identity, and initialization status.
+/// brand identity, and session verification.
 class SplashScreen extends StatefulWidget {
   final VoidCallback? onInitializationComplete;
 
@@ -41,14 +44,45 @@ class _SplashScreenState extends State<SplashScreen>
     );
 
     _animController.forward();
+    _checkInitialRoute();
+  }
 
-    // Trigger completion callback if supplied
+  Future<void> _checkInitialRoute() async {
+    // Wait for the animation to play out
+    await Future.delayed(const Duration(milliseconds: 1600));
+
+    if (!mounted) return;
+
     if (widget.onInitializationComplete != null) {
-      Future.delayed(const Duration(seconds: 2), () {
-        if (mounted) {
-          widget.onInitializationComplete!();
-        }
-      });
+      widget.onInitializationComplete!();
+      return;
+    }
+
+    // Check if an existing session is persisted
+    final savedUser = await SessionStorage.getUserSession();
+
+    if (!mounted) return;
+
+    if (savedUser != null && savedUser.token.isNotEmpty) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => DashboardScreen(
+            user: savedUser,
+            onLogout: () async {
+              await SessionStorage.clearSession();
+              if (mounted) {
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                );
+              }
+            },
+          ),
+        ),
+      );
+    } else {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      );
     }
   }
 
@@ -205,4 +239,3 @@ class _SplashScreenState extends State<SplashScreen>
     );
   }
 }
-

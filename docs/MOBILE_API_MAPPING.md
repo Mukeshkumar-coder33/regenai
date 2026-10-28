@@ -6,6 +6,8 @@ This document tracks all backend REST endpoints and Socket.IO events verified fr
 |---|---|---|---|---|---|---|
 | **Health Check** | GET | `/api/health` | None | None | `{ status: "ok", mongo: true }` | Verified |
 | **User Login** | POST | `/api/auth/login` | None | `{ identifier, password, portal }` | `{ _id, userId, username, name, role, companyId, company, avatar, token, authSource }` | Verified |
+| **Switch to EMS Mode** | POST | `/api/auth/switch-to-ems` | Bearer JWT (param) | None | `{ _id, userId, role: 'owner', companyId, token }` | Implemented |
+| **Switch to SuperAdmin** | POST | `/api/auth/switch-to-superadmin` | Bearer JWT | None | `{ _id, userId, role: 'param', companyId: null, token }` | Implemented |
 | **Change Password** | POST | `/api/auth/change-password` | Bearer JWT | `{ oldPassword, newPassword }` | `{ message: "Password updated successfully" }` | Verified |
 | **Current User Profile** | GET | `/api/users/profile` | Bearer JWT | None | User model JSON | Verified |
 | **Avatar Upload** | POST | `/api/users/:userId/avatar` | Bearer JWT | Multipart `avatar` | `{ message, avatarUrl }` | Verified |

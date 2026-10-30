@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'celadon_colors.dart';
 
-/// Central ThemeData definition for ReGen Mobile
+/// Central ThemeData definition for ReGen Mobile (Premium Office Theme)
 ///
-/// Implements Material 3 with the custom Premium Celadon design system.
+/// Implements Material 3 with the corporate Dark Forest Green, Light Mint,
+/// and White card design system based on the Premium Office UI specification.
 abstract final class CeladonTheme {
   static ThemeData get lightTheme {
     const textTheme = TextTheme(
@@ -98,79 +99,74 @@ abstract final class CeladonTheme {
           statusBarColor: Colors.transparent,
           statusBarIconBrightness: Brightness.dark,
         ),
+        titleTextStyle: TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.w800,
+          color: CeladonColors.textPrimary,
+        ),
       ),
       cardTheme: CardThemeData(
         color: CeladonColors.cardBackground,
         elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: CeladonColors.border, width: 1),
-        ),
         margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: CeladonColors.borderLight, width: 1.2),
+        ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: CeladonColors.primary,
           foregroundColor: CeladonColors.textOnPrimary,
           elevation: 0,
-          shadowColor: Colors.transparent,
-          minimumSize: const Size.fromHeight(50),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(16),
           ),
           textStyle: const TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.w700,
           ),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: CeladonColors.primary,
-          minimumSize: const Size.fromHeight(50),
           side: const BorderSide(color: CeladonColors.border, width: 1.2),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(16),
           ),
           textStyle: const TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.w600,
           ),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: CeladonColors.surface,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+        fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: CeladonColors.border),
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: CeladonColors.border, width: 1.2),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: CeladonColors.border),
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: CeladonColors.border, width: 1.2),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: CeladonColors.primary, width: 1.8),
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: CeladonColors.primary, width: 2),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: CeladonColors.error),
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: CeladonColors.error, width: 1.2),
         ),
         hintStyle: const TextStyle(
           color: CeladonColors.textMuted,
           fontSize: 14,
         ),
-      ),
-      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-        backgroundColor: Colors.white,
-        selectedItemColor: CeladonColors.primary,
-        unselectedItemColor: CeladonColors.textMuted,
-        selectedLabelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-        unselectedLabelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-        elevation: 8,
-        type: BottomNavigationBarType.fixed,
       ),
       dividerTheme: const DividerThemeData(
         color: CeladonColors.divider,

@@ -216,6 +216,11 @@ void main() {
 
       expect(find.text('Alex Johnson'), findsOneWidget);
       expect(find.text('Employee'), findsOneWidget);
+
+      // Open the navigation drawer via hamburger menu
+      await tester.tap(find.byIcon(Icons.menu_rounded));
+      await tester.pumpAndSettle();
+
       expect(find.text('My Profile'), findsOneWidget);
       expect(find.text('Attendance'), findsOneWidget);
       expect(find.text('Logout'), findsOneWidget);

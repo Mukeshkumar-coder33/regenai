@@ -4,9 +4,10 @@ frontend/node_modules/
 server/node_modules/
 server/.env
 uploads/
-assets
+/assets/
 frontend/uploads/
 frontend/assets/
+!mobile_app/assets/
 package-lock.json
 frontend/package-lock.json
 server/package-lock.json

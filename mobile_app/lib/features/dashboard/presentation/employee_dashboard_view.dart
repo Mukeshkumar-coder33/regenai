@@ -22,6 +22,7 @@ class EmployeeDashboardView extends StatefulWidget {
   final void Function(int tabIndex)? onNavigateToTab;
   final VoidCallback? onOpenDrawer;
   final VoidCallback? onOpenAttendance;
+  final VoidCallback? onLogout;
   final dynamic dashboardService;
 
   const EmployeeDashboardView({
@@ -31,6 +32,7 @@ class EmployeeDashboardView extends StatefulWidget {
     this.onNavigateToTab,
     this.onOpenDrawer,
     this.onOpenAttendance,
+    this.onLogout,
     this.dashboardService,
   });
 

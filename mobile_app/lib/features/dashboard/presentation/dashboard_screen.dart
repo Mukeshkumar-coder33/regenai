@@ -4,9 +4,9 @@ import '../../attendance/presentation/attendance_view.dart';
 import '../../auth/data/user_model.dart';
 import '../../calendar/presentation/calendar_view.dart';
 import '../../company/presentation/company_dashboard_view.dart';
-import '../../company/presentation/super_admin_dashboard_view.dart';
 import '../../profile/presentation/app_drawer.dart';
 import '../../profile/presentation/profile_view.dart';
+import '../../superadmin/presentation/superadmin_dashboard_view.dart';
 import '../../tasks/presentation/tasks_view.dart';
 import 'employee_dashboard_view.dart';
 
@@ -57,6 +57,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
+  void _openDrawer() {
+    _scaffoldKey.currentState?.openDrawer();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -77,6 +81,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           // Tab 1: Tasks View (Screen 6)
           TasksView(
+            onOpenDrawer: _openDrawer,
             onBack: () => _navigateToTab(0),
           ),
 
@@ -152,7 +157,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (_currentUser.isSuperAdmin) {
       return SuperAdminDashboardView(
         user: _currentUser,
+        onOpenDrawer: _openDrawer,
+        onLogout: widget.onLogout,
         onNavigateToTab: _navigateToTab,
+        onUserUpdated: (updatedUser) {
+          setState(() => _currentUser = updatedUser);
+        },
       );
     }
 
@@ -160,14 +170,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (_currentUser.isCompanyAdmin) {
       return CompanyDashboardView(
         user: _currentUser,
+        onOpenDrawer: _openDrawer,
+        onLogout: widget.onLogout,
         onNavigateToTab: _navigateToTab,
+        onUserUpdated: (updatedUser) {
+          setState(() => _currentUser = updatedUser);
+        },
       );
     }
 
     // 3. Employee / Staff Dashboard (staff, intern)
     return EmployeeDashboardView(
       user: _currentUser,
-      onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer(),
+      onOpenDrawer: _openDrawer,
+      onLogout: widget.onLogout,
       onOpenAttendance: _openAttendance,
       onNavigateToTab: (index) {
         if (index == 2) {
@@ -296,10 +312,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
             removeTop: true,
             child: _showAttendanceSubScreen
                 ? AttendanceView(
+                    onOpenDrawer: _openDrawer,
                     onBack: () => setState(() => _showAttendanceSubScreen = false),
                   )
                 : CalendarView(
                     user: _currentUser,
+                    onOpenDrawer: _openDrawer,
                     onBack: () => _navigateToTab(0),
                   ),
           ),

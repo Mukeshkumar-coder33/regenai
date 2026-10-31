@@ -9,13 +9,19 @@ import '../../dashboard/data/dashboard_service.dart';
 /// Situation D: Global Super Admin Dashboard
 ///
 /// Dedicated high-level platform administration console for `role == 'param'`:
-/// - Global Platform Metrics: Total platform companies (7), platform users (17), active tenants
-/// - Mode Switcher: "Switch to Company Workspace" (POST /api/auth/switch-to-ems) to return to krish Tech Computer
-/// - Companies Directory: Live directory of all 7 platform companies with status badges
-/// - Global User Directory: Directory of all 17 users across all companies
+/// - Executive Corporate Office Header matching ReGen design system
+/// - Hamburger Drawer Menu button to access `AppDrawer`
+/// - Direct Logout button in top bar and bottom quick actions
+/// - Mode Switcher: "Switch to Company Workspace" (POST /api/auth/switch-to-ems)
+/// - 4 Dynamic Platform KPI Tiles backed by MongoDB collections
+/// - Live Companies Directory with status badges, city, owner, and detail view
+/// - Live Platform User Directory with roles, organization, and contact info
+/// - Interactive search filter across companies and platform users
 /// - 100% Dynamic data backed by live ReGen Node.js backend.
 class SuperAdminDashboardView extends StatefulWidget {
   final UserModel user;
+  final VoidCallback? onOpenDrawer;
+  final VoidCallback? onLogout;
   final void Function(UserModel updatedUser)? onUserUpdated;
   final void Function(int tabIndex)? onNavigateToTab;
   final DashboardService? dashboardService;
@@ -24,6 +30,8 @@ class SuperAdminDashboardView extends StatefulWidget {
   const SuperAdminDashboardView({
     super.key,
     required this.user,
+    this.onOpenDrawer,
+    this.onLogout,
     this.onUserUpdated,
     this.onNavigateToTab,
     this.dashboardService,
@@ -42,6 +50,8 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
   String? _errorMessage;
   bool _isSwitchingToEms = false;
   int _selectedSectionIndex = 0; // 0 = Companies, 1 = Platform Users
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   List<CompanyModel> _companies = [];
   List<UserModel> _users = [];
@@ -52,6 +62,12 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
     _dashboardService = widget.dashboardService ?? DashboardService();
     _authService = widget.authService ?? AuthService();
     _loadGlobalData();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadGlobalData() async {
@@ -111,99 +127,326 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
     }
   }
 
+  void _confirmLogout() {
+    if (widget.onLogout == null) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Sign Out', style: TextStyle(fontWeight: FontWeight.w800)),
+        content: const Text('Are you sure you want to sign out of the Super Admin Console?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              widget.onLogout!();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFDC2626),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Sign Out'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<CompanyModel> get _filteredCompanies {
+    if (_searchQuery.isEmpty) return _companies;
+    final q = _searchQuery.toLowerCase();
+    return _companies.where((c) {
+      return c.name.toLowerCase().contains(q) ||
+          (c.city != null && c.city!.toLowerCase().contains(q)) ||
+          (c.email != null && c.email!.toLowerCase().contains(q)) ||
+          (c.ownerName != null && c.ownerName!.toLowerCase().contains(q));
+    }).toList();
+  }
+
+  List<UserModel> get _filteredUsers {
+    if (_searchQuery.isEmpty) return _users;
+    final q = _searchQuery.toLowerCase();
+    return _users.where((u) {
+      return u.name.toLowerCase().contains(q) ||
+          u.username.toLowerCase().contains(q) ||
+          (u.email != null && u.email!.toLowerCase().contains(q)) ||
+          u.role.toLowerCase().contains(q) ||
+          (u.company != null && u.company!.toLowerCase().contains(q));
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: CeladonColors.background,
-      body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: _loadGlobalData,
-          color: CeladonColors.primary,
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // 1. Header: ReGen Central Super Admin Console
-                Row(
+      body: RefreshIndicator(
+        onRefresh: _loadGlobalData,
+        color: CeladonColors.primary,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 1. Executive Corporate Header with Office Background & Hamburger Menu
+              _buildExecutiveHeader(),
+
+              // Body Content
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const BrandLogo(
-                      size: 44,
-                      borderRadius: 14,
-                      backgroundColor: Color(0xFF0A2E20),
+                    // 2. Mode Switch Banner: "Switch to Company Workspace"
+                    _buildEmsSwitchBanner(),
+                    const SizedBox(height: 16),
+
+                    // Loading / Error / Content
+                    if (_isLoading)
+                      _buildLoadingState()
+                    else if (_errorMessage != null)
+                      _buildErrorState()
+                    else
+                      _buildSuperAdminContent(),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 1. Executive Corporate Header matching ReGen Theme with Hamburger Menu & Logout
+  Widget _buildExecutiveHeader() {
+    final displayName = widget.user.name.isNotEmpty
+        ? widget.user.name
+        : (widget.user.username.isNotEmpty ? widget.user.username : 'Super Admin');
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: CeladonColors.primaryDark,
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(28),
+          bottomRight: Radius.circular(28),
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(28),
+          bottomRight: Radius.circular(28),
+        ),
+        child: Stack(
+          children: [
+            // Background office image texture
+            Positioned.fill(
+              child: Opacity(
+                opacity: 0.18,
+                child: Image.asset(
+                  'assets/images/office_dashboard_header.png',
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
+                ),
+              ),
+            ),
+            // Gradient Overlay
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      const Color(0xFF071F15).withValues(alpha: 0.95),
+                      CeladonColors.primaryDark.withValues(alpha: 0.92),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Top Bar: Hamburger Menu Button (Left) and Refresh + Logout (Right)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // Hamburger Menu Button (Opens AppDrawer)
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.16),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: IconButton(
+                            padding: EdgeInsets.zero,
+                            icon: const Icon(
+                              Icons.menu_rounded,
+                              color: Colors.white,
+                              size: 24,
+                            ),
+                            tooltip: 'Menu',
+                            onPressed: () {
+                              if (widget.onOpenDrawer != null) {
+                                widget.onOpenDrawer!();
+                              } else {
+                                Scaffold.maybeOf(context)?.openDrawer();
+                              }
+                            },
+                          ),
+                        ),
+
+                        // Title & Badge
+                        Row(
+                          children: [
+                            const BrandLogo(size: 28, borderRadius: 8),
+                            const SizedBox(width: 8),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: const [
+                                Text(
+                                  'SUPER ADMIN',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 1.2,
+                                    color: CeladonColors.primaryLight,
+                                  ),
+                                ),
+                                Text(
+                                  'ReGen Central Console',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+
+                        // Right actions: Refresh & Logout
+                        Row(
+                          children: [
+                            Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.16),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: IconButton(
+                                padding: EdgeInsets.zero,
+                                icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 20),
+                                tooltip: 'Refresh Data',
+                                onPressed: _loadGlobalData,
+                              ),
+                            ),
+                            if (widget.onLogout != null) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                width: 38,
+                                height: 38,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFEF4444).withValues(alpha: 0.28),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.6)),
+                                ),
+                                child: IconButton(
+                                  padding: EdgeInsets.zero,
+                                  icon: const Icon(Icons.logout_rounded, color: Colors.white, size: 20),
+                                  tooltip: 'Sign Out',
+                                  onPressed: _confirmLogout,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text(
-                            'ReGen Central Console',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w800,
-                              color: CeladonColors.textPrimary,
+                    const SizedBox(height: 20),
+
+                    // Super Admin Identity Card
+                    Row(
+                      children: [
+                        Container(
+                          width: 52,
+                          height: 52,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: CeladonColors.primaryLight, width: 2),
+                            color: CeladonColors.primaryContainer,
+                          ),
+                          child: ClipOval(
+                            child: Center(
+                              child: Text(
+                                displayName.isNotEmpty ? displayName[0].toUpperCase() : 'S',
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
+                                  color: CeladonColors.primaryDark,
+                                ),
+                              ),
                             ),
                           ),
-                          Text(
-                            'Global Super Administrator • Platform Control',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: CeladonColors.textSecondary,
-                            ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                displayName,
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFF22C55E),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  const Text(
+                                    'MongoDB Live Cluster Active',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFFB7D5C4),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: CeladonColors.primaryContainer,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: CeladonColors.primaryLight),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 6,
-                            height: 6,
-                            decoration: const BoxDecoration(
-                              color: CeladonColors.primary,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Text(
-                            'LIVE',
-                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: CeladonColors.primary),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
-
-                // 2. Mode Switch Banner: "Switch to Company Workspace"
-                _buildEmsSwitchBanner(),
-                const SizedBox(height: 16),
-
-                // Loading / Error / Content
-                if (_isLoading)
-                  _buildLoadingState()
-                else if (_errorMessage != null)
-                  _buildErrorState()
-                else
-                  _buildSuperAdminContent(),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -334,59 +577,108 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
 
   Widget _buildSuperAdminContent() {
     final activeCompaniesCount = _companies.where((c) => c.isActive).length;
-    final totalOwnersCount = _users.where((u) => u.role == 'owner').length;
+    final totalOwnersCount = _users.where((u) => u.isCompanyAdmin).length;
     final totalStaffCount = _users.where((u) => u.isEmployee).length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // 3. Platform Overview Metric Cards
+        // 3. 2x2 Platform Overview Metric Cards (100% Dynamic MongoDB Data)
+        Row(
+          children: [
+            Expanded(
+              child: _buildMetricTile(
+                icon: Icons.corporate_fare_rounded,
+                iconBg: const Color(0xFFE8F5ED),
+                iconColor: CeladonColors.primaryDark,
+                count: '${_companies.length}',
+                label: 'Total Tenants',
+                subtitle: '$activeCompaniesCount Active instances',
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildMetricTile(
+                icon: Icons.domain_verification_rounded,
+                iconBg: const Color(0xFFDCFCE7),
+                iconColor: const Color(0xFF15803D),
+                count: '$activeCompaniesCount',
+                label: 'Active Tenants',
+                subtitle: 'Operational cluster',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildMetricTile(
+                icon: Icons.people_alt_outlined,
+                iconBg: const Color(0xFFE0F2FE),
+                iconColor: const Color(0xFF0284C7),
+                count: '${_users.length}',
+                label: 'Global Users',
+                subtitle: 'Platform-wide accounts',
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildMetricTile(
+                icon: Icons.admin_panel_settings_outlined,
+                iconBg: const Color(0xFFFEF3C7),
+                iconColor: const Color(0xFFD97706),
+                count: '$totalOwnersCount',
+                label: 'Owners & Admins',
+                subtitle: '$totalStaffCount Staff members',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+
+        // 4. Search Filter Bar
         Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(color: CeladonColors.borderLight),
             boxShadow: const [
-              BoxShadow(
-                color: Color(0x062D6A4F),
-                blurRadius: 10,
-                offset: Offset(0, 3),
-              ),
+              BoxShadow(color: Color(0x062D6A4F), blurRadius: 6, offset: Offset(0, 2)),
             ],
           ),
-          child: Column(
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildMetricItem(
-                      label: 'Total Tenants',
-                      value: '${_companies.length}',
-                      subtitle: '$activeCompaniesCount Active in cluster',
-                      icon: Icons.corporate_fare_rounded,
-                      color: CeladonColors.primary,
-                    ),
+              const Icon(Icons.search_rounded, color: CeladonColors.textMuted, size: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: _selectedSectionIndex == 0
+                        ? 'Search companies by name, city, email...'
+                        : 'Search platform users by name, role, email...',
+                    hintStyle: const TextStyle(fontSize: 13, color: CeladonColors.textMuted),
+                    border: InputBorder.none,
                   ),
-                  Container(width: 1, height: 50, color: CeladonColors.divider),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _buildMetricItem(
-                      label: 'Global Users',
-                      value: '${_users.length}',
-                      subtitle: '$totalOwnersCount Owners • $totalStaffCount Staff',
-                      icon: Icons.people_alt_outlined,
-                      color: const Color(0xFF059669),
-                    ),
-                  ),
-                ],
+                  onChanged: (val) => setState(() => _searchQuery = val.trim()),
+                ),
               ),
+              if (_searchQuery.isNotEmpty)
+                IconButton(
+                  icon: const Icon(Icons.clear_rounded, size: 18, color: CeladonColors.textMuted),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() => _searchQuery = '');
+                  },
+                ),
             ],
           ),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 16),
 
-        // Section Toggle: Companies vs Global Users
+        // 5. Section Toggle: Companies vs Global Users
         Container(
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
@@ -410,7 +702,7 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
                           : null,
                     ),
                     child: Text(
-                      'Companies (${_companies.length})',
+                      'Companies (${_filteredCompanies.length})',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: _selectedSectionIndex == 0 ? FontWeight.w800 : FontWeight.w600,
@@ -435,7 +727,7 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
                           : null,
                     ),
                     child: Text(
-                      'Platform Users (${_users.length})',
+                      'Platform Users (${_filteredUsers.length})',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: _selectedSectionIndex == 1 ? FontWeight.w800 : FontWeight.w600,
@@ -450,50 +742,164 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
         ),
         const SizedBox(height: 14),
 
-        // Content for selected section
+        // 6. Content for selected section
         if (_selectedSectionIndex == 0)
           _buildCompaniesList()
         else
           _buildUsersList(),
 
         const SizedBox(height: 24),
+
+        // 7. Bottom Sign Out Action Card
+        if (widget.onLogout != null) ...[
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: CeladonColors.borderLight),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEE2E2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.logout_rounded, color: Color(0xFFDC2626), size: 22),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text(
+                        'Super Admin Session',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: CeladonColors.textPrimary),
+                      ),
+                      Text(
+                        'Securely end console session on this device',
+                        style: TextStyle(fontSize: 12, color: CeladonColors.textMuted),
+                      ),
+                    ],
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: _confirmLogout,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFDC2626),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  ),
+                  child: const Text('Logout', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
       ],
     );
   }
 
-  Widget _buildMetricItem({
-    required String label,
-    required String value,
-    required String subtitle,
+  Widget _buildMetricTile({
     required IconData icon,
-    required Color color,
+    required Color iconBg,
+    required Color iconColor,
+    required String count,
+    required String label,
+    required String subtitle,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(icon, size: 16, color: color),
-            const SizedBox(width: 6),
-            Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: CeladonColors.textSecondary)),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(value, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary)),
-        const SizedBox(height: 2),
-        Text(subtitle, style: const TextStyle(fontSize: 11, color: CeladonColors.textMuted)),
-      ],
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: CeladonColors.borderLight),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x062D6A4F),
+            blurRadius: 6,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: iconBg,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: iconColor, size: 20),
+              ),
+              Text(
+                count,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: CeladonColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: CeladonColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: CeladonColors.textMuted,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildCompaniesList() {
+    final list = _filteredCompanies;
+    if (list.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 36),
+        alignment: Alignment.center,
+        child: Column(
+          children: const [
+            Icon(Icons.search_off_rounded, size: 40, color: CeladonColors.textMuted),
+            SizedBox(height: 10),
+            Text('No tenant companies match your search', style: TextStyle(fontSize: 13, color: CeladonColors.textMuted)),
+          ],
+        ),
+      );
+    }
+
     return ListView.separated(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: _companies.length,
+      itemCount: list.length,
       separatorBuilder: (_, index) => const SizedBox(height: 10),
       itemBuilder: (ctx, idx) {
-        final comp = _companies[idx];
+        final comp = list[idx];
         return Material(
           color: Colors.white,
           shape: RoundedRectangleBorder(
@@ -503,11 +909,11 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
           child: ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             leading: Container(
-              width: 40,
-              height: 40,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
                 color: CeladonColors.primaryContainer,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Center(
                 child: Text(
@@ -547,13 +953,28 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
   }
 
   Widget _buildUsersList() {
+    final list = _filteredUsers;
+    if (list.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 36),
+        alignment: Alignment.center,
+        child: Column(
+          children: const [
+            Icon(Icons.search_off_rounded, size: 40, color: CeladonColors.textMuted),
+            SizedBox(height: 10),
+            Text('No platform users match your search', style: TextStyle(fontSize: 13, color: CeladonColors.textMuted)),
+          ],
+        ),
+      );
+    }
+
     return ListView.separated(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: _users.length,
+      itemCount: list.length,
       separatorBuilder: (_, index) => const SizedBox(height: 8),
       itemBuilder: (ctx, idx) {
-        final u = _users[idx];
+        final u = list[idx];
         return Material(
           color: Colors.white,
           shape: RoundedRectangleBorder(
@@ -612,9 +1033,11 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  company.name,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary),
+                Expanded(
+                  child: Text(
+                    company.name,
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary),
+                  ),
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

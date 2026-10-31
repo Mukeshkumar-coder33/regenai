@@ -13,8 +13,9 @@ import 'package:flutter/material.dart';
 ///     - Done/Completed: #22C55E (bg #DCFCE7)
 class TasksView extends StatefulWidget {
   final VoidCallback? onBack;
+  final VoidCallback? onOpenDrawer;
 
-  const TasksView({super.key, this.onBack});
+  const TasksView({super.key, this.onBack, this.onOpenDrawer});
 
   @override
   State<TasksView> createState() => _TasksViewState();
@@ -218,7 +219,27 @@ class _TasksViewState extends State<TasksView> {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Row(
         children: [
-          if (widget.onBack != null)
+          if (widget.onOpenDrawer != null)
+            Container(
+              width: 38,
+              height: 38,
+              margin: const EdgeInsets.only(right: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1B5E3F).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                icon: const Icon(
+                  Icons.menu_rounded,
+                  color: Color(0xFF1B5E3F),
+                  size: 22,
+                ),
+                tooltip: 'Menu',
+                onPressed: widget.onOpenDrawer,
+              ),
+            )
+          else if (widget.onBack != null)
             IconButton(
               icon: const Icon(
                 Icons.arrow_back_ios_new_rounded,

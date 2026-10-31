@@ -24,11 +24,13 @@ import '../data/calendar_service.dart';
 /// - Full interactive support for Month, Week, and Agenda views with role-based permissions
 class CalendarView extends StatefulWidget {
   final VoidCallback? onBack;
+  final VoidCallback? onOpenDrawer;
   final UserModel? user;
 
   const CalendarView({
     super.key,
     this.onBack,
+    this.onOpenDrawer,
     this.user,
   });
 
@@ -329,10 +331,34 @@ class _CalendarViewState extends State<CalendarView> {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            if (widget.onBack != null)
+            if (widget.onOpenDrawer != null) ...[
+              Container(
+                width: 38,
+                height: 38,
+                margin: const EdgeInsets.only(right: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1B5E3F).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(
+                    Icons.menu_rounded,
+                    color: Color(0xFF1B5E3F),
+                    size: 22,
+                  ),
+                  tooltip: 'Menu',
+                  onPressed: widget.onOpenDrawer,
+                ),
+              ),
+            ],
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (widget.onBack != null)
               GestureDetector(
                 onTap: widget.onBack,
                 child: Padding(
@@ -383,6 +409,9 @@ class _CalendarViewState extends State<CalendarView> {
                 color: Color(0xFF718096),
               ),
             ),
+          ],
+        ),
+
           ],
         ),
 

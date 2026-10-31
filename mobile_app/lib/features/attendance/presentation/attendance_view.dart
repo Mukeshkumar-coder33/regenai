@@ -17,8 +17,9 @@ import '../data/work_schedule_model.dart';
 /// 5-metre backend geofence rule.
 class AttendanceView extends StatefulWidget {
   final VoidCallback? onBack;
+  final VoidCallback? onOpenDrawer;
 
-  const AttendanceView({super.key, this.onBack});
+  const AttendanceView({super.key, this.onBack, this.onOpenDrawer});
 
   @override
   State<AttendanceView> createState() => _AttendanceViewState();
@@ -502,6 +503,27 @@ class _AttendanceViewState extends State<AttendanceView> {
                       // 1. Top Navigation Bar
                       Row(
                         children: [
+                          if (widget.onOpenDrawer != null) ...[
+                            Container(
+                              width: 38,
+                              height: 38,
+                              margin: const EdgeInsets.only(right: 8),
+                              decoration: BoxDecoration(
+                                color: CeladonColors.primary.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: IconButton(
+                                padding: EdgeInsets.zero,
+                                icon: const Icon(
+                                  Icons.menu_rounded,
+                                  color: CeladonColors.primaryDark,
+                                  size: 22,
+                                ),
+                                tooltip: 'Menu',
+                                onPressed: widget.onOpenDrawer,
+                              ),
+                            ),
+                          ],
                           if (widget.onBack != null)
                             IconButton(
                               icon: const Icon(

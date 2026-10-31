@@ -32,6 +32,8 @@ import '../../dashboard/data/leave_model.dart';
 class CompanyDashboardView extends StatefulWidget {
   final UserModel user;
   final VoidCallback? onBack;
+  final VoidCallback? onOpenDrawer;
+  final VoidCallback? onLogout;
   final void Function(int tabIndex)? onNavigateToTab;
   final void Function(UserModel updatedUser)? onUserUpdated;
   final DashboardService? dashboardService;
@@ -41,6 +43,8 @@ class CompanyDashboardView extends StatefulWidget {
     super.key,
     required this.user,
     this.onBack,
+    this.onOpenDrawer,
+    this.onLogout,
     this.onNavigateToTab,
     this.onUserUpdated,
     this.dashboardService,
@@ -187,17 +191,32 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 // 1. Company Header
                 Row(
                   children: [
-                    if (widget.onBack != null)
-                      IconButton(
+                    // Hamburger Menu Button (opens AppDrawer)
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: CeladonColors.primary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
                         icon: const Icon(
-                          Icons.arrow_back_ios_new_rounded,
-                          size: 20,
-                          color: CeladonColors.textPrimary,
+                          Icons.menu_rounded,
+                          color: CeladonColors.primaryDark,
+                          size: 24,
                         ),
-                        onPressed: widget.onBack,
-                      )
-                    else
-                      const SizedBox(width: 4),
+                        tooltip: 'Menu',
+                        onPressed: () {
+                          if (widget.onOpenDrawer != null) {
+                            widget.onOpenDrawer!();
+                          } else {
+                            Scaffold.maybeOf(context)?.openDrawer();
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
 
                     // Company Logo Badge
                     const BrandLogo(
@@ -580,6 +599,14 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           subtitle: 'Company profile & working hours configuration',
           onTap: _showCompanySettingsSheet,
         ),
+        if (widget.onLogout != null)
+          _buildCompanyMenuItem(
+            context: context,
+            icon: Icons.logout_rounded,
+            title: 'Sign Out',
+            subtitle: 'End current company session',
+            onTap: () => widget.onLogout?.call(),
+          ),
         const SizedBox(height: 20),
       ],
     );

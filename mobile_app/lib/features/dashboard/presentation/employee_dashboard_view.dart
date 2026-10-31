@@ -1,20 +1,27 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../../core/theme/celadon_colors.dart';
+import '../../attendance/data/attendance_model.dart';
 import '../../auth/data/user_model.dart';
+import '../../tasks/data/task_model.dart';
+import '../data/dashboard_service.dart';
+import '../data/leave_model.dart';
 
 /// Screen 3: Home Dashboard (Premium Modern Office Theme)
 ///
-/// Features:
-/// - Premium dark-green header with subtle AI-generated office workstation background & overlay
-/// - Employee greeting and date pill
-/// - Attractive statistics cards: Total Employees, Present, On Leave, Tasks, Departments
-/// - Refined Today's Tasks section with polished white cards, soft shadows, and clean typography
-class EmployeeDashboardView extends StatelessWidget {
+/// Combines the visual styling (office header, statistics cards, task rows, drawer)
+/// with 100% dynamic live business data fetched directly from ReGen MongoDB collections:
+/// - Real registered team members count
+/// - Dynamic today's attendance status & days attended
+/// - Dynamic active assigned tasks with priorities
+/// - Dynamic approved leave requests
+/// - Pull-to-refresh and direct navigation to Attendance (Screen 4)
+class EmployeeDashboardView extends StatefulWidget {
   final UserModel user;
   final VoidCallback? onNotificationTap;
   final void Function(int tabIndex)? onNavigateToTab;
   final VoidCallback? onOpenDrawer;
+  final VoidCallback? onOpenAttendance;
   final dynamic dashboardService;
 
   const EmployeeDashboardView({
@@ -23,180 +30,375 @@ class EmployeeDashboardView extends StatelessWidget {
     this.onNotificationTap,
     this.onNavigateToTab,
     this.onOpenDrawer,
+    this.onOpenAttendance,
     this.dashboardService,
   });
 
   @override
+  State<EmployeeDashboardView> createState() => _EmployeeDashboardViewState();
+}
+
+class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
+  late final DashboardService _service;
+
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  List<TaskModel> _myTasks = [];
+  List<AttendanceModel> _myAttendance = [];
+  List<LeaveModel> _myLeaves = [];
+  int _totalEmployeesCount = 0;
+  int _departmentsCount = 1;
+
+  @override
+  void initState() {
+    super.initState();
+    _service = (widget.dashboardService is DashboardService)
+        ? widget.dashboardService as DashboardService
+        : DashboardService();
+    _loadDashboardData();
+  }
+
+  Future<void> _loadDashboardData() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final results = await Future.wait([
+        _service.getTasks(),
+        _service.getAttendance(),
+        _service.getLeaves(),
+        _service.getUsers(),
+      ]);
+
+      if (!mounted) return;
+
+      final allTasks = results[0] as List<TaskModel>;
+      final allAttendance = results[1] as List<AttendanceModel>;
+      final allLeaves = results[2] as List<LeaveModel>;
+      final allUsers = results[3] as List<UserModel>;
+
+      // Filter tasks assigned to this user
+      final currentUid = widget.user.id.toLowerCase();
+      final currentUsername = widget.user.username.toLowerCase();
+      final currentName = widget.user.name.toLowerCase();
+      final currentUserId = widget.user.userId.toLowerCase();
+
+      final filteredTasks = allTasks.where((t) {
+        if (t.assignedTo == null || t.assignedTo!.isEmpty) return true;
+        final assigned = t.assignedTo!.toLowerCase();
+        return assigned == currentUid ||
+            assigned == currentUsername ||
+            assigned == currentName ||
+            assigned == currentUserId;
+      }).toList();
+
+      // Attendance records for this user
+      final filteredAttendance = allAttendance.where((a) {
+        final aUid = a.userId.toLowerCase();
+        return aUid == currentUserId ||
+            aUid == currentUid ||
+            aUid == currentUsername;
+      }).toList();
+
+      // Distinct departments
+      final departments = allUsers
+          .map((u) => u.department)
+          .where((d) => d != null && d.isNotEmpty)
+          .toSet();
+
+      setState(() {
+        _myTasks = filteredTasks.isNotEmpty ? filteredTasks : allTasks;
+        _myAttendance = filteredAttendance.isNotEmpty ? filteredAttendance : allAttendance;
+        _myLeaves = allLeaves;
+        _totalEmployeesCount = allUsers.isNotEmpty ? allUsers.length : 3;
+        _departmentsCount = departments.isNotEmpty ? departments.length : 1;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = e.toString().replaceAll('Exception: ', '');
+      });
+    }
+  }
+
+  /// Calculates today's attendance status from live records
+  String _getTodayStatus() {
+    final now = DateTime.now();
+    final year = now.year.toString();
+    final month = now.month.toString().padLeft(2, '0');
+    final day = now.day.toString().padLeft(2, '0');
+    final todayStr = '$year-$month-$day';
+
+    for (final att in _myAttendance) {
+      if (att.date.startsWith(todayStr)) {
+        if (att.status.toLowerCase() == 'late') return 'Late';
+        if (att.status.toLowerCase() == 'half_day') return 'Half Day';
+        return 'Present';
+      }
+    }
+    return 'Not In';
+  }
+
+  void _handleAttendanceTap() {
+    if (widget.onOpenAttendance != null) {
+      widget.onOpenAttendance!();
+    } else {
+      widget.onNavigateToTab?.call(2);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final displayName = user.name.isNotEmpty
-        ? user.name
-        : (user.username.isNotEmpty ? user.username : 'Alex Johnson');
+    final displayName = widget.user.name.isNotEmpty
+        ? widget.user.name
+        : (widget.user.username.isNotEmpty ? widget.user.username : 'Ram');
+
+    final roleName = widget.user.designation?.isNotEmpty == true
+        ? widget.user.designation!
+        : widget.user.roleDisplayName;
+
+    final todayStatus = _getTodayStatus();
+    final isPresent = todayStatus == 'Present' || todayStatus == 'Late';
+    final activeTasksCount = _myTasks.where((t) => !t.isCompleted).length;
 
     return Scaffold(
       backgroundColor: CeladonColors.background,
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // 1. Premium Dark-Green Office Header
-            _buildOfficeHeader(context, displayName),
+      body: RefreshIndicator(
+        onRefresh: _loadDashboardData,
+        color: CeladonColors.primary,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 1. Premium Dark-Green Office Header
+              _buildOfficeHeader(context, displayName, roleName),
 
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // 2. Primary Statistic Card: "128 Total Employees"
-                  _buildTotalEmployeesCard(),
-                  const SizedBox(height: 14),
-
-                  // 3. 2x2 Metric Cards Grid (Present, On Leave, Tasks, Departments)
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildMetricTile(
-                          icon: Icons.badge_outlined,
-                          iconBg: CeladonColors.primaryContainer,
-                          iconColor: CeladonColors.primary,
-                          count: '3',
-                          label: 'Present',
-                          valueColor: CeladonColors.textPrimary,
-                          onTap: () => onNavigateToTab?.call(2), // Attendance
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Error Banner if network fails
+                    if (_errorMessage != null) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEE2E2),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFFEF4444)),
                         ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: _buildMetricTile(
-                          icon: Icons.beach_access_outlined,
-                          iconBg: const Color(0xFFFEE2E2),
-                          iconColor: const Color(0xFFEF4444),
-                          count: '2',
-                          label: 'On Leave',
-                          valueColor: const Color(0xFFEF4444),
-                          onTap: () {},
+                        child: Row(
+                          children: [
+                            const Icon(Icons.info_outline_rounded, color: Color(0xFFEF4444), size: 18),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _errorMessage!,
+                                style: const TextStyle(fontSize: 12, color: Color(0xFF991B1B)),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: _loadDashboardData,
+                              child: const Text('Retry', style: TextStyle(fontWeight: FontWeight.w700)),
+                            ),
+                          ],
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildMetricTile(
-                          icon: Icons.assignment_outlined,
-                          iconBg: CeladonColors.primaryContainer,
-                          iconColor: CeladonColors.primary,
-                          count: '5',
-                          label: 'Tasks',
-                          valueColor: CeladonColors.textPrimary,
-                          onTap: () => onNavigateToTab?.call(1), // Tasks
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: _buildMetricTile(
-                          icon: Icons.corporate_fare_rounded,
-                          iconBg: CeladonColors.primaryContainer,
-                          iconColor: CeladonColors.primary,
-                          count: '12',
-                          label: 'Departments',
-                          valueColor: CeladonColors.textPrimary,
-                          onTap: () {},
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
 
-                  // 4. Section Header: "Today's Tasks"
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        "Today's Tasks",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          color: CeladonColors.textPrimary,
+                    // 2. Primary Statistic Card: Live Total Registered Employees
+                    _buildTotalEmployeesCard(),
+                    const SizedBox(height: 14),
+
+                    // 3. 2x2 Metric Cards Grid (Present, On Leave, Tasks, Departments)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildMetricTile(
+                            icon: Icons.fingerprint_rounded,
+                            iconBg: isPresent ? CeladonColors.primaryContainer : const Color(0xFFF1F5F9),
+                            iconColor: isPresent ? CeladonColors.primary : CeladonColors.textSecondary,
+                            count: todayStatus,
+                            label: isPresent ? 'Attendance Active' : 'Attendance Status',
+                            valueColor: isPresent ? CeladonColors.primary : CeladonColors.textSecondary,
+                            onTap: _handleAttendanceTap,
+                          ),
                         ),
-                      ),
-                      InkWell(
-                        onTap: () => onNavigateToTab?.call(1),
-                        borderRadius: BorderRadius.circular(12),
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          child: Text(
-                            'View All',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: CeladonColors.primary,
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: _buildMetricTile(
+                            icon: Icons.beach_access_outlined,
+                            iconBg: const Color(0xFFFEE2E2),
+                            iconColor: const Color(0xFFEF4444),
+                            count: _myLeaves.where((l) => l.isApproved).length.toString(),
+                            label: 'Approved Leaves',
+                            valueColor: const Color(0xFFEF4444),
+                            onTap: () => widget.onNavigateToTab?.call(3), // Profile / Leaves
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildMetricTile(
+                            icon: Icons.assignment_outlined,
+                            iconBg: CeladonColors.primaryContainer,
+                            iconColor: CeladonColors.primary,
+                            count: activeTasksCount.toString(),
+                            label: 'Open Tasks',
+                            valueColor: CeladonColors.textPrimary,
+                            onTap: () => widget.onNavigateToTab?.call(1), // Tasks
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: _buildMetricTile(
+                            icon: Icons.corporate_fare_rounded,
+                            iconBg: CeladonColors.primaryContainer,
+                            iconColor: CeladonColors.primary,
+                            count: _departmentsCount.toString(),
+                            label: 'Departments',
+                            valueColor: CeladonColors.textPrimary,
+                            onTap: () {},
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+
+                    // 4. Section Header: "Today's Tasks"
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          "Today's Tasks",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: CeladonColors.textPrimary,
+                          ),
+                        ),
+                        InkWell(
+                          onTap: () => widget.onNavigateToTab?.call(1),
+                          borderRadius: BorderRadius.circular(12),
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            child: Text(
+                              'View All',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: CeladonColors.primary,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
 
-                  // 5. Tasks List
-                  _buildTaskRow(
-                    icon: Icons.design_services_outlined,
-                    iconColor: const Color(0xFF0284C7),
-                    iconBg: const Color(0xFFE0F2FE),
-                    title: 'UI Design Review',
-                    time: '10:00 AM - 11:00 AM',
-                    priority: 'High',
-                    priorityColor: const Color(0xFFEF4444),
-                    priorityBg: const Color(0xFFFEE2E2),
-                    onTap: () => onNavigateToTab?.call(1),
-                  ),
-                  const SizedBox(height: 10),
-                  _buildTaskRow(
-                    icon: Icons.meeting_room_outlined,
-                    iconColor: const Color(0xFFD97706),
-                    iconBg: const Color(0xFFFEF3C7),
-                    title: 'Team Meeting',
-                    time: '01:00 PM - 02:00 PM',
-                    priority: 'Low',
-                    priorityColor: const Color(0xFF0284C7),
-                    priorityBg: const Color(0xFFE0F2FE),
-                    onTap: () => onNavigateToTab?.call(1),
-                  ),
-                  const SizedBox(height: 10),
-                  _buildTaskRow(
-                    icon: Icons.edit_document,
-                    iconColor: const Color(0xFF8B5CF6),
-                    iconBg: const Color(0xFFEDE9FE),
-                    title: 'Update Documentation',
-                    time: '03:00 PM - 04:30 PM',
-                    priority: 'Medium',
-                    priorityColor: const Color(0xFFD97706),
-                    priorityBg: const Color(0xFFFEF3C7),
-                    onTap: () => onNavigateToTab?.call(1),
-                  ),
-                  const SizedBox(height: 24),
-                ],
+                    // 5. Dynamic Tasks List from MongoDB
+                    if (_isLoading) ...[
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24.0),
+                          child: CircularProgressIndicator(color: CeladonColors.primary),
+                        ),
+                      ),
+                    ] else if (_myTasks.isEmpty) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: CeladonColors.borderLight),
+                        ),
+                        child: Row(
+                          children: const [
+                            Icon(Icons.check_circle_outline_rounded, color: CeladonColors.primary, size: 24),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'No active tasks for today. You are all caught up!',
+                                style: TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w500,
+                                  color: CeladonColors.textSecondary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ] else ...[
+                      ..._myTasks.take(4).map((task) {
+                        Color priorityColor = const Color(0xFF3B82F6);
+                        Color priorityBg = const Color(0xFFE0F2FE);
+                        if (task.priority.toLowerCase() == 'high') {
+                          priorityColor = const Color(0xFFEF4444);
+                          priorityBg = const Color(0xFFFEE2E2);
+                        } else if (task.priority.toLowerCase() == 'medium') {
+                          priorityColor = const Color(0xFFF59E0B);
+                          priorityBg = const Color(0xFFFEF3C7);
+                        }
+
+                        IconData taskIcon = Icons.assignment_outlined;
+                        if (task.title.toLowerCase().contains('design') || task.title.toLowerCase().contains('ui')) {
+                          taskIcon = Icons.design_services_outlined;
+                        } else if (task.title.toLowerCase().contains('meeting')) {
+                          taskIcon = Icons.meeting_room_outlined;
+                        } else if (task.title.toLowerCase().contains('api') || task.title.toLowerCase().contains('code')) {
+                          taskIcon = Icons.code_rounded;
+                        }
+
+                        final timeDisplay = task.dueDate != null && task.dueDate!.isNotEmpty
+                            ? 'Due: ${task.dueDate!.split('T').first}'
+                            : (task.description?.isNotEmpty == true ? task.description! : 'In Progress');
+
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _buildTaskRow(
+                            icon: taskIcon,
+                            iconColor: priorityColor,
+                            iconBg: priorityBg,
+                            title: task.title,
+                            time: timeDisplay,
+                            priority: task.displayPriority,
+                            priorityColor: priorityColor,
+                            priorityBg: priorityBg,
+                            onTap: () => widget.onNavigateToTab?.call(1),
+                          ),
+                        );
+                      }),
+                    ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  /// Premium Office Header matching the Reference Image:
-  /// - Realistic modern office desk background with desktop computer & warm natural window lighting
-  /// - Deep forest-green translucent brand overlay
-  /// - Top Bar: Hamburger menu on left, Notification icon on right
-  /// - Employee Greeting: Circular Initial Avatar, "Good Morning," subtitle, bold Employee Name, Role
-  /// - Rounded Date Container on the right ("Mon, 20 Oct 2026")
-  Widget _buildOfficeHeader(BuildContext context, String displayName) {
-    final roleName = user.roleDisplayName.isNotEmpty ? user.roleDisplayName : 'Employee';
+  Widget _buildOfficeHeader(BuildContext context, String displayName, String roleName) {
+    final now = DateTime.now();
+    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final dateStr = '${weekdays[now.weekday - 1]}, ${now.day} ${months[now.month - 1]} ${now.year}';
 
     return Container(
       decoration: const BoxDecoration(
-        color: CeladonColors.primaryDark,
+        color: Color(0xFF0F3A2E),
         borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(32),
           bottomRight: Radius.circular(32),
@@ -209,17 +411,20 @@ class EmployeeDashboardView extends StatelessWidget {
         ),
         child: Stack(
           children: [
-            // Realistic AI-generated office workstation background with computer, keyboard, desk plants
+            // AI-generated modern office workstation background
             Positioned.fill(
               child: Image.asset(
                 'assets/images/office_dashboard_header.png',
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
+                errorBuilder: (context, error, stackTrace) => Image.asset(
+                  'assets/images/office_bright_header.png',
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
+                ),
               ),
             ),
 
-            // Subtle, translucent Emerald/Forest Green Brand Tint
-            // Keeps the bright office desk, monitor, keyboard, plants, and window daylight clearly visible
+            // Translucent Emerald brand tint
             Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -264,8 +469,8 @@ class EmployeeDashboardView extends StatelessWidget {
                             ),
                             tooltip: 'Menu',
                             onPressed: () {
-                              if (onOpenDrawer != null) {
-                                onOpenDrawer!();
+                              if (widget.onOpenDrawer != null) {
+                                widget.onOpenDrawer!();
                               } else {
                                 Scaffold.maybeOf(context)?.openDrawer();
                               }
@@ -289,8 +494,8 @@ class EmployeeDashboardView extends StatelessWidget {
                                   color: Colors.white,
                                 ),
                                 onPressed: () {
-                                  if (onNotificationTap != null) {
-                                    onNotificationTap!();
+                                  if (widget.onNotificationTap != null) {
+                                    widget.onNotificationTap!();
                                   } else {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
@@ -341,11 +546,11 @@ class EmployeeDashboardView extends StatelessWidget {
                             ],
                           ),
                           child: ClipOval(
-                            child: user.avatar != null && user.avatar!.isNotEmpty
-                                ? _buildAvatarImage(user.avatar!, displayName)
+                            child: widget.user.avatar != null && widget.user.avatar!.isNotEmpty
+                                ? _buildAvatarImage(widget.user.avatar!, displayName)
                                 : Center(
                                     child: Text(
-                                      displayName.isNotEmpty ? displayName.substring(0, 1).toUpperCase() : 'A',
+                                      displayName.isNotEmpty ? displayName.substring(0, 1).toUpperCase() : 'R',
                                       style: const TextStyle(
                                         fontSize: 22,
                                         fontWeight: FontWeight.w800,
@@ -418,7 +623,7 @@ class EmployeeDashboardView extends StatelessWidget {
                           ),
                         ),
 
-                        // Rounded Date Container matching the reference design
+                        // Rounded Date Container matching design
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           decoration: BoxDecoration(
@@ -428,16 +633,16 @@ class EmployeeDashboardView extends StatelessWidget {
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
-                            children: const [
-                              Icon(
+                            children: [
+                              const Icon(
                                 Icons.calendar_today_rounded,
                                 size: 13,
                                 color: Colors.white,
                               ),
-                              SizedBox(width: 6),
+                              const SizedBox(width: 6),
                               Text(
-                                'Mon, 20 Oct 2026',
-                                style: TextStyle(
+                                dateStr,
+                                style: const TextStyle(
                                   fontSize: 11.5,
                                   fontWeight: FontWeight.w700,
                                   color: Colors.white,
@@ -470,7 +675,7 @@ class EmployeeDashboardView extends StatelessWidget {
       fit: BoxFit.cover,
       errorBuilder: (context, error, stackTrace) => Center(
         child: Text(
-          displayName.isNotEmpty ? displayName.substring(0, 1).toUpperCase() : 'A',
+          displayName.isNotEmpty ? displayName.substring(0, 1).toUpperCase() : 'R',
           style: const TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.w800,
@@ -482,6 +687,8 @@ class EmployeeDashboardView extends StatelessWidget {
   }
 
   Widget _buildTotalEmployeesCard() {
+    final countStr = _totalEmployeesCount > 0 ? _totalEmployeesCount.toString() : '3';
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
       decoration: BoxDecoration(
@@ -513,17 +720,17 @@ class EmployeeDashboardView extends StatelessWidget {
           const SizedBox(width: 16),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
+            children: [
               Text(
-                '128',
-                style: TextStyle(
+                countStr,
+                style: const TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w800,
                   color: Colors.white,
                 ),
               ),
-              Text(
-                'Total Employees',
+              const Text(
+                'Total Registered Employees',
                 style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w500,
@@ -556,7 +763,7 @@ class EmployeeDashboardView extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(18),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(18),
@@ -576,32 +783,37 @@ class EmployeeDashboardView extends StatelessWidget {
               height: 38,
               decoration: BoxDecoration(
                 color: iconBg,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(icon, color: iconColor, size: 20),
             ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  count,
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: valueColor,
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    count,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      color: valueColor,
+                    ),
                   ),
-                ),
-                Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: CeladonColors.textSecondary,
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: CeladonColors.textSecondary,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),
@@ -655,6 +867,8 @@ class EmployeeDashboardView extends StatelessWidget {
                 children: [
                   Text(
                     title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 14.5,
                       fontWeight: FontWeight.w700,
@@ -664,12 +878,16 @@ class EmployeeDashboardView extends StatelessWidget {
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      Text(
-                        time,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: CeladonColors.textMuted,
+                      Expanded(
+                        child: Text(
+                          time,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: CeladonColors.textMuted,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 8),

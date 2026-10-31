@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../../../core/theme/celadon_colors.dart';
 import '../../attendance/presentation/attendance_view.dart';
 import '../../auth/data/user_model.dart';
@@ -15,7 +15,7 @@ import 'employee_dashboard_view.dart';
 /// Unifies the screens from the "8. Premium Celadon" design specification:
 /// - Tab 0: Home (Screen 3: Employee Dashboard, Screen 8: Company Dashboard, or Super Admin Dashboard)
 /// - Tab 1: Tasks (Screen 6: Tasks Screen with priority filters & badges)
-/// - Tab 2: Calendar & Attendance (Screen 5: Calendar & Screen 4: Attendance)
+/// - Tab 2: Calendar & Attendance (Screen 5: Calendar & Screen 4: Attendance with quick toggle)
 /// - Tab 3: Profile (Screen 7: Sidebar / Profile with SuperAdmin switcher & Logout)
 class DashboardScreen extends StatefulWidget {
   final UserModel user;
@@ -50,6 +50,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
+  void _openAttendance() {
+    setState(() {
+      _currentTabIndex = 2;
+      _showAttendanceSubScreen = true;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -59,12 +66,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         user: _currentUser,
         onLogout: widget.onLogout,
         onNavigateToTab: _navigateToTab,
-        onOpenAttendance: () {
-          setState(() {
-            _currentTabIndex = 2;
-            _showAttendanceSubScreen = true;
-          });
-        },
+        onOpenAttendance: _openAttendance,
         currentTabIndex: _currentTabIndex,
       ),
       body: IndexedStack(
@@ -79,26 +81,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
 
           // Tab 2: Calendar & Attendance View (Screen 5 & Screen 4)
-          _showAttendanceSubScreen
-              ? AttendanceView(
-                  onBack: () => setState(() => _showAttendanceSubScreen = false),
-                )
-              : CalendarView(
-                  user: _currentUser,
-                  onBack: () => _navigateToTab(0),
-                ),
+          _buildCalendarAndAttendanceTab(),
 
           // Tab 3: Profile / Sidebar View (Screen 7)
           ProfileView(
             user: _currentUser,
             onLogout: widget.onLogout,
             onNavigateToTab: _navigateToTab,
-            onOpenAttendance: () {
-              setState(() {
-                _currentTabIndex = 2;
-                _showAttendanceSubScreen = true;
-              });
-            },
+            onOpenAttendance: _openAttendance,
             onUserUpdated: (updatedUser) {
               setState(() => _currentUser = updatedUser);
             },
@@ -106,12 +96,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
       bottomNavigationBar: Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           color: Colors.white,
-          border: const Border(
+          border: Border(
             top: BorderSide(color: CeladonColors.borderLight, width: 1.2),
           ),
-          boxShadow: const [
+          boxShadow: [
             BoxShadow(
               color: Color(0x0A2D6A4F),
               blurRadius: 10,
@@ -178,16 +168,143 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return EmployeeDashboardView(
       user: _currentUser,
       onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer(),
+      onOpenAttendance: _openAttendance,
       onNavigateToTab: (index) {
         if (index == 2) {
-          setState(() {
-            _currentTabIndex = 2;
-            _showAttendanceSubScreen = true;
-          });
+          _openAttendance();
         } else {
           _navigateToTab(index);
         }
       },
+    );
+  }
+
+  Widget _buildCalendarAndAttendanceTab() {
+    return Column(
+      children: [
+        // Top Dual Navigation Bar (Toggle between Calendar & Attendance)
+        SafeArea(
+          bottom: false,
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: CeladonColors.borderLight, width: 1.2),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x082D6A4F),
+                  blurRadius: 6,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onTap: () => setState(() => _showAttendanceSubScreen = false),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 9),
+                      decoration: BoxDecoration(
+                        color: !_showAttendanceSubScreen ? CeladonColors.primaryDark : Colors.transparent,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: !_showAttendanceSubScreen
+                            ? [
+                                BoxShadow(
+                                  color: CeladonColors.primaryDark.withValues(alpha: 0.25),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                )
+                              ]
+                            : null,
+                      ),
+                      alignment: Alignment.center,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.calendar_month_rounded,
+                            size: 16,
+                            color: !_showAttendanceSubScreen ? Colors.white : CeladonColors.textSecondary,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Calendar',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: !_showAttendanceSubScreen ? Colors.white : CeladonColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: InkWell(
+                    onTap: () => setState(() => _showAttendanceSubScreen = true),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 9),
+                      decoration: BoxDecoration(
+                        color: _showAttendanceSubScreen ? CeladonColors.primaryDark : Colors.transparent,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: _showAttendanceSubScreen
+                            ? [
+                                BoxShadow(
+                                  color: CeladonColors.primaryDark.withValues(alpha: 0.25),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                )
+                              ]
+                            : null,
+                      ),
+                      alignment: Alignment.center,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.fingerprint_rounded,
+                            size: 17,
+                            color: _showAttendanceSubScreen ? Colors.white : CeladonColors.textSecondary,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Attendance (5m GPS)',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: _showAttendanceSubScreen ? Colors.white : CeladonColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        Expanded(
+          child: MediaQuery.removePadding(
+            context: context,
+            removeTop: true,
+            child: _showAttendanceSubScreen
+                ? AttendanceView(
+                    onBack: () => setState(() => _showAttendanceSubScreen = false),
+                  )
+                : CalendarView(
+                    user: _currentUser,
+                    onBack: () => _navigateToTab(0),
+                  ),
+          ),
+        ),
+      ],
     );
   }
 

@@ -1,5 +1,10 @@
 ﻿import 'package:flutter/material.dart';
+import '../../attendance/data/attendance_model.dart';
+import '../../attendance/data/attendance_service.dart';
 import '../../auth/data/user_model.dart';
+import '../../dashboard/data/dashboard_service.dart';
+import '../../dashboard/data/leave_model.dart';
+import '../../tasks/data/task_model.dart';
 import '../data/calendar_event_model.dart';
 import '../data/calendar_service.dart';
 
@@ -33,6 +38,8 @@ class CalendarView extends StatefulWidget {
 
 class _CalendarViewState extends State<CalendarView> {
   final CalendarService _calendarService = CalendarService();
+  final AttendanceService _attendanceService = AttendanceService();
+  final DashboardService _dashboardService = DashboardService();
   int _selectedViewIndex = 0; // 0: Month, 1: Week, 2: Agenda
   late DateTime _selectedDate;
   late DateTime _currentMonth;
@@ -42,9 +49,9 @@ class _CalendarViewState extends State<CalendarView> {
   @override
   void initState() {
     super.initState();
-    // Default to Oct 20, 2026 to faithfully match visual reference
-    _selectedDate = DateTime(2026, 10, 20);
-    _currentMonth = DateTime(2026, 10, 1);
+    final now = DateTime.now();
+    _selectedDate = DateTime(now.year, now.month, now.day);
+    _currentMonth = DateTime(now.year, now.month, 1);
     _initRoleEvents();
     _loadBackendEvents();
   }
@@ -137,21 +144,116 @@ class _CalendarViewState extends State<CalendarView> {
     ];
   }
 
+  String _formatTimeStr(String? iso) {
+    if (iso == null || iso.isEmpty) return '--:--';
+    final dt = DateTime.tryParse(iso)?.toLocal();
+    if (dt == null) return '--:--';
+    final h = dt.hour;
+    final m = dt.minute.toString().padLeft(2, '0');
+    final p = h >= 12 ? 'PM' : 'AM';
+    final dh = h == 0 ? 12 : (h > 12 ? h - 12 : h);
+    return '${dh.toString().padLeft(2, '0')}:$m $p';
+  }
+
   Future<void> _loadBackendEvents() async {
-    if (widget.user == null) return;
+    final user = widget.user;
     try {
-      final backendEvents = await _calendarService.fetchEvents(user: widget.user!);
-      if (backendEvents.isNotEmpty && mounted) {
-        setState(() {
-          for (final be in backendEvents) {
-            if (!_events.any((e) => e.title == be.title && e.dateTime.day == be.dateTime.day && e.dateTime.month == be.dateTime.month)) {
-              _events.add(be.copyWith(
-                icon: Icons.celebration_outlined,
-                color: const Color(0xFFD97706),
-                bg: const Color(0xFFFEF3C7),
-              ));
-            }
+      final results = await Future.wait([
+        _calendarService.fetchEvents(
+          user: user ?? const UserModel(id: '', userId: '', username: '', name: '', role: 'staff', token: ''),
+        ),
+        _attendanceService.getUserAttendanceHistory(
+          user?.userId.isNotEmpty == true ? user!.userId : (user?.id ?? ''),
+        ),
+        _dashboardService.getTasks(),
+        _dashboardService.getLeaves(),
+      ]);
+
+      final holidays = results[0] as List<CalendarEventModel>;
+      final attendance = results[1] as List<AttendanceModel>;
+      final tasks = results[2] as List<TaskModel>;
+      final leaves = results[3] as List<LeaveModel>;
+
+      final List<CalendarEventModel> dynamicEvents = [];
+
+      // 1. Live Public Holidays from MongoDB
+      for (final h in holidays) {
+        dynamicEvents.add(h.copyWith(
+          icon: Icons.celebration_outlined,
+          color: const Color(0xFFD97706),
+          bg: const Color(0xFFFEF3C7),
+        ));
+      }
+
+      // 2. Live Attendance Sessions from MongoDB
+      for (final att in attendance) {
+        DateTime? dt;
+        if (att.checkIn != null && att.checkIn!.isNotEmpty) {
+          dt = DateTime.tryParse(att.checkIn!)?.toLocal();
+        }
+        dt ??= DateTime.tryParse(att.date)?.toLocal();
+        if (dt != null) {
+          final statusUpper = att.status.toUpperCase();
+          final inTime = _formatTimeStr(att.checkIn);
+          final outTime = _formatTimeStr(att.checkOut);
+          final timeStr = 'In: $inTime • Out: $outTime';
+
+          dynamicEvents.add(CalendarEventModel(
+            id: att.id.isNotEmpty ? att.id : 'att_${att.date}',
+            title: 'Work Session ($statusUpper)',
+            dateTime: dt,
+            time: timeStr,
+            category: 'Attendance',
+            description: 'Logged Attendance: $statusUpper (${(att.workMode ?? 'OFFICE').toUpperCase()})',
+            icon: Icons.fingerprint_rounded,
+            color: const Color(0xFF1B5E3F),
+            bg: const Color(0xFFE8F5ED),
+          ));
+        }
+      }
+
+      // 3. Live Tasks from MongoDB
+      for (final t in tasks) {
+        if (t.dueDate != null && t.dueDate!.isNotEmpty) {
+          final dt = DateTime.tryParse(t.dueDate!)?.toLocal();
+          if (dt != null) {
+            dynamicEvents.add(CalendarEventModel(
+              id: t.id,
+              title: t.title,
+              dateTime: dt,
+              time: 'Due: ${t.dueDate!.split('T').first}',
+              category: 'Task',
+              description: t.description ?? 'Assigned Task (${t.displayPriority})',
+              icon: Icons.assignment_outlined,
+              color: const Color(0xFF7C3AED),
+              bg: const Color(0xFFF3E8FF),
+            ));
           }
+        }
+      }
+
+      // 4. Live Leaves from MongoDB
+      for (final l in leaves) {
+        final dt = DateTime.tryParse(l.startDate)?.toLocal();
+        if (dt != null) {
+          dynamicEvents.add(CalendarEventModel(
+            id: l.id,
+            title: 'Approved Leave (${l.type.toUpperCase()})',
+            dateTime: dt,
+            time: '${l.startDate} to ${l.endDate}',
+            category: 'Leave',
+            description: l.reason ?? 'Approved Leave',
+            icon: Icons.beach_access_outlined,
+            color: const Color(0xFFDC2626),
+            bg: const Color(0xFFFEE2E2),
+          ));
+        }
+      }
+
+      if (dynamicEvents.isNotEmpty && mounted) {
+        setState(() {
+          final customEvents = _events.where((e) => e.id.startsWith('evt_custom_')).toList();
+          _events = [...dynamicEvents, ...customEvents];
         });
       }
     } catch (_) {}

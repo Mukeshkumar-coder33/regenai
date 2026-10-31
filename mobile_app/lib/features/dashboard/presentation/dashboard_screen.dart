@@ -96,6 +96,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           // Tab 1: Tasks View (Screen 6)
           TasksView(
+            user: _currentUser,
             onOpenDrawer: _openDrawer,
             onBack: () => _navigateToTab(0),
           ),

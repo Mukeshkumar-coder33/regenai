@@ -536,6 +536,15 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: TasksView(
+            user: const UserModel(
+              id: 'owner_1',
+              userId: 'Vyshwa',
+              username: 'Vyshwa',
+              name: 'Vyshwa',
+              role: 'owner',
+              company: 'krish',
+              token: 'tok',
+            ),
             dashboardService: MockDashboardService(),
           ),
         ),
@@ -587,6 +596,55 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(logoutCalled, isTrue);
+    });
+
+    testWidgets('Role Separation: Employee TasksView hides FAB, EmployeeDashboardView renders personal metrics',
+        (WidgetTester tester) async {
+      // 1. Verify Employee TasksView hides FAB
+      await tester.pumpWidget(
+        MaterialApp(
+          home: TasksView(
+            user: const UserModel(
+              id: 'emp_1',
+              userId: 'EMP-101',
+              username: 'ram',
+              name: 'Ram',
+              role: 'staff',
+              token: 'tok_ram',
+            ),
+            dashboardService: MockDashboardService(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.text('Tasks & Schedules'), findsOneWidget);
+      expect(find.byType(FloatingActionButton), findsNothing);
+
+      // 2. Verify EmployeeDashboardView displays personal metrics & no company totals
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EmployeeDashboardView(
+            user: const UserModel(
+              id: 'emp_1',
+              userId: 'EMP-101',
+              username: 'ram',
+              name: 'Ram',
+              role: 'staff',
+              token: 'tok_ram',
+            ),
+            dashboardService: MockDashboardService(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.text('Attendance Rate'), findsOneWidget);
+      expect(find.text('My Projects'), findsOneWidget);
+      expect(find.text('Summary'), findsOneWidget);
+      expect(find.text('Total Registered Employees'), findsNothing);
     });
   });
 }

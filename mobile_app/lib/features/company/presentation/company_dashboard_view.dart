@@ -572,11 +572,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         _buildCompanyMenuItem(
           context: context,
           icon: Icons.event_busy_outlined,
-          title: 'Leaves',
+          title: 'Leaves & Holidays',
           subtitle: _pendingLeavesCount > 0
               ? '$_pendingLeavesCount request(s) waiting for approval'
-              : 'All leave requests up to date',
-          onTap: () => _showModuleInfo(context, 'Leave Management'),
+              : 'Review leave approvals & company holidays',
+          onTap: () => widget.onNavigateToTab?.call(2),
         ),
         _buildCompanyMenuItem(
           context: context,

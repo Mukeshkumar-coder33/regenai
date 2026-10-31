@@ -38,5 +38,10 @@ class LeaveModel {
   bool get isApproved => status.toLowerCase() == 'approved';
   bool get isPending => status.toLowerCase() == 'pending';
   bool get isRejected => status.toLowerCase() == 'rejected';
+
+  String get displayType {
+    if (type.isEmpty) return 'Leave';
+    return '${type[0].toUpperCase()}${type.substring(1)} Leave';
+  }
 }
 

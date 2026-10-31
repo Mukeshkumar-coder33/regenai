@@ -240,21 +240,25 @@ class AppDrawer extends StatelessWidget {
                     },
                   ),
 
-                  // 6. Leave Request
+                  // 6. Leave Management / Apply for Leave
                   _buildDrawerItem(
                     context: context,
-                    icon: Icons.flight_takeoff_outlined,
-                    title: 'Leave Request',
+                    icon: Icons.beach_access_outlined,
+                    title: (user.isCompanyAdmin || user.isSuperAdmin) ? 'Leave Approvals' : 'Apply for Leave',
                     onTap: () {
                       Navigator.of(context).pop();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => LeaveRequestView(
-                            user: user,
-                            onBack: () => Navigator.of(context).pop(),
+                      if (user.isCompanyAdmin || user.isSuperAdmin) {
+                        onNavigateToTab?.call(2);
+                      } else {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => LeaveRequestView(
+                              user: user,
+                              onBack: () => Navigator.of(context).pop(),
+                            ),
                           ),
-                        ),
-                      );
+                        );
+                      }
                     },
                   ),
 

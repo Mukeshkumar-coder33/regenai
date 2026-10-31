@@ -400,7 +400,7 @@ class _CalendarViewState extends State<CalendarView> {
       child: Row(
         children: [
           _buildMainModuleTabItem('Calendar', 0, Icons.calendar_month_rounded, primaryGreen),
-          _buildMainModuleTabItem('Leaves (${_leaves.length})', 1, Icons.beach_access_rounded, primaryGreen),
+          _buildMainModuleTabItem(_isManager ? 'Requests (${_leaves.length})' : 'My Leaves (${_leaves.length})', 1, Icons.beach_access_rounded, primaryGreen),
           _buildMainModuleTabItem('Holidays (${_holidays.length})', 2, Icons.celebration_rounded, primaryGreen),
         ],
       ),

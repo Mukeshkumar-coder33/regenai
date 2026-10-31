@@ -20,6 +20,7 @@ import '../data/task_service.dart';
 /// - Projects section: View all enterprise projects, filter tasks by project, and create new projects
 /// - Hamburger menu icon opening `AppDrawer`
 class TasksView extends StatefulWidget {
+  final UserModel? user;
   final VoidCallback? onBack;
   final VoidCallback? onOpenDrawer;
   final TaskService? taskService;
@@ -27,6 +28,7 @@ class TasksView extends StatefulWidget {
 
   const TasksView({
     super.key,
+    this.user,
     this.onBack,
     this.onOpenDrawer,
     this.taskService,
@@ -41,8 +43,13 @@ class _TasksViewState extends State<TasksView> {
   late final TaskService _taskService;
   late final DashboardService _dashboardService;
 
+  UserModel? _loggedInUser;
   bool _isLoading = true;
   String? _errorMessage;
+
+  bool get _canManage =>
+      (widget.user?.isSuperAdmin == true || widget.user?.isCompanyAdmin == true) ||
+      (_loggedInUser?.isSuperAdmin == true || _loggedInUser?.isCompanyAdmin == true);
 
   // 0: All, 1: Active, 2: Completed, 3: Projects
   int _selectedFilter = 0;
@@ -76,7 +83,8 @@ class _TasksViewState extends State<TasksView> {
     });
 
     try {
-      final user = await SessionStorage.getUserSession();
+      final user = widget.user ?? await SessionStorage.getUserSession();
+      _loggedInUser = user;
 
       final results = await Future.wait([
         _taskService.getTasks(isSuperAdmin: user?.isSuperAdmin ?? false),
@@ -108,8 +116,22 @@ class _TasksViewState extends State<TasksView> {
 
   List<TaskModel> get _filteredTasks {
     final query = _searchController.text.trim().toLowerCase();
+    final currentUser = widget.user ?? _loggedInUser;
 
     return _tasks.where((task) {
+      // Role enforcement: Employees only see tasks assigned to them
+      if (!_canManage && currentUser != null) {
+        final uid = (currentUser.userId.isNotEmpty ? currentUser.userId : currentUser.id).toLowerCase();
+        final uname = currentUser.username.toLowerCase();
+        final name = currentUser.name.toLowerCase();
+        if (task.assignedTo != null && task.assignedTo!.isNotEmpty) {
+          final assigned = task.assignedTo!.toLowerCase();
+          if (assigned != uid && assigned != uname && assigned != name) {
+            return false;
+          }
+        }
+      }
+
       // If a specific project is selected to filter
       if (_selectedProjectIdFilter != null && _selectedProjectIdFilter!.isNotEmpty) {
         if (task.projectId != _selectedProjectIdFilter) return false;
@@ -254,15 +276,17 @@ class _TasksViewState extends State<TasksView> {
 
     return Scaffold(
       backgroundColor: backgroundMint,
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'tasks_fab',
-        onPressed: _showCreateTaskSheet,
-        backgroundColor: primaryGreen,
-        elevation: 4,
-        shape: const CircleBorder(),
-        tooltip: 'Create New Task',
-        child: const Icon(Icons.add, color: Colors.white, size: 28),
-      ),
+      floatingActionButton: _canManage
+          ? FloatingActionButton(
+              heroTag: 'tasks_fab',
+              onPressed: _showCreateTaskSheet,
+              backgroundColor: primaryGreen,
+              elevation: 4,
+              shape: const CircleBorder(),
+              tooltip: 'Create New Task',
+              child: const Icon(Icons.add, color: Colors.white, size: 28),
+            )
+          : null,
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -713,17 +737,19 @@ class _TasksViewState extends State<TasksView> {
                   'No enterprise projects created yet',
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF4A5568)),
                 ),
-                const SizedBox(height: 16),
-                ElevatedButton.icon(
-                  onPressed: _showCreateProjectDialog,
-                  icon: const Icon(Icons.add, size: 16),
-                  label: const Text('Create New Project'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryGreen,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                if (_canManage) ...[
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: _showCreateProjectDialog,
+                    icon: const Icon(Icons.add, size: 16),
+                    label: const Text('Create New Project'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryGreen,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
@@ -745,11 +771,12 @@ class _TasksViewState extends State<TasksView> {
                 'Enterprise Projects',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF1B5E3F)),
               ),
-              TextButton.icon(
-                onPressed: _showCreateProjectDialog,
-                icon: const Icon(Icons.add, size: 16, color: Color(0xFF1B5E3F)),
-                label: const Text('New Project', style: TextStyle(color: Color(0xFF1B5E3F), fontWeight: FontWeight.w700)),
-              ),
+              if (_canManage)
+                TextButton.icon(
+                  onPressed: _showCreateProjectDialog,
+                  icon: const Icon(Icons.add, size: 16, color: Color(0xFF1B5E3F)),
+                  label: const Text('New Project', style: TextStyle(color: Color(0xFF1B5E3F), fontWeight: FontWeight.w700)),
+                ),
             ],
           );
         }
@@ -1207,22 +1234,23 @@ class _TasksViewState extends State<TasksView> {
 
             const SizedBox(height: 24),
 
-            // Delete Task Button
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _deleteTask(task),
-                    icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFDC2626), size: 18),
-                    label: const Text('Delete Task', style: TextStyle(color: Color(0xFFDC2626))),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFFFCA5A5)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            // Delete Task Button (Only Manager/Admin can delete company tasks)
+            if (_canManage)
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _deleteTask(task),
+                      icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFDC2626), size: 18),
+                      label: const Text('Delete Task', style: TextStyle(color: Color(0xFFDC2626))),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Color(0xFFFCA5A5)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
           ],
         ),
       ),

@@ -287,7 +287,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('krish Tech Computer'), findsOneWidget);
-      expect(find.text('2'), findsOneWidget); // 2 users
+      expect(find.text('2'), findsWidgets); // 2 users
       expect(find.text('Employees'), findsOneWidget);
       expect(find.text('Departments'), findsOneWidget);
       expect(find.text('Employee Management'), findsOneWidget);

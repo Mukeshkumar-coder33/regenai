@@ -12,6 +12,7 @@ import '../data/company_model.dart';
 import '../../tasks/data/task_model.dart';
 import '../../dashboard/data/dashboard_service.dart';
 import '../../dashboard/data/leave_model.dart';
+import '../../calendar/data/leave_service.dart';
 
 /// Screen 8: Company Dashboard (Situation B & Situation C)
 ///
@@ -376,242 +377,6 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     );
   }
 
-  Widget _buildCompanyContent() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // 2. Summary Stats Card: Live Employees & Live Departments (Screen 8)
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: CeladonColors.borderLight),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x062D6A4F),
-                blurRadius: 10,
-                offset: Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: InkWell(
-                  onTap: _showEmployeeDirectorySheet,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${_users.length}',
-                        style: const TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w800,
-                          color: CeladonColors.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: const [
-                          Text(
-                            'Employees',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: CeladonColors.textSecondary,
-                            ),
-                          ),
-                          SizedBox(width: 4),
-                          Icon(Icons.open_in_new_rounded, size: 12, color: CeladonColors.primary),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              Container(
-                width: 1,
-                height: 40,
-                color: CeladonColors.divider,
-              ),
-              const SizedBox(width: 24),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '$_departmentCount',
-                      style: const TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w800,
-                        color: CeladonColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    const Text(
-                      'Departments',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: CeladonColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-
-        // Live Operations Quick Glance (Attendance & Tasks)
-        Row(
-          children: [
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: CeladonColors.borderLight),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: CeladonColors.primaryContainer,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(Icons.check_circle_outline, color: CeladonColors.primary, size: 18),
-                    ),
-                    const SizedBox(width: 10),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${_attendance.length}',
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary),
-                        ),
-                        const Text(
-                          'Present Today',
-                          style: TextStyle(fontSize: 11, color: CeladonColors.textSecondary),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: CeladonColors.borderLight),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFEF3C7),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(Icons.assignment_outlined, color: Color(0xFFD97706), size: 18),
-                    ),
-                    const SizedBox(width: 10),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '$_activeTasksCount',
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary),
-                        ),
-                        const Text(
-                          'Active Tasks',
-                          style: TextStyle(fontSize: 11, color: CeladonColors.textSecondary),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 18),
-
-        // 3. Management Menu Rows (Screen 8)
-        _buildCompanyMenuItem(
-          context: context,
-          icon: Icons.badge_outlined,
-          title: 'Employee Management',
-          subtitle: '${_users.length} registered team members',
-          onTap: _showEmployeeDirectorySheet,
-        ),
-        _buildCompanyMenuItem(
-          context: context,
-          icon: Icons.event_available_outlined,
-          title: 'Attendance',
-          subtitle: '${_attendance.length} logs recorded',
-          onTap: _showAttendanceRosterSheet,
-        ),
-        _buildCompanyMenuItem(
-          context: context,
-          icon: Icons.assignment_outlined,
-          title: 'Tasks',
-          subtitle: '$_activeTasksCount open tasks in progress',
-          onTap: () => widget.onNavigateToTab?.call(1),
-        ),
-        _buildCompanyMenuItem(
-          context: context,
-          icon: Icons.event_busy_outlined,
-          title: 'Leaves & Holidays',
-          subtitle: _pendingLeavesCount > 0
-              ? '$_pendingLeavesCount request(s) waiting for approval'
-              : 'Review leave approvals & company holidays',
-          onTap: () => widget.onNavigateToTab?.call(2),
-        ),
-        _buildCompanyMenuItem(
-          context: context,
-          icon: Icons.payments_outlined,
-          title: 'Payroll',
-          subtitle: 'Automated payroll processing & slips',
-          onTap: () => _showModuleInfo(context, 'Payroll Processing'),
-        ),
-        _buildCompanyMenuItem(
-          context: context,
-          icon: Icons.analytics_outlined,
-          title: 'Reports',
-          subtitle: 'Workforce analytics & monthly summary',
-          onTap: _showAttendanceReportSheet,
-        ),
-        _buildCompanyMenuItem(
-          context: context,
-          icon: Icons.settings_outlined,
-          title: 'Settings',
-          subtitle: 'Company profile & working hours configuration',
-          onTap: _showCompanySettingsSheet,
-        ),
-        if (widget.onLogout != null)
-          _buildCompanyMenuItem(
-            context: context,
-            icon: Icons.logout_rounded,
-            title: 'Sign Out',
-            subtitle: 'End current company session',
-            onTap: () => widget.onLogout?.call(),
-          ),
-        const SizedBox(height: 20),
-      ],
-    );
-  }
-
   /// Situation C: Super Admin Quick Switcher Card
   Widget _buildSuperAdminSwitchBanner() {
     return Container(
@@ -646,7 +411,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           ),
           const SizedBox(height: 6),
           const Text(
-            'You are logged in as Company Owner (krish Tech Computer). You have authorized platform permissions to switch to ReGen Central.',
+            'You are logged in as Company Owner. You have authorized platform permissions to switch to ReGen Central.',
             style: TextStyle(
               fontSize: 12,
               color: Color(0xFFB7D5C4),
@@ -682,60 +447,632 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     );
   }
 
-  Widget _buildCompanyMenuItem({
-    required BuildContext context,
+  AttendanceModel? _getEmployeeTodayAttendance(UserModel emp) {
+    final uid = (emp.userId.isNotEmpty ? emp.userId : emp.id).toLowerCase();
+    final uname = emp.username.toLowerCase();
+    for (final att in _attendance) {
+      final aUid = att.userId.toLowerCase();
+      if (aUid == uid || aUid == uname) return att;
+    }
+    return null;
+  }
+
+  Future<void> _handleUpdateLeaveStatus(String id, String status) async {
+    try {
+      final leaveService = LeaveService();
+      await leaveService.updateLeaveStatus(id: id, status: status);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: status == 'approved' ? const Color(0xFF10B981) : Colors.red,
+            content: Text('Leave request marked as $status!'),
+          ),
+        );
+        _loadCompanyData();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(backgroundColor: Colors.red, content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  Widget _buildCompanyContent() {
+    final activeUsersToday = _attendance.length;
+    final totalStaff = _users.length;
+    final rate = totalStaff > 0 ? ((activeUsersToday / totalStaff) * 100).clamp(0, 100).round() : 100;
+    final currentYear = DateTime.now().year;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // 1. Top 4 Stats Cards Grid (Matching Website DashboardHome.jsx)
+        Row(
+          children: [
+            // Card 1: Total Employees
+            Expanded(
+              child: _buildCompanyStatCard(
+                icon: Icons.groups_rounded,
+                iconColor: const Color(0xFF10B981),
+                iconBg: const Color(0xFFD1FAE5),
+                title: 'Employees',
+                value: '$totalStaff',
+                subtitle: '+active in $currentYear',
+                onTap: _showEmployeeDirectorySheet,
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Card 2: Active Departments
+            Expanded(
+              child: _buildCompanyStatCard(
+                icon: Icons.corporate_fare_rounded,
+                iconColor: const Color(0xFF0D9488),
+                iconBg: const Color(0xFFCCFBF1),
+                title: 'Departments',
+                value: '$_departmentCount',
+                subtitle: 'Active in $currentYear',
+                onTap: _showEmployeeDirectorySheet,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            // Card 3: Today's Attendance
+            Expanded(
+              child: _buildCompanyStatCard(
+                icon: Icons.fingerprint_rounded,
+                iconColor: const Color(0xFF3B82F6),
+                iconBg: const Color(0xFFDBEAFE),
+                title: "Today's Attendance",
+                value: '$activeUsersToday / $totalStaff',
+                subtitle: '$rate% average',
+                onTap: _showAttendanceRosterSheet,
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Card 4: Attendance Rate Trend
+            Expanded(
+              child: _buildCompanyStatCard(
+                icon: Icons.trending_up_rounded,
+                iconColor: const Color(0xFF8B5CF6),
+                iconBg: const Color(0xFFEDE9FE),
+                title: 'Attendance Rate',
+                value: '$rate%',
+                subtitle: 'Week • Month • Year',
+                onTap: _showAttendanceRosterSheet,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 18),
+
+        // 2. Dynamic Team Attendance Live Breakdown Card
+        _buildLiveAttendanceBreakdownCard(activeUsersToday, totalStaff, rate),
+        const SizedBox(height: 18),
+
+        // 3. Sleek Quick Operations Bar (Replaces clunky list rows!)
+        _buildQuickOperationsBar(),
+        const SizedBox(height: 22),
+
+        // 4. Section: Employee Management (Live Roster Preview)
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Employee Management',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F3A2E),
+                  ),
+                ),
+                Text(
+                  '$totalStaff registered team members',
+                  style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                ),
+              ],
+            ),
+            InkWell(
+              onTap: _showEmployeeDirectorySheet,
+              borderRadius: BorderRadius.circular(10),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: Text(
+                  'View Roster →',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: CeladonColors.primary,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        // Live Employee Roster Cards
+        if (_users.isEmpty)
+          _buildEmptyCard(icon: Icons.groups_outlined, text: 'No employees found.')
+        else
+          ..._users.map((emp) => _buildLiveEmployeeCard(emp)),
+
+        const SizedBox(height: 22),
+
+        // 5. Section: Upcoming Leaves (Company Leaves Review)
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Upcoming Leaves ($currentYear)',
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F3A2E),
+                  ),
+                ),
+                Text(
+                  '${_leaves.length} applications recorded',
+                  style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                ),
+              ],
+            ),
+            InkWell(
+              onTap: () => widget.onNavigateToTab?.call(2), // Calendar & Leaves
+              borderRadius: BorderRadius.circular(10),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: Text(
+                  'Manage in Calendar →',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: CeladonColors.primary,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        if (_leaves.isEmpty)
+          _buildEmptyCard(icon: Icons.beach_access_outlined, text: 'No leave requests recorded for this year.')
+        else
+          ..._leaves.take(4).map((l) => _buildCompanyLeaveCard(l)),
+
+        const SizedBox(height: 30),
+      ],
+    );
+  }
+
+  Widget _buildCompanyStatCard({
     required IconData icon,
+    required Color iconColor,
+    required Color iconBg,
     required String title,
-    String? subtitle,
+    required String value,
+    required String subtitle,
     required VoidCallback onTap,
   }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+          boxShadow: const [
+            BoxShadow(color: Color(0x06000000), blurRadius: 10, offset: Offset(0, 3)),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(title, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
+                Container(
+                  padding: const EdgeInsets.all(5),
+                  decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(8)),
+                  child: Icon(icon, size: 14, color: iconColor),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF0F3A2E))),
+            const SizedBox(height: 2),
+            Text(subtitle, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w500, color: Color(0xFF94A3B8)), maxLines: 1),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLiveAttendanceBreakdownCard(int activeUsersToday, int totalStaff, int rate) {
+    final absentCount = (totalStaff - activeUsersToday).clamp(0, 999);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x06000000), blurRadius: 10, offset: Offset(0, 3)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                "Today's Live Attendance",
+                style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF0F3A2E)),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD1FAE5),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '$rate% Present',
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF065F46)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: SizedBox(
+              height: 8,
+              child: Row(
+                children: [
+                  if (activeUsersToday > 0)
+                    Expanded(
+                      flex: activeUsersToday,
+                      child: Container(color: const Color(0xFF10B981)),
+                    ),
+                  if (absentCount > 0)
+                    Expanded(
+                      flex: absentCount,
+                      child: Container(color: const Color(0xFFFCA5A5)),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildAttendanceLegend('Present Today', '$activeUsersToday', const Color(0xFF10B981)),
+              _buildAttendanceLegend('Not Checked In', '$absentCount', const Color(0xFFEF4444)),
+              _buildAttendanceLegend('Total Staff', '$totalStaff', const Color(0xFF475569)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAttendanceLegend(String label, String value, Color color) {
+    return Row(
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 5),
+        Text(
+          '$label: ',
+          style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+        ),
+        Text(
+          value,
+          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: color),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuickOperationsBar() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _buildOperationPill(
+            icon: Icons.location_on_outlined,
+            label: '5m GPS Geofence',
+            onTap: _showCompanySettingsSheet,
+          ),
+          const SizedBox(width: 8),
+          _buildOperationPill(
+            icon: Icons.access_time_outlined,
+            label: 'Shift Timings',
+            onTap: _showCompanySettingsSheet,
+          ),
+          const SizedBox(width: 8),
+          _buildOperationPill(
+            icon: Icons.analytics_outlined,
+            label: 'Reports & Export',
+            onTap: _showAttendanceReportSheet,
+          ),
+          const SizedBox(width: 8),
+          _buildOperationPill(
+            icon: Icons.folder_special_outlined,
+            label: _activeTasksCount > 0 ? 'Projects ($_activeTasksCount open)' : 'Projects',
+            onTap: () => widget.onNavigateToTab?.call(1),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOperationPill({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+          boxShadow: const [
+            BoxShadow(color: Color(0x04000000), blurRadius: 4, offset: Offset(0, 1)),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: const Color(0xFF1B5E3F)),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF1B5E3F),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLiveEmployeeCard(UserModel emp) {
+    final todayAtt = _getEmployeeTodayAttendance(emp);
+    final isPresent = todayAtt != null;
+    final statusText = isPresent ? (todayAtt.status.toLowerCase() == 'late' ? 'Late' : 'Present') : 'Not In';
+    final statusColor = isPresent
+        ? (todayAtt.status.toLowerCase() == 'late' ? const Color(0xFFD97706) : const Color(0xFF059669))
+        : const Color(0xFF94A3B8);
+    final statusBg = isPresent
+        ? (todayAtt.status.toLowerCase() == 'late' ? const Color(0xFFFEF3C7) : const Color(0xFFD1FAE5))
+        : const Color(0xFFF1F5F9);
+
+    final empId = emp.userId.isNotEmpty ? emp.userId : emp.id;
+    final roleDisplay = emp.designation?.isNotEmpty == true ? emp.designation! : emp.roleDisplayName;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      child: Material(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
         color: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: CeladonColors.borderLight),
-        ),
-        elevation: 0,
-        child: ListTile(
-          onTap: onTap,
-          dense: true,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          leading: Container(
-            width: 38,
-            height: 38,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x04000000), blurRadius: 8, offset: Offset(0, 2)),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Avatar
+          Container(
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: isPresent ? const Color(0xFF10B981) : const Color(0xFFE2E8F0), width: 2),
               color: CeladonColors.primaryContainer,
-              borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, color: CeladonColors.primary, size: 20),
-          ),
-          title: Text(
-            title,
-            style: const TextStyle(
-              fontSize: 14.5,
-              fontWeight: FontWeight.w600,
-              color: CeladonColors.textPrimary,
+            child: ClipOval(
+              child: Center(
+                child: Text(
+                  emp.name.isNotEmpty ? emp.name[0].toUpperCase() : (emp.username.isNotEmpty ? emp.username[0].toUpperCase() : 'U'),
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: CeladonColors.primaryDark),
+                ),
+              ),
             ),
           ),
-          subtitle: subtitle != null
-              ? Text(
-                  subtitle,
-                  style: const TextStyle(
-                    fontSize: 11.5,
-                    color: CeladonColors.textSecondary,
+          const SizedBox(width: 12),
+
+          // Name & Details
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        emp.name.isNotEmpty ? emp.name : emp.username,
+                        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: Color(0xFF0F3A2E)),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        'ID: $empId',
+                        style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '$roleDisplay ${emp.department?.isNotEmpty == true ? '• ${emp.department}' : ''}',
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+
+          // Today's Status Badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: statusBg,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  statusText,
+                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: statusColor),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompanyLeaveCard(LeaveModel leave) {
+    Color statusColor = const Color(0xFFD97706);
+    Color statusBg = const Color(0xFFFEF3C7);
+    if (leave.isApproved) {
+      statusColor = const Color(0xFF059669);
+      statusBg = const Color(0xFFD1FAE5);
+    } else if (leave.isRejected) {
+      statusColor = const Color(0xFFDC2626);
+      statusBg = const Color(0xFFFEE2E2);
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${leave.userId} • ${leave.displayType}',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF0F3A2E)),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(color: statusBg, borderRadius: BorderRadius.circular(6)),
+                child: Text(
+                  leave.status.toUpperCase(),
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: statusColor),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${leave.startDate.split('T').first} to ${leave.endDate.split('T').first}',
+            style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+          ),
+          if (leave.isPending) ...[
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                OutlinedButton(
+                  onPressed: () => _handleUpdateLeaveStatus(leave.id, 'rejected'),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Color(0xFFFCA5A5)),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    minimumSize: Size.zero,
                   ),
-                )
-              : null,
-          trailing: const Icon(
-            Icons.chevron_right_rounded,
-            color: CeladonColors.textMuted,
-            size: 20,
+                  child: const Text('Reject', style: TextStyle(color: Color(0xFFDC2626), fontSize: 11, fontWeight: FontWeight.w700)),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: () => _handleUpdateLeaveStatus(leave.id, 'approved'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF10B981),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    minimumSize: Size.zero,
+                  ),
+                  child: const Text('Approve', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyCard({required IconData icon, required String text}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: const Color(0xFF10B981), size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFF64748B)),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -1414,12 +1751,5 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     );
   }
 
-  void _showModuleInfo(BuildContext context, String module) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$module connected to ReGen Cloud Database.'),
-        backgroundColor: CeladonColors.primary,
-      ),
-    );
-  }
+
 }

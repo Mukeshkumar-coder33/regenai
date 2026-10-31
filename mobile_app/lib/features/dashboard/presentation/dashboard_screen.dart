@@ -78,6 +78,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Dedicated high-end Company Workspace Experience matching ReGen Design Specification
+    if (_currentUser.isCompanyAdmin) {
+      return CompanyDashboardView(
+        user: _currentUser,
+        onOpenDrawer: _openDrawer,
+        onLogout: _handleLogout,
+        onUserUpdated: (updatedUser) {
+          setState(() => _currentUser = updatedUser);
+        },
+      );
+    }
+
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: CeladonColors.background,

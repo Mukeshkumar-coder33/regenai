@@ -1,4 +1,4 @@
-﻿import 'dart:ui';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../../core/theme/celadon_colors.dart';
 import '../../dashboard/presentation/dashboard_screen.dart';
@@ -89,31 +89,41 @@ class _LoginScreenState extends State<LoginScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. Attached Corporate Dark Green Office Background (Exact User Image)
-          Image.asset(
-            'assets/images/corporate_office_dark.jpg',
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) {
-              return Image.asset(
-                'assets/images/office_auth_portrait.png',
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) =>
-                    Container(color: const Color(0xFF031A14)),
-              );
-            },
+          // 1. Attached Corporate Dark Green Office Background with Subtle Photographic Bokeh Blur (sigma 5.5)
+          Positioned.fill(
+            child: ImageFiltered(
+              imageFilter: ImageFilter.blur(sigmaX: 5.5, sigmaY: 5.5),
+              child: Transform.scale(
+                scale: 1.05,
+                child: Image.asset(
+                  'assets/images/corporate_office_dark.jpg',
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Image.asset(
+                      'assets/images/office_auth_portrait.png',
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) =>
+                          Container(color: const Color(0xFF031A14)),
+                    );
+                  },
+                ),
+              ),
+            ),
           ),
 
-          // 2. Translucent Ambient Lighting Preservation (Preserves image's natural dark green illumination)
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  const Color(0xFF031A14).withValues(alpha: 0.15),
-                  Colors.transparent,
-                  const Color(0xFF031A14).withValues(alpha: 0.40),
-                ],
+          // 2. Translucent Ambient Lighting Preservation (Preserves natural daylight warmth without dark muddy cast)
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    const Color(0xFF04100B).withValues(alpha: 0.12),
+                    Colors.transparent,
+                    const Color(0xFF020906).withValues(alpha: 0.30),
+                  ],
+                ),
               ),
             ),
           ),
@@ -164,14 +174,14 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 6),
 
-                      // Subtitle
+                      // Subtitle (Bright High-Contrast Typography)
                       const Text(
                         'Sign in to continue',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Color(0xFFC5D5CE),
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFFF1F5F9),
                           shadows: [
                             Shadow(
                               offset: Offset(0, 1),
@@ -183,7 +193,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 22),
 
-                      // 4. Emerald Glassmorphism Container Card
+                      // 4. Luminous Frosted Glassmorphism Container Card (Lighter, Premium Ambient Depth)
                       ClipRRect(
                         borderRadius: BorderRadius.circular(28),
                         child: BackdropFilter(
@@ -198,21 +208,26 @@ class _LoginScreenState extends State<LoginScreen> {
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                                 colors: [
-                                  const Color(0xFF0B3D2E).withValues(alpha: 0.70),
-                                  const Color(0xFF062B20).withValues(alpha: 0.78),
-                                  const Color(0xFF031A14).withValues(alpha: 0.85),
+                                  const Color(0xFF1A4032).withValues(alpha: 0.45),
+                                  const Color(0xFF102D22).withValues(alpha: 0.52),
+                                  const Color(0xFF081C15).withValues(alpha: 0.62),
                                 ],
                               ),
                               borderRadius: BorderRadius.circular(28),
                               border: Border.all(
-                                color: const Color(0xFF10B981).withValues(alpha: 0.35),
+                                color: const Color(0xFF34D399).withValues(alpha: 0.32),
                                 width: 1.2,
                               ),
-                              boxShadow: const [
+                              boxShadow: [
                                 BoxShadow(
-                                  color: Color(0x55000000),
+                                  color: Colors.black.withValues(alpha: 0.22),
                                   blurRadius: 28,
-                                  offset: Offset(0, 12),
+                                  offset: const Offset(0, 12),
+                                ),
+                                BoxShadow(
+                                  color: const Color(0xFF10B981).withValues(alpha: 0.10),
+                                  blurRadius: 24,
+                                  spreadRadius: -2,
                                 ),
                               ],
                             ),
@@ -292,7 +307,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                             ? Icons.visibility_off_outlined
                                             : Icons.visibility_outlined,
                                         size: 20,
-                                        color: const Color(0xFFC5D5CE),
+                                        color: const Color(0xFFE2E8F0),
                                       ),
                                       onPressed: () {
                                         setState(() {
@@ -314,41 +329,48 @@ class _LoginScreenState extends State<LoginScreen> {
                                     mainAxisAlignment:
                                         MainAxisAlignment.spaceBetween,
                                     children: [
-                                      Row(
-                                        children: [
-                                          SizedBox(
-                                            width: 22,
-                                            height: 22,
-                                            child: Checkbox(
-                                              value: _rememberMe,
-                                              activeColor: const Color(0xFF10B981),
-                                              checkColor: const Color(0xFF031A14),
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(5),
+                                      Flexible(
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            SizedBox(
+                                              width: 20,
+                                              height: 20,
+                                              child: Checkbox(
+                                                value: _rememberMe,
+                                                activeColor: const Color(0xFF10B981),
+                                                checkColor: const Color(0xFF031A14),
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(4),
+                                                ),
+                                                side: BorderSide(
+                                                  color: const Color(0xFF34D399)
+                                                      .withValues(alpha: 0.9),
+                                                  width: 1.4,
+                                                ),
+                                                onChanged: (val) {
+                                                  setState(() =>
+                                                      _rememberMe = val ?? true);
+                                                },
                                               ),
-                                              side: BorderSide(
-                                                color: const Color(0xFF10B981)
-                                                    .withValues(alpha: 0.8),
-                                                width: 1.5,
+                                            ),
+                                            const SizedBox(width: 7),
+                                            const Flexible(
+                                              child: Text(
+                                                'Remember me',
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontSize: 12.5,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: Color(0xFFF1F5F9),
+                                                ),
                                               ),
-                                              onChanged: (val) {
-                                                setState(() =>
-                                                    _rememberMe = val ?? true);
-                                              },
                                             ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          const Text(
-                                            'Remember me',
-                                            style: TextStyle(
-                                              fontSize: 12.5,
-                                              fontWeight: FontWeight.w500,
-                                              color: Color(0xFFC5D5CE),
-                                            ),
-                                          ),
-                                        ],
+                                          ],
+                                        ),
                                       ),
+                                      const SizedBox(width: 6),
                                       TextButton(
                                         onPressed: () {
                                           ScaffoldMessenger.of(context).showSnackBar(
@@ -370,8 +392,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                           'Forgot Password?',
                                           style: TextStyle(
                                             fontSize: 12.5,
-                                            fontWeight: FontWeight.w600,
-                                            color: Color(0xFF6EE7B7),
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFF34D399),
                                           ),
                                         ),
                                       ),
@@ -379,7 +401,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                   const SizedBox(height: 22),
 
-                                  // Premium Dark Emerald Login Pill Button
+                                  // Premium Radiant Emerald Login Pill Button
                                   Container(
                                     width: double.infinity,
                                     height: 52,
@@ -387,15 +409,15 @@ class _LoginScreenState extends State<LoginScreen> {
                                       gradient: const LinearGradient(
                                         colors: [
                                           Color(0xFF10B981),
-                                          Color(0xFF0B3D2E),
+                                          Color(0xFF059669),
                                         ],
                                       ),
                                       borderRadius: BorderRadius.circular(26),
                                       boxShadow: [
                                         BoxShadow(
                                           color: const Color(0xFF10B981)
-                                              .withValues(alpha: 0.35),
-                                          blurRadius: 16,
+                                              .withValues(alpha: 0.40),
+                                          blurRadius: 18,
                                           offset: const Offset(0, 6),
                                         ),
                                       ],
@@ -452,7 +474,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                       Expanded(
                                         child: Container(
                                           height: 1,
-                                          color: const Color(0xFFC5D5CE)
+                                          color: const Color(0xFFCBD5E1)
                                               .withValues(alpha: 0.25),
                                         ),
                                       ),
@@ -463,16 +485,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                           'or continue with',
                                           style: TextStyle(
                                             fontSize: 12,
-                                            fontWeight: FontWeight.w500,
-                                            color: const Color(0xFFC5D5CE)
-                                                .withValues(alpha: 0.75),
+                                            fontWeight: FontWeight.w600,
+                                            color: const Color(0xFFE2E8F0)
+                                                .withValues(alpha: 0.85),
                                           ),
                                         ),
                                       ),
                                       Expanded(
                                         child: Container(
                                           height: 1,
-                                          color: const Color(0xFFC5D5CE)
+                                          color: const Color(0xFFCBD5E1)
                                               .withValues(alpha: 0.25),
                                         ),
                                       ),
@@ -520,8 +542,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                         style: TextStyle(
                                           fontSize: 13,
                                           fontWeight: FontWeight.w500,
-                                          color: const Color(0xFFC5D5CE)
-                                              .withValues(alpha: 0.85),
+                                          color: const Color(0xFFE2E8F0)
+                                              .withValues(alpha: 0.90),
                                         ),
                                       ),
                                       GestureDetector(
@@ -541,7 +563,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                           style: TextStyle(
                                             fontSize: 13,
                                             fontWeight: FontWeight.w700,
-                                            color: Color(0xFF6EE7B7),
+                                            color: Color(0xFF34D399),
                                           ),
                                         ),
                                       ),
@@ -588,10 +610,10 @@ class _LoginScreenState extends State<LoginScreen> {
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: const Color(0xFF031A14).withValues(alpha: 0.65),
+        color: const Color(0xFF092017).withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: const Color(0xFF10B981).withValues(alpha: 0.25),
+          color: const Color(0xFF34D399).withValues(alpha: 0.30),
           width: 1.2,
         ),
       ),
@@ -605,16 +627,16 @@ class _LoginScreenState extends State<LoginScreen> {
         style: const TextStyle(
           fontSize: 14.5,
           color: Colors.white,
-          fontWeight: FontWeight.w500,
+          fontWeight: FontWeight.w600,
         ),
         decoration: InputDecoration(
           isDense: true,
           filled: true,
           fillColor: Colors.transparent,
           hintText: hintText,
-          hintStyle: TextStyle(
+          hintStyle: const TextStyle(
             fontSize: 14,
-            color: const Color(0xFFC5D5CE).withValues(alpha: 0.65),
+            color: Color(0xFFCBD5E1),
             fontWeight: FontWeight.w400,
           ),
           prefixIcon: Padding(
@@ -622,7 +644,7 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Icon(
               prefixIcon,
               size: 20,
-              color: const Color(0xFFC5D5CE),
+              color: const Color(0xFF6EE7B7),
             ),
           ),
           prefixIconConstraints:

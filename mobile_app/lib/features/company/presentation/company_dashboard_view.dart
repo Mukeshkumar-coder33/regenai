@@ -273,29 +273,23 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. Attached Corporate Dark Green Office Background with Gaussian Bokeh Blur
+          // 1. Attached Corporate Dark Office Background (Crisp, authentic photo matching Login & reference mockups)
           Positioned.fill(
-            child: ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-              child: Transform.scale(
-                scale: 1.08,
-                child: Image.asset(
-                  'assets/images/corporate_office_dark.jpg',
+            child: Image.asset(
+              'assets/images/corporate_office_dark.jpg',
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return Image.asset(
+                  'assets/images/office_auth_portrait.png',
                   fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Image.asset(
-                      'assets/images/office_auth_portrait.png',
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) =>
-                          Container(color: const Color(0xFF031A14)),
-                    );
-                  },
-                ),
-              ),
+                  errorBuilder: (context, error, stackTrace) =>
+                      Container(color: const Color(0xFF031A14)),
+                );
+              },
             ),
           ),
 
-          // 2. High-Contrast Translucent Dark Ambient Lighting (Lush green office bokeh with crystal-clear text contrast)
+          // 2. Translucent Ambient Lighting Preservation (Preserves natural dark interior depth without green wash)
           Positioned.fill(
             child: DecoratedBox(
               decoration: BoxDecoration(
@@ -303,9 +297,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    const Color(0xFF021610).withValues(alpha: 0.65),
-                    const Color(0xFF04221A).withValues(alpha: 0.55),
-                    const Color(0xFF010E0A).withValues(alpha: 0.75),
+                    const Color(0xFF030D08).withValues(alpha: 0.20),
+                    Colors.transparent,
+                    const Color(0xFF020704).withValues(alpha: 0.45),
                   ],
                 ),
               ),
@@ -365,36 +359,31 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // 1. Blurred Bokeh Office Background
-              ImageFiltered(
-                imageFilter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-                child: Transform.scale(
-                  scale: 1.15,
-                  child: Image.asset(
-                    'assets/images/corporate_office_dark.jpg',
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) =>
-                        Image.asset('assets/images/office_auth_portrait.png', fit: BoxFit.cover),
-                  ),
+              // 1. Office Background Texture (Natural photo matching theme)
+              Positioned.fill(
+                child: Image.asset(
+                  'assets/images/corporate_office_dark.jpg',
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) =>
+                      Image.asset('assets/images/office_auth_portrait.png', fit: BoxFit.cover),
                 ),
               ),
 
-              // 2. High-Contrast Frosted Overlay
+              // 2. Dark Obsidian Frosted Overlay (Dark charcoal glass without heavy green wash)
               Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      const Color(0xFF021610).withValues(alpha: 0.90),
-                      const Color(0xFF05271E).withValues(alpha: 0.88),
-                      const Color(0xFF010F0B).withValues(alpha: 0.95),
+                      const Color(0xFF08100C).withValues(alpha: 0.94),
+                      const Color(0xFF040806).withValues(alpha: 0.97),
                     ],
                   ),
                   border: Border(
                     right: BorderSide(
-                      color: const Color(0xFF10B981).withValues(alpha: 0.25),
-                      width: 1.2,
+                      color: const Color(0xFF10B981).withValues(alpha: 0.20),
+                      width: 1.0,
                     ),
                   ),
                 ),
@@ -691,10 +680,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                color: const Color(0xFF07241C).withValues(alpha: 0.55),
+                color: const Color(0xFF0C1411).withValues(alpha: 0.70),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: accentColor.withValues(alpha: 0.25),
+                  color: accentColor.withValues(alpha: 0.18),
                   width: 1,
                 ),
               ),
@@ -896,27 +885,22 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                const Color(0xFF0E3D2F).withValues(alpha: 0.58),
-                const Color(0xFF062B20).withValues(alpha: 0.68),
-                const Color(0xFF031A14).withValues(alpha: 0.75),
+                const Color(0xFF0D1713).withValues(alpha: 0.68),
+                const Color(0xFF08100C).withValues(alpha: 0.78),
+                const Color(0xFF030806).withValues(alpha: 0.86),
               ],
             ),
             borderRadius: BorderRadius.circular(borderRadius),
             border: border ??
                 Border.all(
-                  color: const Color(0xFF10B981).withValues(alpha: 0.28),
-                  width: 1.2,
+                  color: const Color(0xFF10B981).withValues(alpha: 0.16),
+                  width: 1.0,
                 ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.28),
+                color: Colors.black.withValues(alpha: 0.35),
                 blurRadius: 18,
                 offset: const Offset(0, 6),
-              ),
-              BoxShadow(
-                color: const Color(0xFF10B981).withValues(alpha: 0.10),
-                blurRadius: 24,
-                spreadRadius: -3,
               ),
             ],
           ),
@@ -970,9 +954,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   width: 38,
                   height: 38,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0E3D2F).withValues(alpha: 0.45),
+                    color: const Color(0xFF0C1410).withValues(alpha: 0.65),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.25)),
+                    border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.18)),
                   ),
                   child: const Icon(Icons.menu_rounded, color: Colors.white, size: 22),
                 ),
@@ -1015,9 +999,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                       width: 38,
                       height: 38,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF0E3D2F).withValues(alpha: 0.45),
+                        color: const Color(0xFF0C1410).withValues(alpha: 0.65),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.25)),
+                        border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.18)),
                       ),
                       child: Stack(
                         alignment: Alignment.center,
@@ -1198,9 +1182,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0E3D2F).withValues(alpha: 0.45),
+                      color: const Color(0xFF0C1410).withValues(alpha: 0.65),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.25)),
+                      border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.18)),
                     ),
                     child: Text(
                       _formatHeaderDate(DateTime.now()),
@@ -1685,9 +1669,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
             decoration: BoxDecoration(
-              color: const Color(0xFF0E3D2F).withValues(alpha: 0.50),
+              color: const Color(0xFF0C1410).withValues(alpha: 0.65),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.28)),
+              border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.18)),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -1791,9 +1775,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     child: Container(
                       height: 44,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF0E3D2F).withValues(alpha: 0.45),
+                        color: const Color(0xFF0C1410).withValues(alpha: 0.65),
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.25)),
+                        border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.18)),
                       ),
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       child: Row(
@@ -1836,9 +1820,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0E3D2F).withValues(alpha: 0.45),
+                      color: const Color(0xFF0C1410).withValues(alpha: 0.65),
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.25)),
+                      border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.18)),
                     ),
                     child: IconButton(
                       icon: const Icon(Icons.tune_rounded, size: 18, color: Color(0xFFA7F3D0)),
@@ -1893,10 +1877,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
             decoration: BoxDecoration(
-              color: isSelected ? const Color(0xFF10B981) : const Color(0xFF0E3D2F).withValues(alpha: 0.45),
+              color: isSelected ? const Color(0xFF10B981) : const Color(0xFF0C1410).withValues(alpha: 0.65),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: isSelected ? const Color(0xFF10B981) : const Color(0xFF10B981).withValues(alpha: 0.25),
+                color: isSelected ? const Color(0xFF10B981) : const Color(0xFF10B981).withValues(alpha: 0.18),
               ),
               boxShadow: isSelected
                   ? [
@@ -2568,9 +2552,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               child: Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0E3D2F).withValues(alpha: 0.45),
+                  color: const Color(0xFF0C1410).withValues(alpha: 0.65),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.25)),
+                  border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.18)),
                 ),
                 child: Row(
                   children: [
@@ -2990,17 +2974,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             height: MediaQuery.of(context).size.height * 0.88,
             child: Stack(
               children: [
-                // Background image with soft-focus bokeh blur
+                // Background image (Crisp office photo)
                 Positioned.fill(
-                  child: ImageFiltered(
-                    imageFilter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                    child: Transform.scale(
-                      scale: 1.08,
-                      child: Image.asset(
-                        'assets/images/corporate_office_dark.jpg',
-                        fit: BoxFit.cover,
-                      ),
-                    ),
+                  child: Image.asset(
+                    'assets/images/corporate_office_dark.jpg',
+                    fit: BoxFit.cover,
                   ),
                 ),
                 Positioned.fill(
@@ -3010,8 +2988,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          const Color(0xFF031A14).withValues(alpha: 0.4),
-                          const Color(0xFF031A14).withValues(alpha: 0.85),
+                          const Color(0xFF040A07).withValues(alpha: 0.35),
+                          const Color(0xFF020704).withValues(alpha: 0.85),
                         ],
                       ),
                     ),
@@ -3202,14 +3180,14 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  const Color(0xFF0E3D2F).withValues(alpha: 0.75),
-                  const Color(0xFF062B20).withValues(alpha: 0.85),
+                  const Color(0xFF09120E).withValues(alpha: 0.90),
+                  const Color(0xFF030705).withValues(alpha: 0.96),
                 ],
               ),
               borderRadius: BorderRadius.circular(26),
               border: Border.all(
-                color: const Color(0xFF10B981).withValues(alpha: 0.32),
-                width: 1.2,
+                color: const Color(0xFF10B981).withValues(alpha: 0.18),
+                width: 1.0,
               ),
               boxShadow: [
                 BoxShadow(

@@ -82,12 +82,6 @@ class _SplashScreenState extends State<SplashScreen>
             user: savedUser,
             onLogout: () async {
               await SessionStorage.clearSession();
-              if (mounted) {
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                  (route) => false,
-                );
-              }
             },
           ),
         ),

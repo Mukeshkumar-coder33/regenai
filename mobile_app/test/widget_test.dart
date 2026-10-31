@@ -17,6 +17,9 @@ import 'package:regen_mobile/features/dashboard/presentation/dashboard_screen.da
 import 'package:regen_mobile/features/dashboard/presentation/employee_dashboard_view.dart';
 import 'package:regen_mobile/features/superadmin/presentation/superadmin_dashboard_view.dart';
 import 'package:regen_mobile/features/tasks/data/task_model.dart';
+import 'package:regen_mobile/features/tasks/data/project_model.dart';
+import 'package:regen_mobile/features/tasks/presentation/tasks_view.dart';
+import 'package:regen_mobile/features/profile/presentation/profile_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class MockDashboardService extends DashboardService {
@@ -492,6 +495,98 @@ void main() {
       expect(find.text('Week'), findsOneWidget);
       
       expect(find.byType(FloatingActionButton), findsOneWidget);
+    });
+  });
+
+  group('Milestone 3 Extension: Tasks, Projects, and Logout Tests', () {
+    test('ProjectModel and TaskModel correctly map MongoDB JSON', () {
+      final proj = ProjectModel.fromJson({
+        '_id': 'p101',
+        'name': 'ERP Redesign',
+        'description': 'Revamp corporate portal',
+        'status': 'in_progress',
+        'priority': 'urgent',
+        'startDate': '2026-10-01',
+        'dueDate': '2026-11-15',
+      });
+
+      expect(proj.id, 'p101');
+      expect(proj.name, 'ERP Redesign');
+      expect(proj.status, 'in_progress');
+      expect(proj.priority, 'urgent');
+
+      final task = TaskModel.fromJson({
+        '_id': 't202',
+        'title': 'Design Database Schemas',
+        'description': 'Setup MongoDB collections',
+        'priority': 'high',
+        'status': 'todo',
+        'dueDate': '2026-11-05',
+        'projectId': 'p101',
+        'projectName': 'ERP Redesign',
+      });
+
+      expect(task.id, 't202');
+      expect(task.title, 'Design Database Schemas');
+      expect(task.isProjectTask, isTrue);
+      expect(task.projectName, 'ERP Redesign');
+    });
+
+    testWidgets('TasksView renders segment filters and FAB', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: TasksView(
+            dashboardService: MockDashboardService(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.text('Tasks & Schedules'), findsOneWidget);
+      expect(find.textContaining('All'), findsOneWidget);
+      expect(find.textContaining('Active'), findsOneWidget);
+      expect(find.textContaining('Done'), findsOneWidget);
+      expect(find.textContaining('Projects'), findsOneWidget);
+      expect(find.byType(FloatingActionButton), findsOneWidget);
+    });
+
+    testWidgets('ProfileView renders logout button and triggers confirmation', (WidgetTester tester) async {
+      bool logoutCalled = false;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ProfileView(
+            user: const UserModel(
+              id: 'u1',
+              userId: 'Ram',
+              username: 'Ram',
+              name: 'Ram',
+              role: 'staff',
+              token: 'mock_token',
+            ),
+            onLogout: () {
+              logoutCalled = true;
+            },
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      final logoutBtn = find.text('Log Out of Account');
+      expect(logoutBtn, findsOneWidget);
+
+      await tester.ensureVisible(logoutBtn);
+      await tester.tap(logoutBtn);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Confirm Logout'), findsOneWidget);
+      expect(find.text('Are you sure you want to log out of your ReGen account?'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Log Out'));
+      await tester.pumpAndSettle();
+
+      expect(logoutCalled, isTrue);
     });
   });
 }

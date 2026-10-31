@@ -250,6 +250,7 @@ class AppDrawer extends StatelessWidget {
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => LeaveRequestView(
+                            user: user,
                             onBack: () => Navigator.of(context).pop(),
                           ),
                         ),

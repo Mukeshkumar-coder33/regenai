@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../../attendance/data/attendance_model.dart';
 import '../../attendance/data/attendance_service.dart';
 import '../../auth/data/user_model.dart';
@@ -7,21 +7,18 @@ import '../../dashboard/data/leave_model.dart';
 import '../../tasks/data/task_model.dart';
 import '../data/calendar_event_model.dart';
 import '../data/calendar_service.dart';
+import '../data/leave_service.dart';
 
-/// Screen 5: Calendar Screen (Matching UI Reference)
+/// Screen 5: Comprehensive Calendar, Leaves & Holidays Module
 ///
-/// Implements the exact design from the reference image:
-/// - "WORKSPACE" small uppercase label + bold "Calendar" title + subtitle
-/// - Notification bell icon with active dot on the top right
-/// - Pill segment tab buttons: [ Month ] [ Week ] [ Agenda ] with deep green highlight
-/// - Calendar Card with dark green decorative wave header: `< October 2026 >`
-/// - Month calendar grid with Sun..Sat weekday abbreviations, previous/next month days dimmed
-/// - Selected date marked with large dark-emerald circular highlight and centered white text
-/// - Event dots below dates with scheduled events
-/// - "TUESDAY, OCT 20" day header with soft green count pill ("3 events")
-/// - Rich event cards with rounded icon badges, time slots, category tags ("Meeting", "Discussion", "Review"), and more-options menu
-/// - Green floating action button (+) for authorized users
-/// - Full interactive support for Month, Week, and Agenda views with role-based permissions
+/// Features:
+/// - 100% Dynamic MongoDB Multi-Collection Sync (Holidays, Attendance, Tasks, Leaves)
+/// - Top Navigation Toggle: [Calendar], [Leaves], [Holidays]
+/// - Month, Week, and Agenda views with date picker
+/// - Apply for Leave dialog for employees (Casual, Sick, Earned, Unpaid)
+/// - Leave approval and rejection actions for Company Admins and Super Admin
+/// - Company Holiday Management: View, add, and delete official holidays
+/// - Modern Celadon executive office theme matching ReGen design system
 class CalendarView extends StatefulWidget {
   final VoidCallback? onBack;
   final VoidCallback? onOpenDrawer;
@@ -42,11 +39,27 @@ class _CalendarViewState extends State<CalendarView> {
   final CalendarService _calendarService = CalendarService();
   final AttendanceService _attendanceService = AttendanceService();
   final DashboardService _dashboardService = DashboardService();
-  int _selectedViewIndex = 0; // 0: Month, 1: Week, 2: Agenda
+  final LeaveService _leaveService = LeaveService();
+
+  // 0: Calendar, 1: Leaves, 2: Holidays
+  int _selectedModuleTab = 0;
+
+  // For Calendar Tab: 0: Month, 1: Week, 2: Agenda
+  int _selectedCalendarViewIndex = 0;
+
   late DateTime _selectedDate;
   late DateTime _currentMonth;
 
-  late List<CalendarEventModel> _events;
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  List<CalendarEventModel> _events = [];
+  List<LeaveModel> _leaves = [];
+  List<CalendarEventModel> _holidays = [];
+
+  bool get _isManager =>
+      widget.user?.isSuperAdmin == true ||
+      widget.user?.isCompanyAdmin == true;
 
   @override
   void initState() {
@@ -54,96 +67,7 @@ class _CalendarViewState extends State<CalendarView> {
     final now = DateTime.now();
     _selectedDate = DateTime(now.year, now.month, now.day);
     _currentMonth = DateTime(now.year, now.month, 1);
-    _initRoleEvents();
-    _loadBackendEvents();
-  }
-
-  void _initRoleEvents() {
-    final user = widget.user;
-    final isSuperAdmin = user?.isSuperAdmin ?? false;
-    final isCompanyAdmin = user?.isCompanyAdmin ?? false;
-
-    _events = [
-      CalendarEventModel(
-        id: 'evt_1',
-        title: 'Team Meeting',
-        dateTime: DateTime(2026, 10, 20, 10, 0),
-        time: '10:00 AM ΓÇô 11:00 AM',
-        category: 'Meeting',
-        description: 'Weekly team sync and coordination',
-        icon: Icons.groups_outlined,
-        color: const Color(0xFF1B5E3F),
-        bg: const Color(0xFFE8F5ED),
-      ),
-      CalendarEventModel(
-        id: 'evt_2',
-        title: 'Project Discussion',
-        dateTime: DateTime(2026, 10, 20, 13, 0),
-        time: '1:00 PM ΓÇô 2:00 PM',
-        category: 'Discussion',
-        description: 'Quarterly review and deliverables',
-        icon: Icons.article_outlined,
-        color: const Color(0xFF7C3AED),
-        bg: const Color(0xFFF3E8FF),
-      ),
-      CalendarEventModel(
-        id: 'evt_3',
-        title: 'Design Review',
-        dateTime: DateTime(2026, 10, 20, 15, 0),
-        time: '3:00 PM ΓÇô 4:00 PM',
-        category: 'Review',
-        description: 'Mobile app glassmorphism UI audit',
-        icon: Icons.palette_outlined,
-        color: const Color(0xFFD97706),
-        bg: const Color(0xFFFEF3C7),
-      ),
-      CalendarEventModel(
-        id: 'evt_4',
-        title: 'Sprint Planning',
-        dateTime: DateTime(2026, 10, 6, 11, 0),
-        time: '11:00 AM ΓÇô 12:30 PM',
-        category: 'Meeting',
-        description: 'Sprint backlog grooming',
-        icon: Icons.speed_outlined,
-        color: const Color(0xFF1B5E3F),
-        bg: const Color(0xFFE8F5ED),
-      ),
-      CalendarEventModel(
-        id: 'evt_5',
-        title: 'Code Architecture Audit',
-        dateTime: DateTime(2026, 10, 9, 14, 0),
-        time: '2:00 PM ΓÇô 3:30 PM',
-        category: 'Review',
-        description: 'Flutter state management review',
-        icon: Icons.code_rounded,
-        color: const Color(0xFF0284C7),
-        bg: const Color(0xFFE0F2FE),
-      ),
-      CalendarEventModel(
-        id: 'evt_6',
-        title: 'Department All-Hands',
-        dateTime: DateTime(2026, 10, 13, 10, 30),
-        time: '10:30 AM ΓÇô 12:00 PM',
-        category: 'Meeting',
-        description: 'Company-wide updates and policy reminders',
-        icon: Icons.corporate_fare_rounded,
-        color: const Color(0xFF1B5E3F),
-        bg: const Color(0xFFE8F5ED),
-      ),
-      CalendarEventModel(
-        id: 'evt_7',
-        title: isSuperAdmin
-            ? 'Tenant Infrastructure Maintenance'
-            : (isCompanyAdmin ? 'Payroll & Shift Planning' : 'Product Demo'),
-        dateTime: DateTime(2026, 10, 22, 16, 0),
-        time: '4:00 PM ΓÇô 5:00 PM',
-        category: isSuperAdmin ? 'Admin' : (isCompanyAdmin ? 'Operations' : 'Discussion'),
-        description: 'Cross-functional alignment',
-        icon: isSuperAdmin ? Icons.dns_outlined : Icons.event_note_outlined,
-        color: const Color(0xFF059669),
-        bg: const Color(0xFFD1FAE5),
-      ),
-    ];
+    _loadAllBackendData();
   }
 
   String _formatTimeStr(String? iso) {
@@ -157,8 +81,14 @@ class _CalendarViewState extends State<CalendarView> {
     return '${dh.toString().padLeft(2, '0')}:$m $p';
   }
 
-  Future<void> _loadBackendEvents() async {
+  Future<void> _loadAllBackendData() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
     final user = widget.user;
+
     try {
       final results = await Future.wait([
         _calendarService.fetchEvents(
@@ -168,8 +98,12 @@ class _CalendarViewState extends State<CalendarView> {
           user?.userId.isNotEmpty == true ? user!.userId : (user?.id ?? ''),
         ),
         _dashboardService.getTasks(),
-        _dashboardService.getLeaves(),
+        _isManager
+            ? _leaveService.getAllLeaves()
+            : _leaveService.getUserLeaves(user?.userId.isNotEmpty == true ? user!.userId : (user?.id ?? '')),
       ]);
+
+      if (!mounted) return;
 
       final holidays = results[0] as List<CalendarEventModel>;
       final attendance = results[1] as List<AttendanceModel>;
@@ -178,7 +112,7 @@ class _CalendarViewState extends State<CalendarView> {
 
       final List<CalendarEventModel> dynamicEvents = [];
 
-      // 1. Live Public Holidays from MongoDB
+      // 1. Live Public Holidays
       for (final h in holidays) {
         dynamicEvents.add(h.copyWith(
           icon: Icons.celebration_outlined,
@@ -187,7 +121,7 @@ class _CalendarViewState extends State<CalendarView> {
         ));
       }
 
-      // 2. Live Attendance Sessions from MongoDB
+      // 2. Live Attendance Work Sessions
       for (final att in attendance) {
         DateTime? dt;
         if (att.checkIn != null && att.checkIn!.isNotEmpty) {
@@ -214,7 +148,7 @@ class _CalendarViewState extends State<CalendarView> {
         }
       }
 
-      // 3. Live Tasks from MongoDB
+      // 3. Live Tasks with Due Dates
       for (final t in tasks) {
         if (t.dueDate != null && t.dueDate!.isNotEmpty) {
           final dt = DateTime.tryParse(t.dueDate!)?.toLocal();
@@ -234,36 +168,38 @@ class _CalendarViewState extends State<CalendarView> {
         }
       }
 
-      // 4. Live Leaves from MongoDB
+      // 4. Live Leaves
       for (final l in leaves) {
         final dt = DateTime.tryParse(l.startDate)?.toLocal();
         if (dt != null) {
           dynamicEvents.add(CalendarEventModel(
             id: l.id,
-            title: 'Approved Leave (${l.type.toUpperCase()})',
+            title: '${l.type.toUpperCase()} Leave (${l.status.toUpperCase()})',
             dateTime: dt,
             time: '${l.startDate} to ${l.endDate}',
             category: 'Leave',
-            description: l.reason ?? 'Approved Leave',
+            description: l.reason?.isNotEmpty == true ? l.reason! : 'Leave Request',
             icon: Icons.beach_access_outlined,
-            color: const Color(0xFFDC2626),
-            bg: const Color(0xFFFEE2E2),
+            color: l.isApproved ? const Color(0xFF059669) : (l.isPending ? const Color(0xFFD97706) : const Color(0xFFDC2626)),
+            bg: l.isApproved ? const Color(0xFFDEF7EC) : (l.isPending ? const Color(0xFFFEF3C7) : const Color(0xFFFEE2E2)),
           ));
         }
       }
 
-      if (dynamicEvents.isNotEmpty && mounted) {
+      setState(() {
+        _events = dynamicEvents;
+        _holidays = holidays;
+        _leaves = leaves;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (mounted) {
         setState(() {
-          final customEvents = _events.where((e) => e.id.startsWith('evt_custom_')).toList();
-          _events = [...dynamicEvents, ...customEvents];
+          _errorMessage = e.toString();
+          _isLoading = false;
         });
       }
-    } catch (_) {}
-  }
-
-  bool get _canAddEvents {
-    // Both Company Admin and Super Admin have event creation privileges; Employees can also request
-    return true;
+    }
   }
 
   List<CalendarEventModel> _getEventsForDate(DateTime date) {
@@ -278,224 +214,295 @@ class _CalendarViewState extends State<CalendarView> {
     return _getEventsForDate(date).isNotEmpty;
   }
 
+  Future<void> _handleUpdateLeave(String id, String status) async {
+    try {
+      final updated = await _leaveService.updateLeaveStatus(id: id, status: status);
+      if (mounted) {
+        setState(() {
+          final idx = _leaves.indexWhere((l) => l.id == id);
+          if (idx != -1) _leaves[idx] = updated;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: status == 'approved' ? const Color(0xFF1B5E3F) : const Color(0xFFDC2626),
+            content: Text('Leave request marked as ${status.toUpperCase()}'),
+          ),
+        );
+        _loadAllBackendData();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(backgroundColor: Colors.red, content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleDeleteHoliday(String id) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Delete Holiday', style: TextStyle(fontWeight: FontWeight.w800)),
+        content: const Text('Are you sure you want to remove this official holiday?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDC2626), foregroundColor: Colors.white),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await _calendarService.deleteEvent(
+        user: widget.user ?? const UserModel(id: '', userId: '', username: '', name: '', role: 'staff', token: ''),
+        eventId: id,
+      );
+      if (mounted) {
+        setState(() => _holidays.removeWhere((h) => h.id == id));
+        _loadAllBackendData();
+      }
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
+    const primaryGreen = Color(0xFF1B5E3F);
+
     return Scaffold(
       backgroundColor: const Color(0xFFF7FAF8),
-      floatingActionButton: _canAddEvents
-          ? Container(
-              margin: const EdgeInsets.only(bottom: 12, right: 6),
-              child: FloatingActionButton(
-                heroTag: 'calendar_fab_main',
-                onPressed: _showAddEventDialog,
-                backgroundColor: const Color(0xFF1B5E3F),
-                elevation: 4,
-                shape: const CircleBorder(),
-                child: const Icon(Icons.add, color: Colors.white, size: 28),
-              ),
-            )
-          : null,
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'calendar_fab_main',
+        onPressed: _showActionMenu,
+        backgroundColor: primaryGreen,
+        elevation: 4,
+        shape: const CircleBorder(),
+        tooltip: 'Quick Actions',
+        child: const Icon(Icons.add, color: Colors.white, size: 28),
+      ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // 1. Workspace Header with Notification Bell
-              _buildWorkspaceHeader(),
-              const SizedBox(height: 18),
+        child: RefreshIndicator(
+          onRefresh: _loadAllBackendData,
+          color: primaryGreen,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // 1. Workspace Header with Hamburger Menu
+                _buildWorkspaceHeader(primaryGreen),
+                const SizedBox(height: 12),
 
-              // 2. View Toggle Pill Bar: [Month] [Week] [Agenda]
-              _buildViewToggleBar(),
-              const SizedBox(height: 18),
+                // 2. Main Module Toggle: [Calendar] [Leaves] [Holidays]
+                _buildMainModuleToggle(primaryGreen),
+                const SizedBox(height: 14),
 
-              // 3. View Switcher
-              if (_selectedViewIndex == 0)
-                _buildMonthView()
-              else if (_selectedViewIndex == 1)
-                _buildWeekView()
-              else
-                _buildAgendaView(),
+                if (_selectedModuleTab == 0)
+                  _buildCalendarSection(primaryGreen)
+                else if (_isLoading)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 40),
+                    child: Center(child: CircularProgressIndicator(color: primaryGreen)),
+                  )
+                else if (_errorMessage != null)
+                  _buildErrorState(primaryGreen)
+                else if (_selectedModuleTab == 1)
+                  _buildLeavesSection(primaryGreen)
+                else
+                  _buildHolidaysSection(primaryGreen),
 
-              const SizedBox(height: 90),
-            ],
+                const SizedBox(height: 90),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  // Header matching visual reference: "WORKSPACE", bold "Calendar", subtitle, notification icon
-  Widget _buildWorkspaceHeader() {
+  Widget _buildWorkspaceHeader(Color primaryGreen) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            if (widget.onOpenDrawer != null) ...[
+            if (widget.onOpenDrawer != null)
               Container(
                 width: 38,
                 height: 38,
                 margin: const EdgeInsets.only(right: 10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1B5E3F).withValues(alpha: 0.1),
+                  color: primaryGreen.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: IconButton(
                   padding: EdgeInsets.zero,
-                  icon: const Icon(
-                    Icons.menu_rounded,
-                    color: Color(0xFF1B5E3F),
-                    size: 22,
-                  ),
+                  icon: const Icon(Icons.menu_rounded, color: Color(0xFF1B5E3F), size: 22),
                   tooltip: 'Menu',
                   onPressed: widget.onOpenDrawer,
                 ),
+              )
+            else if (widget.onBack != null)
+              IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: Color(0xFF1B5E3F)),
+                onPressed: widget.onBack,
               ),
-            ],
+
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (widget.onBack != null)
-              GestureDetector(
-                onTap: widget.onBack,
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      Icon(Icons.arrow_back_ios_new_rounded, size: 14, color: Color(0xFF64748B)),
-                      SizedBox(width: 4),
-                      Text(
-                        'BACK',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.2,
-                          color: Color(0xFF64748B),
-                        ),
-                      ),
-                    ],
+              children: const [
+                Text(
+                  'WORKSPACE',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.5,
+                    color: Color(0xFF718096),
                   ),
                 ),
-              ),
-            const Text(
-              'WORKSPACE',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.5,
-                color: Color(0xFF718096),
-              ),
-            ),
-            const SizedBox(height: 3),
-            const Text(
-              'Calendar',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -0.5,
-                color: Color(0xFF1A202C),
-              ),
-            ),
-            const SizedBox(height: 3),
-            const Text(
-              'Manage your schedules and stay productive',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF718096),
-              ),
+                Text(
+                  'Calendar & Leaves',
+                  style: TextStyle(
+                    fontSize: 21,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF1A202C),
+                    letterSpacing: -0.3,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
 
-          ],
-        ),
-
-        // Notification Icon with Active Indicator
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: const Color(0xFFEAF4EE),
-            shape: BoxShape.circle,
-            border: Border.all(color: const Color(0xFFD4E7DC), width: 1),
-          ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              const Icon(
-                Icons.notifications_outlined,
-                size: 22,
-                color: Color(0xFF2D3748),
-              ),
-              Positioned(
-                top: 10,
-                right: 12,
-                child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF10B981),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-            ],
-          ),
+        IconButton(
+          icon: const Icon(Icons.refresh_rounded, color: Color(0xFF1B5E3F), size: 22),
+          tooltip: 'Refresh',
+          onPressed: _loadAllBackendData,
         ),
       ],
     );
   }
 
-  // Segment toggle pills: [ Month ] [ Week ] [ Agenda ]
-  Widget _buildViewToggleBar() {
+  Widget _buildMainModuleToggle(Color primaryGreen) {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: const Color(0xFFE8F2EC),
-        borderRadius: BorderRadius.circular(26),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         children: [
-          _buildToggleItem(title: 'Month', index: 0),
-          _buildToggleItem(title: 'Week', index: 1),
-          _buildToggleItem(title: 'Agenda', index: 2),
+          _buildMainModuleTabItem('Calendar', 0, Icons.calendar_month_rounded, primaryGreen),
+          _buildMainModuleTabItem('Leaves (${_leaves.length})', 1, Icons.beach_access_rounded, primaryGreen),
+          _buildMainModuleTabItem('Holidays (${_holidays.length})', 2, Icons.celebration_rounded, primaryGreen),
         ],
       ),
     );
   }
 
-  Widget _buildToggleItem({required String title, required int index}) {
-    final isSelected = _selectedViewIndex == index;
+  Widget _buildMainModuleTabItem(String label, int index, IconData icon, Color primaryGreen) {
+    final isSelected = _selectedModuleTab == index;
+
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() => _selectedViewIndex = index),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
+        onTap: () => setState(() => _selectedModuleTab = index),
+        child: Container(
           padding: const EdgeInsets.symmetric(vertical: 9),
           decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFF10462C) : Colors.transparent,
-            borderRadius: BorderRadius.circular(22),
-            boxShadow: [
-              if (isSelected)
-                BoxShadow(
-                  color: const Color(0xFF10462C).withValues(alpha: 0.25),
-                  blurRadius: 10,
-                  offset: const Offset(0, 3),
+            color: isSelected ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: isSelected
+                ? const [BoxShadow(color: Color(0x10000000), blurRadius: 4, offset: Offset(0, 1))]
+                : null,
+          ),
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 15, color: isSelected ? primaryGreen : const Color(0xFF718096)),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                  color: isSelected ? primaryGreen : const Color(0xFF718096),
                 ),
+              ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// CALENDAR SUB-SECTION (Month, Week, Agenda)
+  Widget _buildCalendarSection(Color primaryGreen) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Sub-view Toggle: [Month] [Week] [Agenda]
+        Container(
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: Row(
+            children: [
+              _buildSubViewItem('Month', 0, primaryGreen),
+              _buildSubViewItem('Week', 1, primaryGreen),
+              _buildSubViewItem('Agenda', 2, primaryGreen),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        if (_isLoading)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 40),
+            child: Center(child: CircularProgressIndicator(color: primaryGreen)),
+          )
+        else if (_errorMessage != null)
+          _buildErrorState(primaryGreen)
+        else if (_selectedCalendarViewIndex == 0)
+          _buildMonthView(primaryGreen)
+        else if (_selectedCalendarViewIndex == 1)
+          _buildWeekView(primaryGreen)
+        else
+          _buildAgendaView(primaryGreen),
+      ],
+    );
+  }
+
+  Widget _buildSubViewItem(String label, int index, Color primaryGreen) {
+    final isSelected = _selectedCalendarViewIndex == index;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _selectedCalendarViewIndex = index),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 7),
+          decoration: BoxDecoration(
+            color: isSelected ? primaryGreen : Colors.transparent,
+            borderRadius: BorderRadius.circular(9),
           ),
           alignment: Alignment.center,
           child: Text(
-            title,
+            label,
             style: TextStyle(
-              fontSize: 13.5,
-              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-              color: isSelected ? Colors.white : const Color(0xFF4A5568),
+              fontSize: 12,
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+              color: isSelected ? Colors.white : const Color(0xFF64748B),
             ),
           ),
         ),
@@ -503,680 +510,176 @@ class _CalendarViewState extends State<CalendarView> {
     );
   }
 
-  // ==========================================
-  // 1. MONTH VIEW
-  // ==========================================
-  Widget _buildMonthView() {
-    final eventsForDay = _getEventsForDate(_selectedDate);
+  Widget _buildMonthView(Color primaryGreen) {
+    final eventsForSelected = _getEventsForDate(_selectedDate);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Calendar Grid Card
-        _buildMonthCalendarCard(),
-        const SizedBox(height: 22),
-
-        // Selected Day Title + Event Count Badge
-        _buildDateHeaderRow(
-          title: _formatDayTitle(_selectedDate),
-          count: eventsForDay.length,
-        ),
-        const SizedBox(height: 14),
-
-        // Event Cards List
-        if (eventsForDay.isEmpty)
-          _buildEmptyEventsState('No events scheduled for this day')
-        else
-          ...eventsForDay.map((e) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _buildEventCard(e),
-              )),
-      ],
-    );
-  }
-
-  Widget _buildMonthCalendarCard() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x081B5E3F),
-            blurRadius: 16,
-            offset: Offset(0, 6),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: Column(
-          children: [
-            // Dark green top header with navigation and subtle organic curve
-            Container(
-              height: 58,
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Color(0xFF0F3A2E),
-                    Color(0xFF134E3C),
-                    Color(0xFF0A2B22),
-                  ],
-                ),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.chevron_left_rounded, color: Colors.white, size: 24),
-                    onPressed: () {
-                      setState(() {
-                        _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1, 1);
-                      });
-                    },
-                  ),
-                  Text(
-                    _formatMonthYear(_currentMonth),
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 24),
-                    onPressed: () {
-                      setState(() {
-                        _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 1);
-                      });
-                    },
-                  ),
-                ],
-              ),
-            ),
-
-            // Weekday Initial Row (Sun Mon Tue Wed Thu Fri Sat)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 16, 14, 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: const [
-                  _WeekdayLabel('Sun'),
-                  _WeekdayLabel('Mon'),
-                  _WeekdayLabel('Tue'),
-                  _WeekdayLabel('Wed'),
-                  _WeekdayLabel('Thu'),
-                  _WeekdayLabel('Fri'),
-                  _WeekdayLabel('Sat'),
-                ],
-              ),
-            ),
-
-            // 7x5 Days Grid
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
-              child: _buildDaysGrid(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDaysGrid() {
-    final year = _currentMonth.year;
-    final month = _currentMonth.month;
-
-    final firstDayOfMonth = DateTime(year, month, 1);
-    final daysInMonth = DateTime(year, month + 1, 0).day;
-    final daysInPrevMonth = DateTime(year, month, 0).day;
-
-    // weekday: Mon=1..Sun=7 -> Sunday index should be 0
-    final startWeekday = firstDayOfMonth.weekday % 7;
-
-    final totalGridCells = 35; // 5 weeks x 7 days
-    final gridItems = <Widget>[];
-
-    // Leading previous month days
-    for (int i = startWeekday - 1; i >= 0; i--) {
-      final prevDayNum = daysInPrevMonth - i;
-      gridItems.add(_buildDimmedDayCell(prevDayNum));
-    }
-
-    // Current month days
-    for (int day = 1; day <= daysInMonth; day++) {
-      final cellDate = DateTime(year, month, day);
-      final isSelected = cellDate.year == _selectedDate.year &&
-          cellDate.month == _selectedDate.month &&
-          cellDate.day == _selectedDate.day;
-      final hasEvents = _hasEventsOnDate(cellDate);
-
-      gridItems.add(
-        GestureDetector(
-          onTap: () {
-            setState(() {
-              _selectedDate = cellDate;
-            });
-          },
-          child: Container(
-            alignment: Alignment.center,
-            child: Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: isSelected ? const Color(0xFF1B8A5A) : Colors.transparent,
-                shape: BoxShape.circle,
-                boxShadow: isSelected
-                    ? [
-                        BoxShadow(
-                          color: const Color(0xFF1B8A5A).withValues(alpha: 0.35),
-                          blurRadius: 8,
-                          offset: const Offset(0, 3),
-                        ),
-                      ]
-                    : null,
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    '$day',
-                    style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                      color: isSelected ? Colors.white : const Color(0xFF1A202C),
-                    ),
-                  ),
-                  if (hasEvents)
-                    Container(
-                      margin: const EdgeInsets.only(top: 2),
-                      width: 4,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: isSelected ? Colors.white : const Color(0xFF1B8A5A),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    // Trailing next month days to complete 35 cells
-    final remainingCells = totalGridCells - gridItems.length;
-    for (int nextDay = 1; nextDay <= remainingCells; nextDay++) {
-      gridItems.add(_buildDimmedDayCell(nextDay));
-    }
-
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 7,
-      mainAxisSpacing: 4,
-      crossAxisSpacing: 2,
-      childAspectRatio: 1.12,
-      children: gridItems,
-    );
-  }
-
-  Widget _buildDimmedDayCell(int dayNumber) {
-    return Container(
-      alignment: Alignment.center,
-      child: Text(
-        '$dayNumber',
-        style: const TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w400,
-          color: Color(0xFFA0AEC0),
-        ),
-      ),
-    );
-  }
-
-  // ==========================================
-  // 2. WEEK VIEW
-  // ==========================================
-  Widget _buildWeekView() {
-    // Compute the 7 days of the selected week (Sunday to Saturday)
-    final weekStart = _selectedDate.subtract(Duration(days: _selectedDate.weekday % 7));
-    final weekDates = List.generate(7, (i) => weekStart.add(Duration(days: i)));
-    final eventsForDay = _getEventsForDate(_selectedDate);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Week Bar Card with Navigation
+        // Month Navigation Card
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(color: const Color(0xFFE2E8F0)),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x081B5E3F),
-                blurRadius: 14,
-                offset: Offset(0, 4),
-              ),
-            ],
+            boxShadow: const [BoxShadow(color: Color(0x06000000), blurRadius: 8, offset: Offset(0, 2))],
           ),
           child: Column(
             children: [
-              // Week range title & prev/next buttons
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.chevron_left_rounded, color: Color(0xFF1A202C)),
-                    onPressed: () {
-                      setState(() {
-                        _selectedDate = _selectedDate.subtract(const Duration(days: 7));
-                        _currentMonth = DateTime(_selectedDate.year, _selectedDate.month, 1);
-                      });
-                    },
-                  ),
-                  Text(
-                    'Week of ${_formatMonthDay(weekDates.first)} ΓÇô ${_formatMonthDay(weekDates.last)}',
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF1A202C),
+              // Month Title & Arrows
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.chevron_left_rounded, color: Color(0xFF1B5E3F)),
+                      onPressed: () {
+                        setState(() {
+                          _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1, 1);
+                        });
+                      },
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.chevron_right_rounded, color: Color(0xFF1A202C)),
-                    onPressed: () {
-                      setState(() {
-                        _selectedDate = _selectedDate.add(const Duration(days: 7));
-                        _currentMonth = DateTime(_selectedDate.year, _selectedDate.month, 1);
-                      });
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // 7 Day Selection Pills
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: weekDates.map((d) {
-                  final isSelected = d.year == _selectedDate.year &&
-                      d.month == _selectedDate.month &&
-                      d.day == _selectedDate.day;
-                  final hasEvents = _hasEventsOnDate(d);
-                  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-                  final dayName = dayNames[d.weekday % 7];
-
-                  return GestureDetector(
-                    onTap: () => setState(() => _selectedDate = d),
-                    child: Container(
-                      width: 44,
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      decoration: BoxDecoration(
-                        color: isSelected ? const Color(0xFF1B8A5A) : const Color(0xFFF7FAF8),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: isSelected ? Colors.transparent : const Color(0xFFE2E8F0),
-                        ),
-                      ),
-                      child: Column(
-                        children: [
-                          Text(
-                            dayName,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: isSelected ? Colors.white70 : const Color(0xFF718096),
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${d.day}',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800,
-                              color: isSelected ? Colors.white : const Color(0xFF1A202C),
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          if (hasEvents)
-                            Container(
-                              width: 4,
-                              height: 4,
-                              decoration: BoxDecoration(
-                                color: isSelected ? Colors.white : const Color(0xFF1B8A5A),
-                                shape: BoxShape.circle,
-                              ),
-                            )
-                          else
-                            const SizedBox(height: 4),
-                        ],
-                      ),
+                    Text(
+                      '${_getMonthName(_currentMonth.month)} ${_currentMonth.year}',
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1B5E3F)),
                     ),
-                  );
-                }).toList(),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 22),
-
-        // Selected Day Title + Event Count
-        _buildDateHeaderRow(
-          title: _formatDayTitle(_selectedDate),
-          count: eventsForDay.length,
-        ),
-        const SizedBox(height: 14),
-
-        if (eventsForDay.isEmpty)
-          _buildEmptyEventsState('No events scheduled for this day')
-        else
-          ...eventsForDay.map((e) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _buildEventCard(e),
-              )),
-      ],
-    );
-  }
-
-  // ==========================================
-  // 3. AGENDA VIEW
-  // ==========================================
-  Widget _buildAgendaView() {
-    // Sort events chronologically
-    final sortedEvents = List<CalendarEventModel>.from(_events)
-      ..sort((a, b) => a.dateTime.compareTo(b.dateTime));
-
-    // Group events by date
-    final Map<String, List<CalendarEventModel>> grouped = {};
-    for (final e in sortedEvents) {
-      final key = _formatDayTitle(e.dateTime);
-      grouped.putIfAbsent(key, () => []).add(e);
-    }
-
-    if (grouped.isEmpty) {
-      return _buildEmptyEventsState('No upcoming agenda items scheduled');
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: grouped.entries.map((entry) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildDateHeaderRow(
-              title: entry.key,
-              count: entry.value.length,
-            ),
-            const SizedBox(height: 12),
-            ...entry.value.map((e) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _buildEventCard(e),
-                )),
-            const SizedBox(height: 16),
-          ],
-        );
-      }).toList(),
-    );
-  }
-
-  // Date Header Row with pill badge: "TUESDAY, OCT 20" + "3 events"
-  Widget _buildDateHeaderRow({required String title, required int count}) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          title.toUpperCase(),
-          style: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0.5,
-            color: Color(0xFF1A202C),
-          ),
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: const Color(0xFFE2F3E9),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(
-            '$count event${count == 1 ? '' : 's'}',
-            style: const TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF1B5E3F),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // Event Card matching visual reference: left-colored accent stripe, icon badge, title, time, category pill, more icon
-  Widget _buildEventCard(CalendarEventModel event) {
-    final cardColor = event.color ?? const Color(0xFF1B5E3F);
-    final cardBg = event.bg ?? const Color(0xFFE8F5ED);
-    final iconData = event.icon ?? Icons.event_note_outlined;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x06000000),
-            blurRadius: 10,
-            offset: Offset(0, 3),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: IntrinsicHeight(
-          child: Row(
-            children: [
-              // Left Accent Colored Stripe
-              Container(
-                width: 5,
-                color: cardColor,
-              ),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                  child: Row(
-                    children: [
-                      // Circular / Rounded Icon Badge
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: cardBg,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Icon(
-                          iconData,
-                          size: 24,
-                          color: cardColor,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-
-                      // Event Title, Time & Category
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              event.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 15.5,
-                                fontWeight: FontWeight.w800,
-                                color: Color(0xFF1A202C),
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Row(
-                              children: [
-                                const Icon(
-                                  Icons.access_time_rounded,
-                                  size: 14,
-                                  color: Color(0xFF718096),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  event.time,
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                    color: Color(0xFF718096),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-
-                                // Category Pill
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: cardBg,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    event.category,
-                                    style: TextStyle(
-                                      fontSize: 10.5,
-                                      fontWeight: FontWeight.w700,
-                                      color: cardColor,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      // 3-dots More Actions Menu
-                      IconButton(
-                        icon: const Icon(Icons.more_vert_rounded, color: Color(0xFFCBD5E1), size: 20),
-                        onPressed: () => _showEventOptions(event),
-                      ),
-                    ],
-                  ),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right_rounded, color: Color(0xFF1B5E3F)),
+                      onPressed: () {
+                        setState(() {
+                          _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 1);
+                        });
+                      },
+                    ),
+                  ],
                 ),
               ),
+              const Divider(height: 1, color: Color(0xFFEDF2F7)),
+
+              // Day of week abbreviations
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: const [
+                    Text('Sun', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF94A3B8))),
+                    Text('Mon', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF94A3B8))),
+                    Text('Tue', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF94A3B8))),
+                    Text('Wed', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF94A3B8))),
+                    Text('Thu', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF94A3B8))),
+                    Text('Fri', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF94A3B8))),
+                    Text('Sat', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF94A3B8))),
+                  ],
+                ),
+              ),
+
+              // Calendar Grid
+              _buildMonthGrid(primaryGreen),
+              const SizedBox(height: 10),
             ],
           ),
         ),
-      ),
+        const SizedBox(height: 18),
+
+        // Selected Date Header
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              "${_getDayOfWeekName(_selectedDate.weekday)}, ${_selectedDate.day} ${_getMonthName(_selectedDate.month).substring(0, 3)}".toUpperCase(),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 0.8, color: Color(0xFF1B5E3F)),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5ED),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '${eventsForSelected.length} event(s)',
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF1B5E3F)),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        // Events list for selected date
+        if (eventsForSelected.isEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            alignment: Alignment.center,
+            child: const Text('No activities scheduled for this date', style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8))),
+          )
+        else
+          ...eventsForSelected.map((e) => _buildEventCard(e)),
+      ],
     );
   }
 
-  Widget _buildEmptyEventsState(String message) {
-    return Container(
-      padding: const EdgeInsets.all(28),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+  Widget _buildMonthGrid(Color primaryGreen) {
+    final firstDayOfMonth = DateTime(_currentMonth.year, _currentMonth.month, 1);
+    final daysInMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 0).day;
+    final startWeekday = firstDayOfMonth.weekday % 7; // Sunday = 0
+
+    final totalCells = ((startWeekday + daysInMonth) / 7).ceil() * 7;
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 7,
+        mainAxisSpacing: 4,
+        crossAxisSpacing: 4,
+        childAspectRatio: 1.1,
       ),
-      child: Column(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: const BoxDecoration(
-              color: Color(0xFFF0FDF4),
+      itemCount: totalCells,
+      itemBuilder: (context, idx) {
+        final dayOffset = idx - startWeekday + 1;
+        if (dayOffset < 1 || dayOffset > daysInMonth) {
+          return const SizedBox.shrink();
+        }
+
+        final cellDate = DateTime(_currentMonth.year, _currentMonth.month, dayOffset);
+        final isSelected = cellDate.year == _selectedDate.year &&
+            cellDate.month == _selectedDate.month &&
+            cellDate.day == _selectedDate.day;
+        final isToday = cellDate.year == DateTime.now().year &&
+            cellDate.month == DateTime.now().month &&
+            cellDate.day == DateTime.now().day;
+        final hasEvents = _hasEventsOnDate(cellDate);
+
+        return GestureDetector(
+          onTap: () => setState(() => _selectedDate = cellDate),
+          child: Container(
+            decoration: BoxDecoration(
+              color: isSelected ? primaryGreen : (isToday ? const Color(0xFFE8F5ED) : Colors.transparent),
               shape: BoxShape.circle,
             ),
-            child: const Icon(
-              Icons.event_available_outlined,
-              color: Color(0xFF10B981),
-              size: 26,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF718096),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showEventOptions(CalendarEventModel event) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  event.title,
-                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${event.time} ΓÇó ${event.category}',
-                  style: const TextStyle(fontSize: 12.5, color: Color(0xFF718096)),
-                ),
-                if (event.description != null) ...[
-                  const SizedBox(height: 10),
-                  Text(event.description!, style: const TextStyle(fontSize: 13)),
-                ],
-                const Divider(height: 24),
-                ListTile(
-                  leading: const Icon(Icons.alarm_on_rounded, color: Color(0xFF1B5E3F)),
-                  title: const Text('Add 15m Reminder'),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        backgroundColor: const Color(0xFF1B5E3F),
-                        content: Text('Reminder set for "${event.title}"'),
-                      ),
-                    );
-                  },
-                ),
-                if (_canAddEvents)
-                  ListTile(
-                    leading: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444)),
-                    title: const Text('Delete Event', style: TextStyle(color: Color(0xFFEF4444))),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      setState(() {
-                        _events.removeWhere((e) => e.id == event.id);
-                      });
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          backgroundColor: const Color(0xFF1B5E3F),
-                          content: Text('Deleted "${event.title}"'),
-                        ),
-                      );
-                    },
+                  dayOffset.toString(),
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: isSelected || isToday ? FontWeight.w800 : FontWeight.w500,
+                    color: isSelected ? Colors.white : (isToday ? primaryGreen : const Color(0xFF1A202C)),
                   ),
+                ),
+                if (hasEvents) ...[
+                  const SizedBox(height: 2),
+                  Container(
+                    width: 5,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: isSelected ? Colors.white : const Color(0xFFD97706),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1185,205 +688,663 @@ class _CalendarViewState extends State<CalendarView> {
     );
   }
 
-  void _showAddEventDialog() {
-    final titleController = TextEditingController();
-    final timeController = TextEditingController(text: '10:00 AM ΓÇô 11:00 AM');
-    String selectedCategory = 'Meeting';
+  Widget _buildWeekView(Color primaryGreen) {
+    // Show 7 days starting from current week
+    final startOfWeek = _selectedDate.subtract(Duration(days: _selectedDate.weekday % 7));
+    final weekDays = List.generate(7, (i) => startOfWeek.add(Duration(days: i)));
+
+    return Column(
+      children: weekDays.map((date) {
+        final evts = _getEventsForDate(date);
+        final isSelected = date.day == _selectedDate.day && date.month == _selectedDate.month;
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: isSelected ? primaryGreen : const Color(0xFFE2E8F0), width: isSelected ? 1.6 : 1),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    "${_getDayOfWeekName(date.weekday)}, ${date.day} ${_getMonthName(date.month)}",
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: isSelected ? primaryGreen : const Color(0xFF1A202C),
+                    ),
+                  ),
+                  Text('${evts.length} events', style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                ],
+              ),
+              if (evts.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                ...evts.map((e) => Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Row(
+                    children: [
+                      Container(width: 8, height: 8, decoration: BoxDecoration(color: e.color, shape: BoxShape.circle)),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(e.title, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600))),
+                      Text(e.time, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                    ],
+                  ),
+                )),
+              ],
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildAgendaView(Color primaryGreen) {
+    if (_events.isEmpty) {
+      return const Center(child: Padding(padding: EdgeInsets.all(32), child: Text('No agenda items')));
+    }
+
+    // Sort by date ascending
+    final sorted = List<CalendarEventModel>.from(_events)..sort((a, b) => a.dateTime.compareTo(b.dateTime));
+
+    return Column(
+      children: sorted.map((e) => _buildEventCard(e)).toList(),
+    );
+  }
+
+  Widget _buildEventCard(CalendarEventModel event) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [BoxShadow(color: Color(0x04000000), blurRadius: 6, offset: Offset(0, 2))],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: event.bg,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(event.icon, color: event.color, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  event.title,
+                  style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF1A202C)),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  event.time,
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                ),
+                if (event.description != null && event.description!.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    event.description!,
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: event.bg,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              event.category,
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: event.color),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// LEAVES SUB-SECTION
+  Widget _buildLeavesSection(Color primaryGreen) {
+    final pendingCount = _leaves.where((l) => l.isPending).length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Leave Action Banner
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Leave Management', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 2),
+                  Text(
+                    _isManager ? '$pendingCount pending approval' : 'Submit or track leave requests',
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                  ),
+                ],
+              ),
+              ElevatedButton.icon(
+                onPressed: _showApplyLeaveDialog,
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('Apply Leave'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primaryGreen,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // Leaves List
+        if (_leaves.isEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 40),
+            alignment: Alignment.center,
+            child: const Text('No leave records found', style: TextStyle(color: Color(0xFF94A3B8))),
+          )
+        else
+          ..._leaves.map((l) => _buildLeaveCard(l, primaryGreen)),
+      ],
+    );
+  }
+
+  Widget _buildLeaveCard(LeaveModel leave, Color primaryGreen) {
+    Color statusColor = const Color(0xFFD97706);
+    Color statusBg = const Color(0xFFFEF3C7);
+
+    if (leave.isApproved) {
+      statusColor = const Color(0xFF15803D);
+      statusBg = const Color(0xFFDEF7EC);
+    } else if (leave.isRejected) {
+      statusColor = const Color(0xFFDC2626);
+      statusBg = const Color(0xFFFEE2E2);
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [BoxShadow(color: Color(0x05000000), blurRadius: 6, offset: Offset(0, 2))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${leave.type.toUpperCase()} LEAVE',
+                style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF1A202C)),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(color: statusBg, borderRadius: BorderRadius.circular(8)),
+                child: Text(
+                  leave.status.toUpperCase(),
+                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: statusColor),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const Icon(Icons.date_range_rounded, size: 14, color: Color(0xFF64748B)),
+              const SizedBox(width: 6),
+              Text(
+                '${leave.startDate} to ${leave.endDate}',
+                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF4A5568)),
+              ),
+            ],
+          ),
+          if (leave.reason != null && leave.reason!.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Reason: ${leave.reason}',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+          ],
+
+          // If Manager and Leave is pending -> show Approve and Reject buttons!
+          if (_isManager && leave.isPending) ...[
+            const SizedBox(height: 14),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => _handleUpdateLeave(leave.id, 'rejected'),
+                  icon: const Icon(Icons.close_rounded, size: 14, color: Color(0xFFDC2626)),
+                  label: const Text('Reject', style: TextStyle(color: Color(0xFFDC2626), fontSize: 12)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Color(0xFFFCA5A5)),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
+                  onPressed: () => _handleUpdateLeave(leave.id, 'approved'),
+                  icon: const Icon(Icons.check_rounded, size: 14),
+                  label: const Text('Approve', style: TextStyle(fontSize: 12)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryGreen,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// HOLIDAYS SUB-SECTION
+  Widget _buildHolidaysSection(Color primaryGreen) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Header card
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Company Holidays', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 2),
+                  Text('${_holidays.length} observed holidays', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                ],
+              ),
+              if (_isManager)
+                ElevatedButton.icon(
+                  onPressed: _showAddHolidayDialog,
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Add Holiday'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryGreen,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        if (_holidays.isEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 40),
+            alignment: Alignment.center,
+            child: const Text('No holidays configured', style: TextStyle(color: Color(0xFF94A3B8))),
+          )
+        else
+          ..._holidays.map((h) => _buildHolidayCard(h, primaryGreen)),
+      ],
+    );
+  }
+
+  Widget _buildHolidayCard(CalendarEventModel holiday, Color primaryGreen) {
+    final dateStr = "${holiday.dateTime.year}-${holiday.dateTime.month.toString().padLeft(2, '0')}-${holiday.dateTime.day.toString().padLeft(2, '0')}";
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [BoxShadow(color: Color(0x04000000), blurRadius: 6, offset: Offset(0, 2))],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFEF3C7),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.celebration_outlined, color: Color(0xFFD97706), size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  holiday.title,
+                  style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF1A202C)),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  dateStr,
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFD97706)),
+                ),
+              ],
+            ),
+          ),
+          if (_isManager)
+            IconButton(
+              icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFDC2626), size: 20),
+              tooltip: 'Delete Holiday',
+              onPressed: () => _handleDeleteHoliday(holiday.id),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState(Color primaryGreen) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            const Icon(Icons.error_outline_rounded, color: Colors.red, size: 36),
+            const SizedBox(height: 12),
+            Text(_errorMessage ?? 'Failed to load calendar data', textAlign: TextAlign.center),
+            const SizedBox(height: 14),
+            ElevatedButton(
+              onPressed: _loadAllBackendData,
+              style: ElevatedButton.styleFrom(backgroundColor: primaryGreen, foregroundColor: Colors.white),
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Floating Action Menu
+  void _showActionMenu() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Quick Actions', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const CircleAvatar(backgroundColor: Color(0xFFDEF7EC), child: Icon(Icons.beach_access, color: Color(0xFF1B5E3F))),
+              title: const Text('Apply for Leave', style: TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: const Text('Submit casual, sick, or earned leave request'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showApplyLeaveDialog();
+              },
+            ),
+            if (_isManager)
+              ListTile(
+                leading: const CircleAvatar(backgroundColor: Color(0xFFFEF3C7), child: Icon(Icons.celebration, color: Color(0xFFD97706))),
+                title: const Text('Add Company Holiday', style: TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: const Text('Add an official paid holiday to platform schedule'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showAddHolidayDialog();
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Apply Leave Dialog
+  void _showApplyLeaveDialog() {
+    String selectedType = 'casual';
+    DateTime startDate = DateTime.now().add(const Duration(days: 1));
+    DateTime endDate = DateTime.now().add(const Duration(days: 2));
+    final reasonCtrl = TextEditingController();
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setSheetState) {
-            return Padding(
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 22,
-                bottom: MediaQuery.of(ctx).viewInsets.bottom + 22,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDlgState) => Padding(
+          padding: EdgeInsets.only(
+            top: 24,
+            left: 20,
+            right: 20,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('Apply for Leave', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1B5E3F))),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                initialValue: selectedType,
+                decoration: InputDecoration(
+                  labelText: 'Leave Type',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'casual', child: Text('Casual Leave')),
+                  DropdownMenuItem(value: 'sick', child: Text('Sick Leave')),
+                  DropdownMenuItem(value: 'earned', child: Text('Earned Leave')),
+                  DropdownMenuItem(value: 'unpaid', child: Text('Unpaid Leave')),
+                ],
+                onChanged: (v) => setDlgState(() => selectedType = v ?? 'casual'),
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+              const SizedBox(height: 12),
+              Row(
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'New Schedule Event',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF1A202C),
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close_rounded),
-                        onPressed: () => Navigator.pop(ctx),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: titleController,
-                    decoration: InputDecoration(
-                      labelText: 'Event Title',
-                      hintText: 'e.g. Client Design Workshop',
-                      filled: true,
-                      fillColor: const Color(0xFFF7FAF8),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                      ),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.date_range, size: 16),
+                      label: Text("${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}", style: const TextStyle(fontSize: 12)),
+                      onPressed: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: startDate,
+                          firstDate: DateTime.now().subtract(const Duration(days: 7)),
+                          lastDate: DateTime.now().add(const Duration(days: 365)),
+                        );
+                        if (picked != null) setDlgState(() => startDate = picked);
+                      },
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: timeController,
-                    decoration: InputDecoration(
-                      labelText: 'Time Range',
-                      hintText: '10:00 AM ΓÇô 11:00 AM',
-                      filled: true,
-                      fillColor: const Color(0xFFF7FAF8),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                      ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.date_range, size: 16),
+                      label: Text("${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}", style: const TextStyle(fontSize: 12)),
+                      onPressed: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: endDate,
+                          firstDate: startDate,
+                          lastDate: DateTime.now().add(const Duration(days: 365)),
+                        );
+                        if (picked != null) setDlgState(() => endDate = picked);
+                      },
                     ),
-                  ),
-                  const SizedBox(height: 14),
-                  const Text(
-                    'Category',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    children: ['Meeting', 'Discussion', 'Review', 'Holiday'].map((cat) {
-                      final isSel = selectedCategory == cat;
-                      return ChoiceChip(
-                        label: Text(cat),
-                        selected: isSel,
-                        selectedColor: const Color(0xFF1B5E3F),
-                        labelStyle: TextStyle(
-                          color: isSel ? Colors.white : const Color(0xFF2D3748),
-                          fontWeight: FontWeight.w600,
-                        ),
-                        onSelected: (val) {
-                          if (val) setSheetState(() => selectedCategory = cat);
-                        },
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 20),
-                  ElevatedButton(
-                    onPressed: () {
-                      final title = titleController.text.trim();
-                      if (title.isEmpty) return;
-
-                      Color catColor = const Color(0xFF1B5E3F);
-                      Color catBg = const Color(0xFFE8F5ED);
-                      IconData catIcon = Icons.groups_outlined;
-
-                      if (selectedCategory == 'Discussion') {
-                        catColor = const Color(0xFF7C3AED);
-                        catBg = const Color(0xFFF3E8FF);
-                        catIcon = Icons.article_outlined;
-                      } else if (selectedCategory == 'Review') {
-                        catColor = const Color(0xFFD97706);
-                        catBg = const Color(0xFFFEF3C7);
-                        catIcon = Icons.palette_outlined;
-                      } else if (selectedCategory == 'Holiday') {
-                        catColor = const Color(0xFFDC2626);
-                        catBg = const Color(0xFFFEE2E2);
-                        catIcon = Icons.celebration_outlined;
-                      }
-
-                      final newEvent = CalendarEventModel(
-                        id: 'evt_${DateTime.now().millisecondsSinceEpoch}',
-                        title: title,
-                        dateTime: _selectedDate,
-                        time: timeController.text.trim(),
-                        category: selectedCategory,
-                        color: catColor,
-                        bg: catBg,
-                        icon: catIcon,
-                      );
-
-                      setState(() {
-                        _events.add(newEvent);
-                      });
-
-                      Navigator.pop(ctx);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          backgroundColor: const Color(0xFF1B5E3F),
-                          content: Text('Added "$title" to ${_formatMonthDay(_selectedDate)}'),
-                        ),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1B5E3F),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    child: const Text('Save Event', style: TextStyle(fontWeight: FontWeight.w700)),
                   ),
                 ],
               ),
-            );
-          },
-        );
-      },
-    );
-  }
+              const SizedBox(height: 12),
+              TextField(
+                controller: reasonCtrl,
+                maxLines: 2,
+                decoration: InputDecoration(
+                  labelText: 'Reason for Leave',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () async {
+                  final sStr = "${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}";
+                  final eStr = "${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}";
 
-  // Format Helpers
-  String _formatMonthYear(DateTime dt) {
-    const months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-    return '${months[dt.month - 1]} ${dt.year}';
-  }
-
-  String _formatMonthDay(DateTime dt) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return '${months[dt.month - 1]} ${dDay(dt.day)}';
-  }
-
-  String _formatDayTitle(DateTime dt) {
-    const weekDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return '${weekDays[dt.weekday % 7]}, ${months[dt.month - 1]} ${dt.day}';
-  }
-
-  String dDay(int day) => day.toString();
-}
-
-class _WeekdayLabel extends StatelessWidget {
-  final String label;
-
-  const _WeekdayLabel(this.label);
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 38,
-      child: Text(
-        label,
-        textAlign: TextAlign.center,
-        style: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: Color(0xFF718096),
+                  final scaffoldMessenger = ScaffoldMessenger.of(context);
+                  Navigator.pop(ctx);
+                  try {
+                    await _leaveService.applyLeave(
+                      type: selectedType,
+                      startDate: sStr,
+                      endDate: eStr,
+                      reason: reasonCtrl.text.trim(),
+                      userId: widget.user?.userId.isNotEmpty == true ? widget.user!.userId : widget.user?.id,
+                    );
+                    if (mounted) {
+                      scaffoldMessenger.showSnackBar(
+                        const SnackBar(backgroundColor: Color(0xFF1B5E3F), content: Text('Leave request submitted successfully!')),
+                      );
+                      _loadAllBackendData();
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      scaffoldMessenger.showSnackBar(SnackBar(backgroundColor: Colors.red, content: Text('Error: $e')));
+                    }
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1B5E3F),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text('Submit Leave Request'),
+              ),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  /// Add Holiday Dialog
+  void _showAddHolidayDialog() {
+    final nameCtrl = TextEditingController();
+    DateTime holidayDate = DateTime.now().add(const Duration(days: 7));
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDlgState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('Add Company Holiday', style: TextStyle(fontWeight: FontWeight.w800)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Holiday Name *',
+                  hintText: 'e.g. Diwali Festival',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              const SizedBox(height: 14),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.calendar_today_rounded, size: 16),
+                label: Text("${holidayDate.year}-${holidayDate.month.toString().padLeft(2, '0')}-${holidayDate.day.toString().padLeft(2, '0')}"),
+                onPressed: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: holidayDate,
+                    firstDate: DateTime(DateTime.now().year - 1),
+                    lastDate: DateTime(DateTime.now().year + 2),
+                  );
+                  if (picked != null) setDlgState(() => holidayDate = picked);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () async {
+                if (nameCtrl.text.trim().isEmpty) return;
+                final scaffoldMessenger = ScaffoldMessenger.of(context);
+                final holidayTitle = nameCtrl.text.trim();
+
+                Navigator.pop(ctx);
+                try {
+                  await _calendarService.createEvent(
+                    user: widget.user ?? const UserModel(id: '', userId: '', username: '', name: '', role: 'staff', token: ''),
+                    event: CalendarEventModel(
+                      id: 'hol-${DateTime.now().millisecondsSinceEpoch}',
+                      title: holidayTitle,
+                      dateTime: holidayDate,
+                      time: 'All Day',
+                      category: 'Holiday',
+                    ),
+                  );
+                  if (mounted) {
+                    scaffoldMessenger.showSnackBar(
+                      SnackBar(backgroundColor: const Color(0xFF1B5E3F), content: Text('Holiday "$holidayTitle" added!')),
+                    );
+                    _loadAllBackendData();
+                  }
+                } catch (_) {}
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1B5E3F), foregroundColor: Colors.white),
+              child: const Text('Add'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getMonthName(int month) {
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    return months[(month - 1) % 12];
+  }
+
+  String _getDayOfWeekName(int weekday) {
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    return days[(weekday - 1) % 7];
   }
 }

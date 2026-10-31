@@ -1,4 +1,6 @@
+import '../../auth/presentation/login_screen.dart';
 import 'package:flutter/material.dart';
+import '../../../core/storage/session_storage.dart';
 import '../../../core/theme/celadon_colors.dart';
 import '../../attendance/presentation/attendance_view.dart';
 import '../../auth/data/user_model.dart';
@@ -61,6 +63,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _scaffoldKey.currentState?.openDrawer();
   }
 
+  Future<void> _handleLogout() async {
+    await SessionStorage.clearSession();
+    try {
+      widget.onLogout();
+    } catch (_) {}
+    if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -68,7 +83,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       backgroundColor: CeladonColors.background,
       drawer: AppDrawer(
         user: _currentUser,
-        onLogout: widget.onLogout,
+        onLogout: _handleLogout,
         onNavigateToTab: _navigateToTab,
         onOpenAttendance: _openAttendance,
         currentTabIndex: _currentTabIndex,
@@ -91,7 +106,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           // Tab 3: Profile / Sidebar View (Screen 7)
           ProfileView(
             user: _currentUser,
-            onLogout: widget.onLogout,
+            onLogout: _handleLogout,
             onNavigateToTab: _navigateToTab,
             onOpenAttendance: _openAttendance,
             onUserUpdated: (updatedUser) {
@@ -158,7 +173,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return SuperAdminDashboardView(
         user: _currentUser,
         onOpenDrawer: _openDrawer,
-        onLogout: widget.onLogout,
+        onLogout: _handleLogout,
         onNavigateToTab: _navigateToTab,
         onUserUpdated: (updatedUser) {
           setState(() => _currentUser = updatedUser);
@@ -171,7 +186,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return CompanyDashboardView(
         user: _currentUser,
         onOpenDrawer: _openDrawer,
-        onLogout: widget.onLogout,
+        onLogout: _handleLogout,
         onNavigateToTab: _navigateToTab,
         onUserUpdated: (updatedUser) {
           setState(() => _currentUser = updatedUser);
@@ -183,7 +198,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return EmployeeDashboardView(
       user: _currentUser,
       onOpenDrawer: _openDrawer,
-      onLogout: widget.onLogout,
+      onLogout: _handleLogout,
       onOpenAttendance: _openAttendance,
       onNavigateToTab: (index) {
         if (index == 2) {

@@ -75,12 +75,6 @@ class _LoginScreenState extends State<LoginScreen> {
             user: user,
             onLogout: () async {
               await _authController.logout();
-              if (mounted) {
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                  (route) => false,
-                );
-              }
             },
           ),
         ),

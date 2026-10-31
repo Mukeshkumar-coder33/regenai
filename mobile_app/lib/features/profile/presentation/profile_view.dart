@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/theme/celadon_colors.dart';
@@ -433,6 +433,44 @@ class _ProfileViewState extends State<ProfileView> {
     );
   }
 
+  void _confirmLogout(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.logout_rounded, color: CeladonColors.error),
+            SizedBox(width: 10),
+            Text('Confirm Logout', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+          ],
+        ),
+        content: const Text(
+          'Are you sure you want to log out of your ReGen account?',
+          style: TextStyle(color: CeladonColors.textSecondary, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel', style: TextStyle(color: CeladonColors.textSecondary, fontWeight: FontWeight.w600)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: CeladonColors.error,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              widget.onLogout();
+            },
+            child: const Text('Log Out', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _handleSwitchMode() async {
     setState(() => _isSwitching = true);
 
@@ -513,6 +551,34 @@ class _ProfileViewState extends State<ProfileView> {
                     const SizedBox(height: 18),
                     _buildWorkspaceModeCard(),
                   ],
+
+                  const SizedBox(height: 24),
+
+                  // Prominent Log Out Button
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _confirmLogout(context),
+                      icon: const Icon(Icons.logout_rounded, color: CeladonColors.error, size: 20),
+                      label: const Text(
+                        'Log Out of Account',
+                        style: TextStyle(
+                          color: CeladonColors.error,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Color(0xFFFCA5A5), width: 1.5),
+                        backgroundColor: const Color(0xFFFEF2F2),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                    ),
+                  ),
+
                   const SizedBox(height: 30),
                 ],
               ),
@@ -596,7 +662,15 @@ class _ProfileViewState extends State<ProfileView> {
                             ),
                           ),
                         ),
-                        const SizedBox(width: 48), // Balance hamburger icon
+                        IconButton(
+                          icon: const Icon(
+                            Icons.logout_rounded,
+                            color: Colors.white,
+                            size: 22,
+                          ),
+                          tooltip: 'Log Out',
+                          onPressed: () => _confirmLogout(context),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 12),

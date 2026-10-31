@@ -10,8 +10,8 @@ import '../../auth/data/user_model.dart';
 import '../../calendar/data/leave_service.dart';
 import '../../dashboard/data/dashboard_service.dart';
 import '../../dashboard/data/leave_model.dart';
-import '../../profile/presentation/app_drawer.dart';
 import '../../tasks/data/task_model.dart';
+import '../../tasks/presentation/tasks_view.dart';
 import '../data/company_model.dart';
 
 /// True Frosted Glassmorphism Company Workspace matching User Reference Mockups:
@@ -269,50 +269,45 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: const Color(0xFF031A14),
-      drawer: AppDrawer(
-        user: widget.user,
-        onLogout: () => widget.onLogout?.call(),
-        onNavigateToTab: (index) {
-          setState(() {
-            if (index == 0) _selectedBottomTab = 0;
-            if (index == 1) _selectedBottomTab = 0;
-            if (index == 2) _selectedBottomTab = 2;
-            if (index == 3) _selectedBottomTab = 4;
-          });
-        },
-        onOpenAttendance: () {
-          setState(() => _selectedBottomTab = 2);
-        },
-        currentTabIndex: _selectedBottomTab,
-      ),
+      drawer: _buildCompanyDrawer(),
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. Attached Corporate Dark Green Office Background (Exact User Image from Login)
-          Image.asset(
-            'assets/images/corporate_office_dark.jpg',
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) {
-              return Image.asset(
-                'assets/images/office_auth_portrait.png',
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) =>
-                    Container(color: const Color(0xFF031A14)),
-              );
-            },
+          // 1. Attached Corporate Dark Green Office Background with Gaussian Bokeh Blur
+          Positioned.fill(
+            child: ImageFiltered(
+              imageFilter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+              child: Transform.scale(
+                scale: 1.08,
+                child: Image.asset(
+                  'assets/images/corporate_office_dark.jpg',
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Image.asset(
+                      'assets/images/office_auth_portrait.png',
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) =>
+                          Container(color: const Color(0xFF031A14)),
+                    );
+                  },
+                ),
+              ),
+            ),
           ),
 
-          // 2. Translucent Ambient Lighting Preservation (Light, letting the room and plants show through!)
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  const Color(0xFF031A14).withValues(alpha: 0.18),
-                  const Color(0xFF06241C).withValues(alpha: 0.15),
-                  const Color(0xFF031A14).withValues(alpha: 0.42),
-                ],
+          // 2. High-Contrast Translucent Dark Ambient Lighting (Lush green office bokeh with crystal-clear text contrast)
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    const Color(0xFF021610).withValues(alpha: 0.65),
+                    const Color(0xFF04221A).withValues(alpha: 0.55),
+                    const Color(0xFF010E0A).withValues(alpha: 0.75),
+                  ],
+                ),
               ),
             ),
           ),
@@ -343,6 +338,539 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         ],
       ),
       bottomNavigationBar: _buildCompanyBottomNav(),
+    );
+  }
+
+  // ---------------------------------------------------------
+  // EXECUTIVE COMPANY DRAWER (Matches User Images 1 & 2)
+  // ---------------------------------------------------------
+  Widget _buildCompanyDrawer() {
+    final companyName = _company?.name ?? widget.user.companyName ?? 'krish Tech Computer';
+    final displayName = widget.user.name.isNotEmpty
+        ? widget.user.name
+        : (widget.user.username.isNotEmpty ? widget.user.username : 'Rithika K P');
+    final activeStaff = _attendance.length;
+    final totalStaff = _users.length;
+    final pendingLeavesCount = _leaves.where((l) => l.isPending).length;
+
+    final drawerWidth = (MediaQuery.of(context).size.width * 0.85).clamp(290.0, 360.0);
+
+    return SizedBox(
+      width: drawerWidth,
+      child: Drawer(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        child: ClipRRect(
+          borderRadius: const BorderRadius.horizontal(right: Radius.circular(24)),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // 1. Blurred Bokeh Office Background
+              ImageFiltered(
+                imageFilter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                child: Transform.scale(
+                  scale: 1.15,
+                  child: Image.asset(
+                    'assets/images/corporate_office_dark.jpg',
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) =>
+                        Image.asset('assets/images/office_auth_portrait.png', fit: BoxFit.cover),
+                  ),
+                ),
+              ),
+
+              // 2. High-Contrast Frosted Overlay
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      const Color(0xFF021610).withValues(alpha: 0.90),
+                      const Color(0xFF05271E).withValues(alpha: 0.88),
+                      const Color(0xFF010F0B).withValues(alpha: 0.95),
+                    ],
+                  ),
+                  border: Border(
+                    right: BorderSide(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.25),
+                      width: 1.2,
+                    ),
+                  ),
+                ),
+              ),
+
+              // 3. Drawer Safe Area Content
+              SafeArea(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Drawer Top Bar: Brand + Close (X)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 12, 12, 8),
+                      child: Row(
+                        children: [
+                          const BrandLogo(size: 26, borderRadius: 8),
+                          const SizedBox(width: 10),
+                          const Text(
+                            'ReGen',
+                            style: TextStyle(
+                              fontSize: 19,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                          const Spacer(),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 24),
+                            onPressed: () => Navigator.of(context).pop(),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // User Profile & Company Banner
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: _buildGlassCard(
+                        borderRadius: 18,
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(color: const Color(0xFF10B981), width: 2),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFF10B981).withValues(alpha: 0.4),
+                                    blurRadius: 10,
+                                  ),
+                                ],
+                              ),
+                              child: ClipOval(
+                                child: Image.asset(
+                                  'assets/images/profile_avatar_female.png',
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) => Container(
+                                    color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                                    child: Center(
+                                      child: Text(
+                                        displayName.isNotEmpty ? displayName[0].toUpperCase() : 'A',
+                                        style: const TextStyle(
+                                          color: Color(0xFF10B981),
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    displayName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '$companyName • Admin',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF6EE7B7),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 6),
+
+                    // Section Label
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                      child: Text(
+                        'COMPANY OPERATIONS',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.1,
+                          color: const Color(0xFF10B981).withValues(alpha: 0.9),
+                        ),
+                      ),
+                    ),
+
+                    // The 7 Operations List (Exact Match to User Image 2)
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                        children: [
+                          _buildCompanyMenuItem(
+                            icon: Icons.assignment_ind_outlined,
+                            title: 'Employee Management',
+                            subtitle: '$totalStaff registered team members',
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              setState(() => _selectedBottomTab = 1);
+                            },
+                          ),
+                          _buildCompanyMenuItem(
+                            icon: Icons.calendar_today_outlined,
+                            title: 'Attendance',
+                            subtitle: '$activeStaff logs recorded',
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              setState(() => _selectedBottomTab = 2);
+                            },
+                          ),
+                          _buildCompanyMenuItem(
+                            icon: Icons.assignment_outlined,
+                            title: 'Tasks',
+                            subtitle: '$_activeTasksCount open tasks in progress',
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => TasksView(
+                                    user: widget.user,
+                                    onBack: () => Navigator.of(context).pop(),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                          _buildCompanyMenuItem(
+                            icon: Icons.event_busy_outlined,
+                            title: 'Leaves & Holidays',
+                            subtitle: pendingLeavesCount > 0
+                                ? '$pendingLeavesCount pending • Review approvals'
+                                : 'Review leave approvals & company holidays',
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              setState(() => _selectedBottomTab = 3);
+                            },
+                          ),
+                          _buildCompanyMenuItem(
+                            icon: Icons.payments_outlined,
+                            title: 'Payroll',
+                            subtitle: 'Automated payroll processing & slips',
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              _showPayrollSheet();
+                            },
+                          ),
+                          _buildCompanyMenuItem(
+                            icon: Icons.bar_chart_rounded,
+                            title: 'Reports',
+                            subtitle: 'Workforce analytics & monthly summary',
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              _showAttendanceReportSheet();
+                            },
+                          ),
+                          _buildCompanyMenuItem(
+                            icon: Icons.settings_outlined,
+                            title: 'Settings',
+                            subtitle: 'Company profile & working hours configuration',
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              setState(() {
+                                _selectedBottomTab = 4;
+                                _selectedProfileSubTab = 2;
+                              });
+                            },
+                          ),
+                          if (widget.user.canSwitchToSuperAdmin) ...[
+                            const SizedBox(height: 8),
+                            _buildCompanyMenuItem(
+                              icon: Icons.admin_panel_settings_outlined,
+                              title: 'Super Admin Console',
+                              subtitle: 'Switch to Global Platform Management',
+                              highlightColor: const Color(0xFF6366F1),
+                              onTap: () {
+                                Navigator.of(context).pop();
+                                _handleSwitchToSuperAdmin();
+                              },
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+
+                    // Bottom Sign Out Button
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              _confirmLogout();
+                            },
+                            borderRadius: BorderRadius.circular(16),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEF4444).withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: const Color(0xFFEF4444).withValues(alpha: 0.35),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: const [
+                                  Icon(Icons.logout_rounded, color: Color(0xFFF87171), size: 18),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Sign Out',
+                                    style: TextStyle(
+                                      color: Color(0xFFF87171),
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompanyMenuItem({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    Color? highlightColor,
+  }) {
+    final accentColor = highlightColor ?? const Color(0xFF10B981);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF07241C).withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: accentColor.withValues(alpha: 0.25),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: accentColor.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: accentColor.withValues(alpha: 0.35),
+                        width: 1,
+                      ),
+                    ),
+                    child: Icon(icon, size: 20, color: accentColor),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF94A3B8),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: Color(0xFF64748B),
+                    size: 20,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showPayrollSheet() {
+    final totalStaff = _users.length;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF031A14),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Payroll & Compensation',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, color: Colors.white70),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _buildGlassCard(
+                borderRadius: 16,
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Active Pay Cycle',
+                          style: TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF10B981).withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                          ),
+                          child: const Text(
+                            'October 2026',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF34D399),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Eligible Employees',
+                          style: TextStyle(fontSize: 13, color: Colors.white70),
+                        ),
+                        Text(
+                          '$totalStaff Staff Members',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: const [
+                        Text('Automated Pay Slips', style: TextStyle(fontSize: 13, color: Colors.white70)),
+                        Text('Ready for Dispatch', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF34D399))),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      backgroundColor: Color(0xFF10B981),
+                      content: Text('Payroll batch processed & payslips generated successfully!'),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.receipt_long_rounded, size: 18),
+                label: const Text('Process Monthly Payroll & Slips', style: TextStyle(fontWeight: FontWeight.w700)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF10B981),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -640,17 +1168,6 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     const SizedBox(height: 1),
                     Row(
                       children: [
-                        const Text(
-                          'Employee Management',
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            color: Color(0xFF88A89A),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        const Text('•', style: TextStyle(color: Color(0xFF88A89A))),
-                        const SizedBox(width: 4),
                         Text(
                           '$_departmentCount',
                           style: const TextStyle(
@@ -659,7 +1176,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        const SizedBox(width: 3),
+                        const SizedBox(width: 4),
                         const Text(
                           'Departments',
                           style: TextStyle(
@@ -778,7 +1295,103 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
 
           // 4. Quick Operations Horizontal Bar
           _buildQuickOperationsBar(),
-          const SizedBox(height: 28),
+          const SizedBox(height: 22),
+
+          // 5. Operations & Modules List (Matching User Image 2 in Executive Glass UI)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Company Operations',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  letterSpacing: -0.3,
+                  shadows: [
+                    Shadow(offset: Offset(0, 1), blurRadius: 4, color: Colors.black45),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.28),
+                  ),
+                ),
+                child: const Text(
+                  '7 Modules',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF34D399),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          _buildCompanyMenuItem(
+            icon: Icons.assignment_ind_outlined,
+            title: 'Employee Management',
+            subtitle: '$totalStaff registered team members',
+            onTap: () => setState(() => _selectedBottomTab = 1),
+          ),
+          _buildCompanyMenuItem(
+            icon: Icons.calendar_today_outlined,
+            title: 'Attendance',
+            subtitle: '$activeStaff logs recorded',
+            onTap: () => setState(() => _selectedBottomTab = 2),
+          ),
+          _buildCompanyMenuItem(
+            icon: Icons.assignment_outlined,
+            title: 'Tasks',
+            subtitle: '$_activeTasksCount open tasks in progress',
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => TasksView(
+                    user: widget.user,
+                    onBack: () => Navigator.of(context).pop(),
+                  ),
+                ),
+              );
+            },
+          ),
+          _buildCompanyMenuItem(
+            icon: Icons.event_busy_outlined,
+            title: 'Leaves & Holidays',
+            subtitle: onLeaveCount > 0
+                ? '$onLeaveCount on leave • Review approvals'
+                : 'Review leave approvals & company holidays',
+            onTap: () => setState(() => _selectedBottomTab = 3),
+          ),
+          _buildCompanyMenuItem(
+            icon: Icons.payments_outlined,
+            title: 'Payroll',
+            subtitle: 'Automated payroll processing & slips',
+            onTap: _showPayrollSheet,
+          ),
+          _buildCompanyMenuItem(
+            icon: Icons.bar_chart_rounded,
+            title: 'Reports',
+            subtitle: 'Workforce analytics & monthly summary',
+            onTap: _showAttendanceReportSheet,
+          ),
+          _buildCompanyMenuItem(
+            icon: Icons.settings_outlined,
+            title: 'Settings',
+            subtitle: 'Company profile & working hours configuration',
+            onTap: () => setState(() {
+              _selectedBottomTab = 4;
+              _selectedProfileSubTab = 2;
+            }),
+          ),
+          const SizedBox(height: 32),
         ],
       ),
     );
@@ -2377,11 +2990,17 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             height: MediaQuery.of(context).size.height * 0.88,
             child: Stack(
               children: [
-                // Background image blur
+                // Background image with soft-focus bokeh blur
                 Positioned.fill(
-                  child: Image.asset(
-                    'assets/images/corporate_office_dark.jpg',
-                    fit: BoxFit.cover,
+                  child: ImageFiltered(
+                    imageFilter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                    child: Transform.scale(
+                      scale: 1.08,
+                      child: Image.asset(
+                        'assets/images/corporate_office_dark.jpg',
+                        fit: BoxFit.cover,
+                      ),
+                    ),
                   ),
                 ),
                 Positioned.fill(

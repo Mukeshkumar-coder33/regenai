@@ -273,19 +273,25 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. Attached Corporate Dark Office Background (Crisp, authentic photo matching Login & reference mockups)
+          // 1. Attached Corporate Dark Office Background with Light Photographic Bokeh Blur
           Positioned.fill(
-            child: Image.asset(
-              'assets/images/corporate_office_dark.jpg',
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Image.asset(
-                  'assets/images/office_auth_portrait.png',
+            child: ImageFiltered(
+              imageFilter: ImageFilter.blur(sigmaX: 4.5, sigmaY: 4.5),
+              child: Transform.scale(
+                scale: 1.04,
+                child: Image.asset(
+                  'assets/images/corporate_office_dark.jpg',
                   fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) =>
-                      Container(color: const Color(0xFF031A14)),
-                );
-              },
+                  errorBuilder: (context, error, stackTrace) {
+                    return Image.asset(
+                      'assets/images/office_auth_portrait.png',
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) =>
+                          Container(color: const Color(0xFF031A14)),
+                    );
+                  },
+                ),
+              ),
             ),
           ),
 
@@ -359,13 +365,19 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // 1. Office Background Texture (Natural photo matching theme)
+              // 1. Office Background Texture with Light Bokeh Blur
               Positioned.fill(
-                child: Image.asset(
-                  'assets/images/corporate_office_dark.jpg',
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) =>
-                      Image.asset('assets/images/office_auth_portrait.png', fit: BoxFit.cover),
+                child: ImageFiltered(
+                  imageFilter: ImageFilter.blur(sigmaX: 4.5, sigmaY: 4.5),
+                  child: Transform.scale(
+                    scale: 1.04,
+                    child: Image.asset(
+                      'assets/images/corporate_office_dark.jpg',
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) =>
+                          Image.asset('assets/images/office_auth_portrait.png', fit: BoxFit.cover),
+                    ),
+                  ),
                 ),
               ),
 
@@ -680,12 +692,26 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                color: const Color(0xFF0C1411).withValues(alpha: 0.70),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF11221A).withValues(alpha: 0.62),
+                    const Color(0xFF070F0B).withValues(alpha: 0.76),
+                  ],
+                ),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: accentColor.withValues(alpha: 0.18),
-                  width: 1,
+                  color: accentColor.withValues(alpha: 0.20),
+                  width: 1.0,
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.20),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
               ),
               child: Row(
                 children: [
@@ -877,7 +903,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     Widget card = ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
         child: Container(
           padding: padding ?? const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -885,22 +911,22 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                const Color(0xFF0D1713).withValues(alpha: 0.68),
-                const Color(0xFF08100C).withValues(alpha: 0.78),
-                const Color(0xFF030806).withValues(alpha: 0.86),
+                const Color(0xFF11221A).withValues(alpha: 0.62),
+                const Color(0xFF0A1611).withValues(alpha: 0.74),
+                const Color(0xFF040A07).withValues(alpha: 0.84),
               ],
             ),
             borderRadius: BorderRadius.circular(borderRadius),
             border: border ??
                 Border.all(
-                  color: const Color(0xFF10B981).withValues(alpha: 0.16),
+                  color: const Color(0xFF10B981).withValues(alpha: 0.22),
                   width: 1.0,
                 ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.35),
-                blurRadius: 18,
-                offset: const Offset(0, 6),
+                color: Colors.black.withValues(alpha: 0.30),
+                blurRadius: 16,
+                offset: const Offset(0, 5),
               ),
             ],
           ),
@@ -2974,11 +3000,17 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             height: MediaQuery.of(context).size.height * 0.88,
             child: Stack(
               children: [
-                // Background image (Crisp office photo)
+                // Background image with light photographic bokeh blur
                 Positioned.fill(
-                  child: Image.asset(
-                    'assets/images/corporate_office_dark.jpg',
-                    fit: BoxFit.cover,
+                  child: ImageFiltered(
+                    imageFilter: ImageFilter.blur(sigmaX: 4.5, sigmaY: 4.5),
+                    child: Transform.scale(
+                      scale: 1.04,
+                      child: Image.asset(
+                        'assets/images/corporate_office_dark.jpg',
+                        fit: BoxFit.cover,
+                      ),
+                    ),
                   ),
                 ),
                 Positioned.fill(

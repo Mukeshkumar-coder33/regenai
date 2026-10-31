@@ -76,24 +76,27 @@ class _SplashScreenState extends State<SplashScreen>
     if (!mounted) return;
 
     if (savedUser != null && savedUser.token.isNotEmpty) {
-      Navigator.of(context).pushReplacement(
+      Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (_) => DashboardScreen(
             user: savedUser,
             onLogout: () async {
               await SessionStorage.clearSession();
               if (mounted) {
-                Navigator.of(context).pushReplacement(
+                Navigator.of(context).pushAndRemoveUntil(
                   MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  (route) => false,
                 );
               }
             },
           ),
         ),
+        (route) => false,
       );
     } else {
-      Navigator.of(context).pushReplacement(
+      Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
       );
     }
   }

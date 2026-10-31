@@ -37,7 +37,8 @@ class UserModel {
   });
 
   /// Factory constructor to parse backend JSON response
-  factory UserModel.fromJson(Map<String, dynamic> json) {
+  factory UserModel.fromJson(Map<String, dynamic> json, {String? fallbackToken}) {
+    final tkn = (json['token'] ?? fallbackToken ?? '').toString();
     return UserModel(
       id: (json['_id'] ?? json['id'] ?? '').toString(),
       userId: (json['userId'] ?? '').toString(),
@@ -52,7 +53,7 @@ class UserModel {
       email: json['email']?.toString(),
       phone: json['phone']?.toString(),
       mustChangePassword: json['mustChangePassword'] == true,
-      token: (json['token'] ?? '').toString(),
+      token: tkn,
       authSource: json['authSource']?.toString(),
     );
   }
@@ -76,6 +77,42 @@ class UserModel {
       'token': token,
       'authSource': authSource,
     };
+  }
+
+  UserModel copyWith({
+    String? id,
+    String? userId,
+    String? username,
+    String? name,
+    String? role,
+    String? companyId,
+    String? company,
+    String? avatar,
+    String? department,
+    String? designation,
+    String? email,
+    String? phone,
+    bool? mustChangePassword,
+    String? token,
+    String? authSource,
+  }) {
+    return UserModel(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      username: username ?? this.username,
+      name: name ?? this.name,
+      role: role ?? this.role,
+      companyId: companyId ?? this.companyId,
+      company: company ?? this.company,
+      avatar: avatar ?? this.avatar,
+      department: department ?? this.department,
+      designation: designation ?? this.designation,
+      email: email ?? this.email,
+      phone: phone ?? this.phone,
+      mustChangePassword: mustChangePassword ?? this.mustChangePassword,
+      token: token ?? this.token,
+      authSource: authSource ?? this.authSource,
+    );
   }
 
   // Role resolution helpers

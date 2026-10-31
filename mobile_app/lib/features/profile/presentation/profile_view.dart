@@ -91,9 +91,9 @@ class _ProfileViewState extends State<ProfileView> {
 
   @override
   Widget build(BuildContext context) {
-    final displayName = _currentUser.name.isNotEmpty ? _currentUser.name : 'Priya Sharma';
+    final displayName = _currentUser.name.isNotEmpty ? _currentUser.name : (_currentUser.username.isNotEmpty ? _currentUser.username : 'User');
     final roleName = _currentUser.roleDisplayName;
-    final canSwitchMode = _currentUser.isSuperAdmin || _currentUser.role == 'owner';
+    final canSwitchMode = _currentUser.isSuperAdmin || _currentUser.canSwitchToSuperAdmin;
 
     return Scaffold(
       backgroundColor: CeladonColors.background,

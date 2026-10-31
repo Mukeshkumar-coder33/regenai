@@ -1,17 +1,26 @@
 import 'package:flutter/material.dart';
+import '../../../core/storage/session_storage.dart';
 import '../../../core/theme/celadon_colors.dart';
 import '../../attendance/presentation/attendance_view.dart';
 import '../../auth/data/user_model.dart';
+import '../../auth/presentation/login_screen.dart';
 import '../../calendar/presentation/calendar_view.dart';
 import '../../company/presentation/company_dashboard_view.dart';
 import '../../profile/presentation/profile_view.dart';
+import '../../superadmin/presentation/superadmin_dashboard_view.dart';
 import '../../tasks/presentation/tasks_view.dart';
 import 'employee_dashboard_view.dart';
 
 /// Role-Based Main App Shell with Bottom Navigation
 ///
+/// Dispatches the user to their designated dashboard experience:
+/// - Situation A (Employee / Staff): EmployeeDashboardView (Screen 3)
+/// - Situation B (Company Owner / Admin): CompanyDashboardView (Screen 8)
+/// - Situation C (Super Admin in Company Mode): CompanyDashboardView with Super Admin Switcher
+/// - Situation D (Global Super Admin): SuperAdminDashboardView with Platform Monitoring & EMS Switcher
+///
 /// Unifies the screens from the "8. Premium Celadon" design specification:
-/// - Tab 0: Home (Screen 3: Employee Dashboard or Screen 8: Company Dashboard)
+/// - Tab 0: Home (Role-based dashboard)
 /// - Tab 1: Tasks (Screen 6: Tasks Screen with priority filters & badges)
 /// - Tab 2: Calendar & Attendance (Screen 5: Calendar & Screen 4: Attendance)
 /// - Tab 3: Profile (Screen 7: Sidebar / Profile with SuperAdmin switcher & Logout)
@@ -47,6 +56,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
+  void _handleUserUpdated(UserModel updatedUser) {
+    setState(() {
+      _currentUser = updatedUser;
+    });
+  }
+
+  Future<void> _handleLogout() async {
+    widget.onLogout();
+    await SessionStorage.clearSession();
+    if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -54,7 +80,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       body: IndexedStack(
         index: _currentTabIndex,
         children: [
-          // Tab 0: Home View
+          // Tab 0: Role-Based Home View (Situation A, B, C, or D)
           _buildHomeView(),
 
           // Tab 1: Tasks View (Screen 6)
@@ -74,7 +100,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           // Tab 3: Profile / Sidebar View (Screen 7)
           ProfileView(
             user: _currentUser,
-            onLogout: widget.onLogout,
+            onLogout: _handleLogout,
             onNavigateToTab: (index) {
               if (index == 2) {
                 setState(() {
@@ -85,9 +111,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 _navigateToTab(index);
               }
             },
-            onUserUpdated: (updatedUser) {
-              setState(() => _currentUser = updatedUser);
-            },
+            onUserUpdated: _handleUserUpdated,
           ),
         ],
       ),
@@ -144,18 +168,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildHomeView() {
-    // If the user is a Company Owner/Admin or SuperAdmin, provide Company Dashboard
-    // with toggle option to preview Employee Dashboard
-    final isCompanyLeadership =
-        _currentUser.role == 'owner' || _currentUser.role == 'admin';
-
-    if (isCompanyLeadership) {
-      return CompanyDashboardView(
+    // Situation D: Global Super Admin Console (role == 'param')
+    if (_currentUser.isSuperAdmin) {
+      return SuperAdminDashboardView(
         user: _currentUser,
+        onUserUpdated: _handleUserUpdated,
         onNavigateToTab: _navigateToTab,
       );
     }
 
+    // Situation B & C: Company Owner or Admin Dashboard
+    // If Vyshwa (canSwitchToSuperAdmin), displays quick switch banner to ReGen Central
+    if (_currentUser.isCompanyAdmin) {
+      return CompanyDashboardView(
+        user: _currentUser,
+        onNavigateToTab: _navigateToTab,
+        onUserUpdated: _handleUserUpdated,
+      );
+    }
+
+    // Situation A: Regular Employee / Staff Dashboard
     return EmployeeDashboardView(
       user: _currentUser,
       onNavigateToTab: (index) {

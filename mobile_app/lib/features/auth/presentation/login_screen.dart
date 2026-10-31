@@ -7,16 +7,15 @@ import 'auth_controller.dart';
 
 /// ReGen Premium Celadon Login Screen
 ///
-/// Faithfully reproduces Screen 2 from the official design specification:
-/// - ReGen glowing emblem inside a rounded spruce badge
-/// - "ReGen" heading & "Sign in to continue" subtitle
-/// - Pill-shaped Email / Username field with mail icon
-/// - Pill-shaped Password field with lock icon and visibility toggle
-/// - "Remember me" checkbox and "Forgot Password?" link
-/// - Deep forest green "Login" pill button with loading spinner
-/// - "or continue with" divider and Social login icons (Google, Apple, Microsoft)
-/// - "Don't have an account? Sign Up" footer
-/// - Full connection to the Node.js/Express dual-sync backend
+/// Faithfully reproduces the live ReGen website login experience:
+/// - Official ReGen glowing emblem inside a rounded spruce badge
+/// - "ReGen" heading & "Access your ReGen account" subtitle
+/// - Pill-shaped Username / User ID input field
+/// - Pill-shaped Password field with visibility toggle
+/// - "Remember me" checkbox
+/// - Deep forest green "Login" pill button with loading indicator
+/// - Error handling for invalid credentials and server maintenance
+/// - Clean attribution footer
 class LoginScreen extends StatefulWidget {
   final AuthController? controller;
 
@@ -130,7 +129,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 6),
 
                       const Text(
-                        'Sign in to continue',
+                        'Access your ReGen account',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 14,
@@ -173,16 +172,16 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: 16),
                       ],
 
-                      // 3. Email / Username Input Field
+                      // 3. Username / User ID Input Field
                       _buildPillTextField(
                         controller: _usernameController,
-                        hintText: 'Email',
-                        prefixIcon: Icons.mail_outline_rounded,
+                        hintText: 'Username',
+                        prefixIcon: Icons.person_outline_rounded,
                         textInputAction: TextInputAction.next,
                         enabled: !_authController.isLoading,
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
-                            return 'Please enter your email or username';
+                            return 'Please enter your username';
                           }
                           return null;
                         },
@@ -221,90 +220,77 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 12),
 
-                      // 5. Remember Me & Forgot Password Row
+                      // 5. Remember Me Row
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        mainAxisAlignment: MainAxisAlignment.start,
                         children: [
-                          Row(
-                            children: [
-                              SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: Checkbox(
-                                  value: _rememberMe,
-                                  activeColor: CeladonColors.primary,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(5),
-                                  ),
-                                  side: const BorderSide(
-                                    color: CeladonColors.primary,
-                                    width: 1.5,
-                                  ),
-                                  onChanged: (val) {
-                                    setState(() => _rememberMe = val ?? true);
-                                  },
-                                ),
+                          SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: Checkbox(
+                              value: _rememberMe,
+                              activeColor: CeladonColors.primary,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(5),
                               ),
-                              const SizedBox(width: 8),
-                              const Text(
-                                'Remember me',
-                                style: TextStyle(
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w500,
-                                  color: CeladonColors.textPrimary,
-                                ),
-                              ),
-                            ],
-                          ),
-                          TextButton(
-                            onPressed: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Please contact your administrator to reset credentials.'),
-                                  backgroundColor: CeladonColors.primary,
-                                ),
-                              );
-                            },
-                            style: TextButton.styleFrom(
-                              padding: EdgeInsets.zero,
-                              minimumSize: Size.zero,
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                            child: const Text(
-                              'Forgot Password?',
-                              style: TextStyle(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w600,
+                              side: const BorderSide(
                                 color: CeladonColors.primary,
+                                width: 1.5,
                               ),
+                              onChanged: (val) {
+                                setState(() => _rememberMe = val ?? true);
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Remember me',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w500,
+                              color: CeladonColors.textPrimary,
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 24),
 
-                      // 6. Login Button
+                      // 6. Login Action Button
                       SizedBox(
                         height: 52,
                         child: ElevatedButton(
                           onPressed: _authController.isLoading ? null : _handleLogin,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: CeladonColors.primary,
+                            backgroundColor: CeladonColors.primaryDark,
                             foregroundColor: Colors.white,
-                            elevation: 0,
+                            elevation: 2,
+                            shadowColor: CeladonColors.primaryDark.withValues(alpha: 0.35),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(26),
+                              borderRadius: BorderRadius.circular(28),
                             ),
-                            shadowColor: const Color(0x332D6A4F),
                           ),
                           child: _authController.isLoading
-                              ? const SizedBox(
-                                  width: 22,
-                                  height: 22,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2.4,
-                                    color: Colors.white,
-                                  ),
+                              ? const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.2,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    SizedBox(width: 10),
+                                    Text(
+                                      'Verifying...',
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                        letterSpacing: 0.3,
+                                      ),
+                                    ),
+                                  ],
                                 )
                               : const Text(
                                   'Login',
@@ -316,98 +302,29 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                         ),
                       ),
-                      const SizedBox(height: 26),
+                      const SizedBox(height: 36),
 
-                      // 7. Divider: "or continue with"
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Container(
-                              height: 1,
-                              color: CeladonColors.divider,
-                            ),
-                          ),
-                          const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 14),
-                            child: Text(
-                              'or continue with',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                                color: CeladonColors.textMuted,
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            child: Container(
-                              height: 1,
-                              color: CeladonColors.divider,
-                            ),
-                          ),
-                        ],
+                      // 7. Footer Attribution
+                      const Text(
+                        'ReGen Enterprise Management System',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: CeladonColors.textMuted,
+                          letterSpacing: 0.2,
+                        ),
                       ),
-                      const SizedBox(height: 20),
-
-                      // 8. Social Login Row (Google, Apple, Microsoft)
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          _buildSocialButton(
-                            label: 'Google',
-                            icon: const _GoogleIcon(),
-                            onTap: () => _showSocialNotice('Google'),
-                          ),
-                          const SizedBox(width: 18),
-                          _buildSocialButton(
-                            label: 'Apple',
-                            icon: const Icon(
-                              Icons.apple,
-                              size: 26,
-                              color: Colors.black87,
-                            ),
-                            onTap: () => _showSocialNotice('Apple ID'),
-                          ),
-                          const SizedBox(width: 18),
-                          _buildSocialButton(
-                            label: 'Microsoft',
-                            icon: const _MicrosoftIcon(),
-                            onTap: () => _showSocialNotice('Microsoft 365'),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 28),
-
-                      // 9. Sign Up Footer Prompt
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Text(
-                            "Don't have an account? ",
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: CeladonColors.textSecondary,
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Employee accounts are provisioned by your company administrator.'),
-                                  backgroundColor: CeladonColors.primary,
-                                ),
-                              );
-                            },
-                            child: const Text(
-                              'Sign Up',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: CeladonColors.primary,
-                              ),
-                            ),
-                          ),
-                        ],
+                      const SizedBox(height: 6),
+                      const Text(
+                        'People • Process • Performance',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w400,
+                          color: CeladonColors.textMuted,
+                          letterSpacing: 0.4,
+                        ),
                       ),
                       const SizedBox(height: 12),
                     ],
@@ -417,15 +334,6 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  void _showSocialNotice(String provider) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$provider single sign-on is enabled for enterprise accounts.'),
-        backgroundColor: CeladonColors.primary,
       ),
     );
   }
@@ -494,83 +402,6 @@ class _LoginScreenState extends State<LoginScreen> {
           focusedErrorBorder: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         ),
-      ),
-    );
-  }
-
-  Widget _buildSocialButton({
-    required String label,
-    required Widget icon,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(22),
-        side: const BorderSide(
-          color: CeladonColors.border,
-          width: 1.2,
-        ),
-      ),
-      elevation: 0,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(22),
-        child: Container(
-          width: 58,
-          height: 50,
-          alignment: Alignment.center,
-          child: icon,
-        ),
-      ),
-    );
-  }
-}
-
-/// Custom colored Google "G" icon
-class _GoogleIcon extends StatelessWidget {
-  const _GoogleIcon();
-
-  @override
-  Widget build(BuildContext context) {
-    return const SizedBox(
-      width: 22,
-      height: 22,
-      child: Center(
-        child: Text(
-          'G',
-          style: TextStyle(
-            fontFamily: 'sans-serif',
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFFEA4335),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Custom 4-quadrant Microsoft icon
-class _MicrosoftIcon extends StatelessWidget {
-  const _MicrosoftIcon();
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 20,
-      height: 20,
-      child: GridView.count(
-        crossAxisCount: 2,
-        crossAxisSpacing: 2.5,
-        mainAxisSpacing: 2.5,
-        physics: const NeverScrollableScrollPhysics(),
-        children: const [
-          ColoredBox(color: Color(0xFFF25022)),
-          ColoredBox(color: Color(0xFF7FBA00)),
-          ColoredBox(color: Color(0xFF00A4EF)),
-          ColoredBox(color: Color(0xFFFFB900)),
-        ],
       ),
     );
   }

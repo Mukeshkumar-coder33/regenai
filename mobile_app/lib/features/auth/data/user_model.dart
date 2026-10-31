@@ -1,6 +1,6 @@
 /// ReGen Authenticated User Model
 ///
-/// Maps exactly to the JSON response returned by `POST /api/auth/login`.
+/// Maps exactly to the JSON response returned by `POST /api/auth/login` and `/api/users/me`.
 class UserModel {
   final String id;
   final String userId;
@@ -10,6 +10,10 @@ class UserModel {
   final String? companyId;
   final String? company;
   final String? avatar;
+  final String? department;
+  final String? designation;
+  final String? email;
+  final String? phone;
   final bool mustChangePassword;
   final String token;
   final String? authSource;
@@ -23,6 +27,10 @@ class UserModel {
     this.companyId,
     this.company,
     this.avatar,
+    this.department,
+    this.designation,
+    this.email,
+    this.phone,
     this.mustChangePassword = false,
     required this.token,
     this.authSource,
@@ -39,6 +47,10 @@ class UserModel {
       companyId: json['companyId']?.toString(),
       company: json['company']?.toString(),
       avatar: json['avatar']?.toString(),
+      department: json['department']?.toString(),
+      designation: json['designation']?.toString(),
+      email: json['email']?.toString(),
+      phone: json['phone']?.toString(),
       mustChangePassword: json['mustChangePassword'] == true,
       token: (json['token'] ?? '').toString(),
       authSource: json['authSource']?.toString(),
@@ -56,6 +68,10 @@ class UserModel {
       'companyId': companyId,
       'company': company,
       'avatar': avatar,
+      'department': department,
+      'designation': designation,
+      'email': email,
+      'phone': phone,
       'mustChangePassword': mustChangePassword,
       'token': token,
       'authSource': authSource,
@@ -65,7 +81,13 @@ class UserModel {
   // Role resolution helpers
   bool get isSuperAdmin => role == 'param';
   bool get isCompanyAdmin => role == 'owner' || role == 'admin';
-  bool get isEmployee => role == 'staff' || role == 'intern';
+  bool get isEmployee => role == 'staff' || role == 'intern' || role == 'freelancer';
+
+  /// Whether this user account is authorized to toggle into SuperAdmin console
+  bool get canSwitchToSuperAdmin =>
+      isSuperAdmin ||
+      username.toLowerCase() == 'vyshwa' ||
+      userId.toLowerCase() == 'vyshwa';
 
   String? get companyName => company;
 
@@ -79,10 +101,11 @@ class UserModel {
         return 'Company Admin';
       case 'intern':
         return 'Intern';
+      case 'freelancer':
+        return 'Contractor';
       case 'staff':
       default:
-        return 'Employee';
+        return designation?.isNotEmpty == true ? designation! : 'Employee';
     }
   }
 }
-

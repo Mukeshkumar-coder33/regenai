@@ -461,6 +461,9 @@ class _TeamDirectoryViewState extends State<TeamDirectoryView> {
                           fontWeight: FontWeight.w600,
                         ),
                         decoration: const InputDecoration(
+                          isDense: true,
+                          filled: true,
+                          fillColor: Colors.transparent,
                           hintText: 'Search by name or department...',
                           hintStyle: TextStyle(
                             color: Color(0xFF94A3B8),
@@ -468,7 +471,11 @@ class _TeamDirectoryViewState extends State<TeamDirectoryView> {
                             fontWeight: FontWeight.w500,
                           ),
                           border: InputBorder.none,
-                          isDense: true,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
+                          errorBorder: InputBorder.none,
+                          focusedErrorBorder: InputBorder.none,
                           contentPadding: EdgeInsets.symmetric(vertical: 12),
                         ),
                         onChanged: (val) {

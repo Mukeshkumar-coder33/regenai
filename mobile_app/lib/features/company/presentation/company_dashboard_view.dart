@@ -3216,12 +3216,16 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF22C55E),
+                    color: const Color(0xFF10B981),
                     borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: const Color(0xFF34D399).withValues(alpha: 0.30),
+                      width: 1.0,
+                    ),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF22C55E).withValues(alpha: 0.35),
-                        blurRadius: 8,
+                        color: Colors.black.withValues(alpha: 0.25),
+                        blurRadius: 6,
                         offset: const Offset(0, 2),
                       ),
                     ],
@@ -4789,6 +4793,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                         fontWeight: FontWeight.w600,
                       ),
                       decoration: InputDecoration(
+                        isDense: true,
+                        filled: true,
+                        fillColor: Colors.transparent,
                         hintText: hintText,
                         hintStyle: const TextStyle(
                           color: Color(0xFF94A3B8),
@@ -4796,7 +4803,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                           fontWeight: FontWeight.w500,
                         ),
                         border: InputBorder.none,
-                        isDense: true,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        focusedErrorBorder: InputBorder.none,
                         contentPadding: EdgeInsets.symmetric(vertical: maxLines == 1 ? 12 : 8),
                       ),
                     ),

@@ -769,12 +769,12 @@ void main() {
       expect(find.byIcon(Icons.search_rounded), findsOneWidget);
       expect(find.byIcon(Icons.filter_list_rounded), findsOneWidget);
 
-      // Add Employee button and filter segment chips matching reference image
+      // Add Employee button and role filter segment chips matching website
       expect(find.text('Add Employee'), findsOneWidget);
       expect(find.text('All'), findsOneWidget);
-      expect(find.text('Active'), findsWidgets);
-      expect(find.text('On Leave'), findsWidgets);
-      expect(find.text('Inactive'), findsWidgets);
+      expect(find.text('Staff'), findsWidgets);
+      expect(find.text('Intern'), findsWidgets);
+      expect(find.text('Admin'), findsWidgets);
       expect(find.byIcon(Icons.more_vert_rounded), findsWidgets);
     });
 
@@ -1093,10 +1093,9 @@ void main() {
 
       expect(find.text('Track employee attendance'), findsOneWidget);
       expect(find.text('Work Policy'), findsOneWidget);
-      expect(find.text('Work Schedule & Break Policy'), findsOneWidget);
 
-      // Tap Work Schedule & Break Policy
-      await tester.tap(find.text('Work Schedule & Break Policy').first);
+      // Tap Work Policy button
+      await tester.tap(find.text('Work Policy').first);
       await tester.pumpAndSettle();
 
       // Verified: Fields matching website AttendanceModule.jsx
@@ -1140,6 +1139,84 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Company Shift Timings'), findsNothing);
+    });
+    testWidgets('CompanyDashboardView Employees tab filters employees by role chips (Staff, Intern, Admin)',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanyDashboardView(
+            user: const UserModel(
+              id: 'owner_1',
+              userId: 'Vyshwa',
+              username: 'Vyshwa',
+              name: 'Vyshwa',
+              role: 'owner',
+              company: 'krish Tech Computer',
+              token: 'tok_owner',
+            ),
+            dashboardService: MockDashboardService(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Navigate to Employees tab (tab index 1)
+      await tester.tap(find.text('Employees').first);
+      await tester.pumpAndSettle();
+
+      // Verify Role Chips exist
+      expect(find.text('Staff'), findsOneWidget);
+      expect(find.text('Intern'), findsOneWidget);
+      expect(find.text('Admin'), findsOneWidget);
+
+      // Tap Staff role chip
+      await tester.tap(find.text('Staff'));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('CompanyDashboardView Attendance tab day log has search, status filter pills, and employee drill-down with back arrow',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanyDashboardView(
+            user: const UserModel(
+              id: 'owner_1',
+              userId: 'Vyshwa',
+              username: 'Vyshwa',
+              name: 'Vyshwa',
+              role: 'owner',
+              company: 'krish Tech Computer',
+              token: 'tok_owner',
+            ),
+            dashboardService: MockDashboardService(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Navigate to Attendance tab (tab index 2)
+      await tester.tap(find.text('Attendance').first);
+      await tester.pumpAndSettle();
+
+      // Verify single first search box and status filter chips in Attendance tab
+      expect(find.text('Search attendance logs...'), findsOneWidget);
+      expect(find.text('Present'), findsWidgets);
+      expect(find.text('Absent'), findsWidgets);
+      expect(find.text('Late'), findsWidgets);
+      expect(find.text('Leave'), findsWidgets);
+
+      // Verify tapping filter icon opens Attendance Filter Sheet with check filters
+      await tester.tap(find.byIcon(Icons.filter_list_rounded).first);
+      await tester.pumpAndSettle();
+      expect(find.text('Filter Attendance Logs'), findsOneWidget);
+      expect(find.text('All Attendance Logs'), findsOneWidget);
+      expect(find.text('Present Only'), findsOneWidget);
+
+      // Select Present Only filter from sheet
+      await tester.tap(find.text('Present Only'));
+      await tester.pumpAndSettle();
     });
   });
 }

@@ -49,11 +49,11 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
   final TextEditingController _staffIdCtrl = TextEditingController();
   final TextEditingController _aadhaarCtrl = TextEditingController();
   final TextEditingController _usernameCtrl = TextEditingController();
-  final TextEditingController _passwordCtrl = TextEditingController(text: '1234');
+  final TextEditingController _passwordCtrl = TextEditingController();
   final TextEditingController _firstNameCtrl = TextEditingController();
   final TextEditingController _lastNameCtrl = TextEditingController();
-  final TextEditingController _deptCtrl = TextEditingController(text: 'Engineering');
-  final TextEditingController _designationCtrl = TextEditingController(text: 'Software Developer');
+  final TextEditingController _deptCtrl = TextEditingController();
+  final TextEditingController _designationCtrl = TextEditingController();
   final TextEditingController _phoneCtrl = TextEditingController();
   final TextEditingController _addressCtrl = TextEditingController();
   final TextEditingController _salaryCtrl = TextEditingController();
@@ -82,25 +82,6 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
   void initState() {
     super.initState();
     _dashboardService = widget.dashboardService ?? DashboardService();
-
-    // Default joining date to today
-    final now = DateTime.now();
-    _joiningDateCtrl.text =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-
-    // Suggest a standard formatted Staff ID based on company
-    final compPrefix = (widget.company?.name.isNotEmpty == true
-            ? widget.company!.name.substring(0, 3).toUpperCase()
-            : 'EMP')
-        .replaceAll(RegExp(r'[^A-Z]'), 'KCT');
-    final suffix = (DateTime.now().millisecondsSinceEpoch % 100000).toString().padLeft(5, '0');
-    _staffIdCtrl.text = '$compPrefix-$suffix';
-
-    // Suggested DOB (25 years ago)
-    final defDob = DateTime(now.year - 24, 5, 15);
-    _dobCtrl.text =
-        '${defDob.year}-${defDob.month.toString().padLeft(2, '0')}-${defDob.day.toString().padLeft(2, '0')}';
-    _calculatedAge = _computeAge(defDob);
   }
 
   @override
@@ -248,6 +229,8 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
       'address': _addressCtrl.text.trim(),
       'salary': _salaryCtrl.text.trim().isNotEmpty ? _salaryCtrl.text.trim() : '0',
       'avatar': _customAvatarUrl!,
+      'profilePicture': _customAvatarUrl!,
+      'photo': _customAvatarUrl!,
       'company': widget.company?.id ?? widget.currentUser.company ?? '',
       'companyId': widget.company?.id ?? '',
     };
@@ -907,7 +890,7 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
                 child: _buildCompanyInputField(
                   controller: _passwordCtrl,
                   labelText: 'Password *',
-                  hintText: '1234',
+                  hintText: 'Enter password (min 4 chars)',
                   prefixIcon: Icons.lock_outline_rounded,
                   obscureText: true,
                 ),
@@ -916,7 +899,7 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
           ),
           const SizedBox(height: 4),
           const Text(
-            'Default password is 1234. Staff must change password after first login.',
+            'Staff will use this password for initial login and can update it anytime.',
             style: TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8)),
           ),
         ],
@@ -939,7 +922,7 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
                 child: _buildCompanyInputField(
                   controller: _firstNameCtrl,
                   labelText: 'First Name *',
-                  hintText: 'Priya',
+                  hintText: 'e.g. John',
                   prefixIcon: Icons.person_rounded,
                 ),
               ),
@@ -948,7 +931,7 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
                 child: _buildCompanyInputField(
                   controller: _lastNameCtrl,
                   labelText: 'Last Name *',
-                  hintText: 'Sharma',
+                  hintText: 'e.g. Doe',
                   prefixIcon: Icons.person_outline_rounded,
                 ),
               ),

@@ -96,6 +96,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
 
   DateTime _selectedCalendarDate = DateTime.now();
   DateTime _currentCalendarMonth = DateTime.now();
+  String _selectedDayLogFilter = 'all'; // 'all', 'present', 'absent', 'late', 'leave'
+  int _attendanceDayLogPage = 0;
+  _DayAttendanceRecord? _selectedEmployeeForDayLog;
   final TextEditingController _employeeSearchController = TextEditingController();
   String _employeeSearchQuery = '';
   final TextEditingController _attendanceSearchController = TextEditingController();
@@ -151,6 +154,15 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           _leaves = leaves;
           _workSchedule = schedule;
           _isLoading = false;
+          if (_company != null) {
+            final startDt = DateTime(_company!.startingYear, _company!.startingMonth, 1);
+            if (_currentCalendarMonth.isBefore(startDt)) {
+              _currentCalendarMonth = startDt;
+            }
+            if (_selectedCalendarDate.isBefore(startDt)) {
+              _selectedCalendarDate = startDt;
+            }
+          }
         });
       }
     } catch (e) {
@@ -367,7 +379,14 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     final nonAdminIds = _allNonAdminEmployees.map((u) => u.userId.toLowerCase()).toSet();
     final nonAdminUsernames = _allNonAdminEmployees.map((u) => u.username.toLowerCase()).toSet();
     return _attendance.where((a) {
-      if (a.date != todayStr) return false;
+      bool isToday = a.date.startsWith(todayStr);
+      if (!isToday) {
+        final parsed = DateTime.tryParse(a.date);
+        if (parsed != null && parsed.year == now.year && parsed.month == now.month && parsed.day == now.day) {
+          isToday = true;
+        }
+      }
+      if (!isToday) return false;
       if (_allNonAdminEmployees.isEmpty) return true;
       final uid = a.userId.toLowerCase();
       return nonAdminIds.contains(uid) || nonAdminUsernames.contains(uid);
@@ -495,6 +514,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   List<Map<String, dynamic>> get _weekTrendDays {
     final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     final now = DateTime.now();
+    final todayMidnight = DateTime(now.year, now.month, now.day);
     final dayOfWeek = (now.weekday - 1); // 0=Mon, 6=Sun
     final monday = DateTime(now.year, now.month, now.day - dayOfWeek);
 
@@ -504,6 +524,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     final result = <Map<String, dynamic>>[];
     for (int i = 0; i < 7; i++) {
       final date = monday.add(Duration(days: i));
+      final targetMidnight = DateTime(date.year, date.month, date.day);
+      final isFuture = targetMidnight.isAfter(todayMidnight);
+      final isToday = targetMidnight.isAtSameMomentAs(todayMidnight);
+      final isLeaveOrOff = _isNonWorkingOrLeave(date);
       final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
       final staffList = _getStaffActiveInMonth(date.year, date.month);
       final totalStaff = staffList.isNotEmpty ? staffList.length : (_totalStaffInYear > 0 ? _totalStaffInYear : 1);
@@ -526,8 +550,18 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         final uid = l.userId.toLowerCase();
         return nonAdminIds.contains(uid) || nonAdminUsernames.contains(uid);
       }).length;
-      final absentCount = (totalStaff - presentCount - leaveCount).clamp(0, totalStaff);
-      final rate = ((presentCount / totalStaff) * 100.0).clamp(0.0, 100.0);
+
+      // Real Data: Future days haven't occurred yet, so absentCount is 0.
+      // Holidays/weekly-off days also have 0 absentCount.
+      final int absentCount;
+      if (isFuture || isLeaveOrOff) {
+        absentCount = 0;
+      } else {
+        absentCount = (totalStaff - presentCount - leaveCount).clamp(0, totalStaff);
+      }
+      final rate = isFuture
+          ? 0.0
+          : ((presentCount / totalStaff) * 100.0).clamp(0.0, 100.0);
 
       result.add({
         'dayName': days[i],
@@ -538,6 +572,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         'absent': absentCount,
         'leave': leaveCount,
         'rate': rate,
+        'isFuture': isFuture,
+        'isToday': isToday,
         'logs': dayLogs,
         'staffList': staffList,
       });
@@ -884,11 +920,21 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   }
 
   AttendanceModel? _getEmployeeTodayAttendance(UserModel emp) {
+    final now = DateTime.now();
+    final todayStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
     final uid = (emp.userId.isNotEmpty ? emp.userId : emp.id).toLowerCase();
     final uname = emp.username.toLowerCase();
     for (final att in _attendance) {
       final aUid = att.userId.toLowerCase();
-      if (aUid == uid || aUid == uname) return att;
+      if (aUid != uid && aUid != uname) continue;
+      bool isToday = att.date.startsWith(todayStr);
+      if (!isToday) {
+        final parsed = DateTime.tryParse(att.date);
+        if (parsed != null && parsed.year == now.year && parsed.month == now.month && parsed.day == now.day) {
+          isToday = true;
+        }
+      }
+      if (isToday) return att;
     }
     return null;
   }
@@ -2552,6 +2598,12 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     final dateObj = day['date'] as DateTime;
     final employees = _getStaffActiveInMonth(dateObj.year, dateObj.month);
 
+    final now = DateTime.now();
+    final todayMidnight = DateTime(now.year, now.month, now.day);
+    final targetMidnight = DateTime(dateObj.year, dateObj.month, dateObj.day);
+    final isFutureDate = targetMidnight.isAfter(todayMidnight);
+    final isLeaveOrOff = _isNonWorkingOrLeave(dateObj);
+
     final presentEmployees = <UserModel>[];
     final lateEmployees = <UserModel>[];
     final leaveEmployees = <UserModel>[];
@@ -2573,7 +2625,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         }
       } else if (isOnLeave) {
         leaveEmployees.add(emp);
-      } else {
+      } else if (!isFutureDate && !isLeaveOrOff) {
+        // Real dynamic data: only past or today dates can have absent staff
         absentEmployees.add(emp);
       }
     }
@@ -2590,13 +2643,13 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             children: List.generate(7, (i) {
               final d = dayList[i];
               final dObj = d['date'] as DateTime;
-              final isLeaveOrOff = _isNonWorkingOrLeave(dObj);
-              final isSelected = i == _selectedWeekDayIndex && !isLeaveOrOff;
+              final isDayLeaveOrOff = _isNonWorkingOrLeave(dObj);
+              final isSelected = i == _selectedWeekDayIndex && !isDayLeaveOrOff;
               return Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 2),
                   child: InkWell(
-                    onTap: isLeaveOrOff
+                    onTap: isDayLeaveOrOff
                         ? null
                         : () => setState(() {
                               _selectedWeekDayIndex = i;
@@ -2608,19 +2661,19 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 7),
                       decoration: BoxDecoration(
-                        color: isLeaveOrOff
+                        color: isDayLeaveOrOff
                             ? const Color(0xFF7C3AED).withValues(alpha: 0.35)
                             : (isSelected
                                 ? const Color(0xFF10B981)
                                 : const Color(0xFF042F24).withValues(alpha: 0.5)),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: isLeaveOrOff
+                          color: isDayLeaveOrOff
                               ? const Color(0xFF8B5CF6).withValues(alpha: 0.65)
                               : (isSelected
                                   ? const Color(0xFF34D399)
                                   : Colors.white.withValues(alpha: 0.1)),
-                          width: (isSelected || isLeaveOrOff) ? 1.5 : 0.8,
+                          width: (isSelected || isDayLeaveOrOff) ? 1.5 : 0.8,
                         ),
                       ),
                       child: Column(
@@ -2629,19 +2682,19 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                             d['dayName'] as String,
                             style: TextStyle(
                               fontSize: 10,
-                              fontWeight: (isSelected || isLeaveOrOff) ? FontWeight.w800 : FontWeight.w600,
-                              color: isLeaveOrOff
+                              fontWeight: (isSelected || isDayLeaveOrOff) ? FontWeight.w800 : FontWeight.w600,
+                              color: isDayLeaveOrOff
                                   ? const Color(0xFFC4B5FD)
                                   : (isSelected ? Colors.white : const Color(0xFFCBD5E1)),
                             ),
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            isLeaveOrOff ? 'Off' : '${dObj.day}',
+                            isDayLeaveOrOff ? 'Off' : '${dObj.day}',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w800,
-                              color: isLeaveOrOff
+                              color: isDayLeaveOrOff
                                   ? const Color(0xFFE9D5FF)
                                   : (isSelected ? Colors.white : const Color(0xFFF1F5F9)),
                             ),
@@ -2681,16 +2734,32 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF10B981).withValues(alpha: 0.18),
+                  color: isLeaveOrOff
+                      ? const Color(0xFF7C3AED).withValues(alpha: 0.18)
+                      : (isFutureDate
+                          ? const Color(0xFF38BDF8).withValues(alpha: 0.18)
+                          : const Color(0xFF10B981).withValues(alpha: 0.18)),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.35)),
+                  border: Border.all(
+                    color: isLeaveOrOff
+                        ? const Color(0xFF8B5CF6).withValues(alpha: 0.40)
+                        : (isFutureDate
+                            ? const Color(0xFF38BDF8).withValues(alpha: 0.40)
+                            : const Color(0xFF34D399).withValues(alpha: 0.35)),
+                  ),
                 ),
                 child: Text(
-                  '${(day["rate"] as double).round()}% Attended',
-                  style: const TextStyle(
+                  isLeaveOrOff
+                      ? 'Holiday / Off'
+                      : (isFutureDate
+                          ? 'Scheduled / Upcoming'
+                          : '${(day["rate"] as double).round()}% Attended'),
+                  style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF34D399),
+                    color: isLeaveOrOff
+                        ? const Color(0xFFC4B5FD)
+                        : (isFutureDate ? const Color(0xFF38BDF8) : const Color(0xFF34D399)),
                   ),
                 ),
               ),
@@ -2706,6 +2775,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             leaveEmployees: leaveEmployees,
             dateStr: dateStr,
             periodContextLabel: '${day["dayName"]}, ${dateObj.day} ${_getMonthName(dateObj.month)}',
+            isFutureDate: isFutureDate,
           ),
         ],
       ),
@@ -2924,6 +2994,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     required List<UserModel> leaveEmployees,
     required String dateStr,
     required String periodContextLabel,
+    bool isFutureDate = false,
   }) {
     final presentCount = presentEmployees.length;
     final absentCount = absentEmployees.length;
@@ -2962,6 +3033,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             lateEmployees: lateEmployees,
             leaveEmployees: leaveEmployees,
             dateStr: dateStr,
+            isFutureDate: isFutureDate,
           ),
       ],
     );
@@ -3204,6 +3276,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     required List<UserModel> lateEmployees,
     required List<UserModel> leaveEmployees,
     required String dateStr,
+    bool isFutureDate = false,
   }) {
     List<UserModel> currentList;
     String statusLabel;
@@ -3228,12 +3301,16 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     }
 
     if (currentList.isEmpty) {
+      final emptyMsg = isFutureDate
+          ? 'This date is in the future. Attendance will be recorded when employees check in.'
+          : 'No employees categorized as $statusLabel on this date.';
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 14),
         child: Center(
           child: Text(
-            'No employees categorized as $statusLabel on this date.',
+            emptyMsg,
             style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 11.5),
+            textAlign: TextAlign.center,
           ),
         ),
       );
@@ -3819,18 +3896,25 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             const SizedBox(height: 10),
           ],
 
-          // Filter Segment Chips: [All] [Active] [On Leave] [Inactive]
-          Row(
-            children: [
-              Expanded(child: _buildSegmentChip('All', 0, _selectedEmployeeFilter, (idx) => setState(() => _selectedEmployeeFilter = idx))),
-              const SizedBox(width: 8),
-              Expanded(child: _buildSegmentChip('Active', 1, _selectedEmployeeFilter, (idx) => setState(() => _selectedEmployeeFilter = idx))),
-              const SizedBox(width: 8),
-              Expanded(child: _buildSegmentChip('On Leave', 2, _selectedEmployeeFilter, (idx) => setState(() => _selectedEmployeeFilter = idx))),
-              const SizedBox(width: 8),
-              Expanded(child: _buildSegmentChip('Inactive', 3, _selectedEmployeeFilter, (idx) => setState(() => _selectedEmployeeFilter = idx))),
-            ],
-          ),
+          // Role-Based Filter Chips: [All] [Staff] [Intern] [Admin]
+          Builder(builder: (context) {
+            final allCount = _users.length;
+            final staffCount = _users.where((u) => u.role.toLowerCase() == 'staff').length;
+            final internCount = _users.where((u) => u.role.toLowerCase() == 'intern').length;
+            final adminCount = _users.where((u) => u.role.toLowerCase() == 'admin').length;
+
+            return Row(
+              children: [
+                Expanded(child: _buildRoleSegmentChip('All', 'all', allCount)),
+                const SizedBox(width: 6),
+                Expanded(child: _buildRoleSegmentChip('Staff', 'staff', staffCount)),
+                const SizedBox(width: 6),
+                Expanded(child: _buildRoleSegmentChip('Intern', 'intern', internCount)),
+                const SizedBox(width: 6),
+                Expanded(child: _buildRoleSegmentChip('Admin', 'admin', adminCount)),
+              ],
+            );
+          }),
           const SizedBox(height: 14),
 
           // Employees List Cards (Image 1 Screen 3)
@@ -3923,7 +4007,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     );
   }
 
-  Widget _buildEmployeeAvatar(UserModel emp) {
+  Widget _buildEmployeeAvatar(UserModel emp, {double size = 44}) {
     final empName = emp.name.isNotEmpty ? emp.name : emp.username;
     final initial = empName.isNotEmpty ? empName[0].toUpperCase() : 'E';
 
@@ -3937,22 +4021,22 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           imageWidget = Image.memory(
             bytes,
             fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) => _buildAvatarFallback(empName, initial),
+            errorBuilder: (context, error, stackTrace) => _buildAvatarFallback(empName, initial, size: size),
           );
         } catch (_) {
-          imageWidget = _buildAvatarFallback(empName, initial);
+          imageWidget = _buildAvatarFallback(empName, initial, size: size);
         }
       } else {
         imageWidget = Image.network(
           emp.avatar!,
           fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) => _buildAvatarFallback(empName, initial),
+          errorBuilder: (context, error, stackTrace) => _buildAvatarFallback(empName, initial, size: size),
         );
       }
 
       return Container(
-        width: 44,
-        height: 44,
+        width: size,
+        height: size,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.35), width: 1.2),
@@ -3961,10 +4045,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       );
     }
 
-    return _buildAvatarFallback(empName, initial);
+    return _buildAvatarFallback(empName, initial, size: size);
   }
 
-  Widget _buildAvatarFallback(String name, String initial) {
+  Widget _buildAvatarFallback(String name, String initial, {double size = 44}) {
     final colorHash = name.hashCode.abs() % 4;
     final bgColors = [
       const Color(0xFF0E3D2F),
@@ -3982,8 +4066,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     final accent = accentColors[colorHash];
 
     return Container(
-      width: 44,
-      height: 44,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: bg,
@@ -4892,9 +4976,29 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   // TAB 2: ATTENDANCE TRACKER (Image 1, Screen 4)
   // ---------------------------------------------------------
   Widget _buildAttendanceTab() {
-    final activeStaff = _attendance.length;
-    final totalStaff = _allNonAdminEmployees.length;
-    final rate = totalStaff > 0 ? ((activeStaff / totalStaff) * 100).clamp(0, 100).round() : 100;
+    // If an employee was clicked in search or day logs, show full employee details view immediately
+    if (_selectedEmployeeForDayLog != null) {
+      return SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildDayEmployeeDetailView(_selectedEmployeeForDayLog!),
+            const SizedBox(height: 28),
+          ],
+        ),
+      );
+    }
+
+    final nonAdminStaff = _allNonAdminEmployees;
+    final totalStaff = nonAdminStaff.length;
+    // Dynamic real data from MongoDB for today (strictly today date & active check-in)
+    final todayPresentStaff = nonAdminStaff.where((u) {
+      final att = _getEmployeeTodayAttendance(u);
+      return att != null && (att.status.toLowerCase() == 'present' || att.status.toLowerCase() == 'late');
+    }).length;
+    final rate = totalStaff > 0 ? ((todayPresentStaff / totalStaff) * 100).clamp(0, 100).round() : 0;
 
     return SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -4968,79 +5072,79 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           ),
           const SizedBox(height: 12),
 
-          // Work Schedule & Break Policy Top Banner
-          InkWell(
-            onTap: _showWorkScheduleAndBreakPolicySheet,
-            borderRadius: BorderRadius.circular(14),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    const Color(0xFF0F4733).withValues(alpha: 0.65),
-                    const Color(0xFF07241A).withValues(alpha: 0.75),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: const Color(0xFF34D399).withValues(alpha: 0.35),
-                  width: 1.0,
-                ),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF10B981).withValues(alpha: 0.22),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(Icons.timer_outlined, size: 18, color: Color(0xFF34D399)),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Work Schedule & Break Policy',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                        Text(
-                          '${_workSchedule.shiftStart} - ${_workSchedule.shiftEnd} • ${_workSchedule.workingDaysPerWeek} Days/wk • ${_workSchedule.workingHoursPerDay}h • Lunch: ${_workSchedule.breakTime}m',
-                          style: const TextStyle(fontSize: 10.5, color: Color(0xFFBACCC3)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Icon(Icons.arrow_forward_ios_rounded, size: 12, color: Color(0xFF34D399)),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // Search Attendance Logs (Image 2 Design)
+          // First Search Box with Suffix Filter Icon (Image 2 Design)
           _buildCompanyTypingBox(
             controller: _attendanceSearchController,
             hintText: 'Search attendance logs...',
             prefixIcon: Icons.search_rounded,
-            onChanged: (val) => setState(() => _attendanceSearchQuery = val),
+            onChanged: (val) {
+              setState(() {
+                _attendanceSearchQuery = val;
+                _attendanceDayLogPage = 0;
+              });
+            },
+            suffixWidget: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_attendanceSearchQuery.isNotEmpty)
+                  GestureDetector(
+                    onTap: () {
+                      _attendanceSearchController.clear();
+                      setState(() {
+                        _attendanceSearchQuery = '';
+                        _attendanceDayLogPage = 0;
+                      });
+                    },
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 4),
+                      child: Icon(Icons.close_rounded, size: 18, color: Color(0xFFBACCC3)),
+                    ),
+                  ),
+                GestureDetector(
+                  onTap: _showAttendanceFilterSheet,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 4, right: 2),
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Icon(
+                          Icons.filter_list_rounded,
+                          size: 20,
+                          color: _selectedDayLogFilter != 'all' ? const Color(0xFF10B981) : const Color(0xFFCBD5E1),
+                        ),
+                        if (_selectedDayLogFilter != 'all')
+                          Positioned(
+                            top: -2,
+                            right: -2,
+                            child: Container(
+                              width: 7,
+                              height: 7,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF10B981),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
+
+          // Instant Search Results Card (Directly visible beneath search bar when typing)
+          if (_attendanceSearchQuery.trim().isNotEmpty) ...[
+            _buildAttendanceSearchResultsCard(),
+            const SizedBox(height: 12),
+          ],
 
           // 1. Calendar Month Card (Image 1 Screen 4)
           _buildMonthCalendarCard(),
           const SizedBox(height: 16),
 
-          // 2. Today's Attendance Progress Card (Image 1 Screen 4)
+          // 2. Today's Attendance Progress Card (Dynamic Real Data)
           _buildGlassCard(
             borderRadius: 22,
             padding: const EdgeInsets.all(18),
@@ -5061,7 +5165,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      '$activeStaff / $totalStaff Present',
+                      '$todayPresentStaff / $totalStaff Present',
                       style: const TextStyle(
                         fontSize: 13.5,
                         color: Color(0xFFBACCC3),
@@ -5082,7 +5186,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(6),
                   child: LinearProgressIndicator(
-                    value: totalStaff > 0 ? (activeStaff / totalStaff).clamp(0.0, 1.0) : 1.0,
+                    value: totalStaff > 0 ? (todayPresentStaff / totalStaff).clamp(0.0, 1.0) : 0.0,
                     minHeight: 8,
                     backgroundColor: Colors.white.withValues(alpha: 0.10),
                     valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
@@ -5093,38 +5197,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           ),
           const SizedBox(height: 16),
 
-          // Daily Attendance Roster Preview
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Logs for ${_formatHeaderDate(_selectedCalendarDate)}',
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white),
-              ),
-              InkWell(
-                onTap: _showAttendanceRosterSheet,
-                child: const Text('View All Logs →', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF34D399))),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-
-          Builder(builder: (context) {
-            final displayLogs = _attendanceSearchQuery.isNotEmpty
-                ? _attendance.where((a) =>
-                    a.userId.toLowerCase().contains(_attendanceSearchQuery.toLowerCase()) ||
-                    a.status.toLowerCase().contains(_attendanceSearchQuery.toLowerCase()) ||
-                    a.date.contains(_attendanceSearchQuery)
-                  ).toList()
-                : _attendance;
-
-            if (displayLogs.isEmpty) {
-              return _buildEmptyDarkState('No attendance logs match your search.');
-            }
-            return Column(
-              children: displayLogs.take(5).map((att) => _buildAttendanceLogTile(att)).toList(),
-            );
-          }),
+          // Day Attendance Logs with Status Filters, Search, 6-Item Pagination & Drilldown
+          _buildDayAttendanceLogsSection(),
 
           const SizedBox(height: 28),
         ],
@@ -5133,12 +5207,17 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   }
 
   Widget _buildMonthCalendarCard() {
+    final companyStartYear = _company?.startingYear ?? 2026;
+    final companyStartMonth = _company?.startingMonth ?? 8;
+    final companyStartDate = DateTime(companyStartYear, companyStartMonth, 1);
+
     final year = _currentCalendarMonth.year;
     final month = _currentCalendarMonth.month;
     final firstDayOfMonth = DateTime(year, month, 1);
     final daysInMonth = DateTime(year, month + 1, 0).day;
     final startWeekday = firstDayOfMonth.weekday % 7; // 0=Sun, 6=Sat
 
+    final canGoPrevMonth = _currentCalendarMonth.isAfter(companyStartDate);
     const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
     return _buildGlassCard(
@@ -5146,24 +5225,51 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       padding: const EdgeInsets.all(18),
       child: Column(
         children: [
-          // Month Navigation Row
+          // Month Navigation Row with Edit Date Picker
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               IconButton(
-                icon: const Icon(Icons.chevron_left_rounded, color: Colors.white, size: 22),
-                onPressed: () {
-                  setState(() {
-                    _currentCalendarMonth = DateTime(year, month - 1);
-                  });
-                },
+                icon: Icon(
+                  Icons.chevron_left_rounded,
+                  color: canGoPrevMonth ? Colors.white : Colors.white30,
+                  size: 22,
+                ),
+                onPressed: canGoPrevMonth
+                    ? () {
+                        setState(() {
+                          _currentCalendarMonth = DateTime(year, month - 1);
+                        });
+                      }
+                    : null,
               ),
-              Text(
-                _getMonthYearName(_currentCalendarMonth),
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
+              GestureDetector(
+                onTap: _showCalendarDatePickerDialog,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: const Color(0xFF34D399).withValues(alpha: 0.35),
+                      width: 0.8,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _getMonthYearName(_currentCalendarMonth),
+                        style: const TextStyle(
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      const Icon(Icons.edit_calendar_rounded, size: 15, color: Color(0xFF34D399)),
+                    ],
+                  ),
                 ),
               ),
               IconButton(
@@ -5261,7 +5367,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   ];
                 }
                 onTapAction = () {
-                  setState(() => _selectedCalendarDate = dayDate);
+                  setState(() {
+                    _selectedCalendarDate = dayDate;
+                    _attendanceDayLogPage = 0;
+                    _selectedEmployeeForDayLog = null;
+                  });
                 };
               }
 
@@ -7143,6 +7253,1076 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       ),
     );
   }
+
+
+  Widget _buildRoleSegmentChip(String label, String roleKey, int count) {
+    final isSelected = _selectedEmployeeRoleFilter == roleKey;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedEmployeeRoleFilter = roleKey),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Container(
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+            decoration: BoxDecoration(
+              color: isSelected ? const Color(0xFF10B981) : const Color(0xFF0C241B).withValues(alpha: 0.65),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isSelected ? const Color(0xFF10B981) : const Color(0xFF34D399).withValues(alpha: 0.18),
+                width: 1.0,
+              ),
+              boxShadow: isSelected
+                  ? [
+                      BoxShadow(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.35),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                      color: isSelected ? Colors.white : const Color(0xFFCBD5E1),
+                    ),
+                  ),
+                ),
+                if (count > 0) ...[
+                  const SizedBox(width: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: isSelected ? Colors.white.withValues(alpha: 0.25) : const Color(0xFF10B981).withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '$count',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: isSelected ? Colors.white : const Color(0xFF34D399),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showCalendarDatePickerDialog() async {
+    final companyStartYear = _company?.startingYear ?? 2026;
+    final companyStartMonth = _company?.startingMonth ?? 8;
+    final companyStartDate = DateTime(companyStartYear, companyStartMonth, 1);
+    final now = DateTime.now();
+    final maxDate = DateTime(now.year + 2, 12, 31);
+
+    final initial = _selectedCalendarDate.isBefore(companyStartDate)
+        ? companyStartDate
+        : (_selectedCalendarDate.isAfter(maxDate) ? maxDate : _selectedCalendarDate);
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: companyStartDate,
+      lastDate: maxDate,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: Color(0xFF10B981),
+              onPrimary: Colors.white,
+              surface: Color(0xFF0A2218),
+              onSurface: Colors.white,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _selectedCalendarDate = picked;
+        _currentCalendarMonth = DateTime(picked.year, picked.month, 1);
+        _attendanceDayLogPage = 0;
+        _selectedEmployeeForDayLog = null;
+      });
+    }
+  }
+
+  List<_DayAttendanceRecord> _computeDayAttendanceRecords(DateTime date) {
+    final dateIsoStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    final isNonWorking = _isNonWorkingDay(date);
+    final isLeaveDay = _isCompanyLeave(date);
+    final now = DateTime.now();
+    final todayMidnight = DateTime(now.year, now.month, now.day);
+    final targetMidnight = DateTime(date.year, date.month, date.day);
+    final isFuture = targetMidnight.isAfter(todayMidnight);
+
+    final List<_DayAttendanceRecord> records = [];
+
+    for (final emp in _allNonAdminEmployees) {
+      final attMatches = _attendance.where((a) {
+        final matchesUser = a.userId.toLowerCase() == emp.userId.toLowerCase() ||
+            a.userId.toLowerCase() == emp.username.toLowerCase();
+        if (!matchesUser) return false;
+        if (a.date.startsWith(dateIsoStr)) return true;
+        final parsed = DateTime.tryParse(a.date);
+        if (parsed != null && parsed.year == date.year && parsed.month == date.month && parsed.day == date.day) {
+          return true;
+        }
+        return false;
+      }).toList();
+
+      if (attMatches.isNotEmpty) {
+        final att = attMatches.first;
+        final isLate = att.status.toLowerCase() == 'late' ||
+            (att.checkIn != null && att.checkIn!.compareTo(_workSchedule.shiftStart) > 0);
+        final isAbsent = att.status.toLowerCase() == 'absent';
+
+        if (isAbsent) {
+          records.add(_DayAttendanceRecord(
+            employee: emp,
+            status: 'absent',
+            statusLabel: 'Absent',
+            attendance: att,
+            dateStr: dateIsoStr,
+          ));
+        } else if (isLate) {
+          records.add(_DayAttendanceRecord(
+            employee: emp,
+            status: 'late',
+            statusLabel: 'Late',
+            attendance: att,
+            checkIn: att.checkIn ?? '10:05 AM',
+            checkOut: att.checkOut ?? '06:30 PM',
+            dateStr: dateIsoStr,
+          ));
+        } else {
+          records.add(_DayAttendanceRecord(
+            employee: emp,
+            status: 'present',
+            statusLabel: 'Present',
+            attendance: att,
+            checkIn: att.checkIn ?? '09:20 AM',
+            checkOut: att.checkOut ?? '06:30 PM',
+            dateStr: dateIsoStr,
+          ));
+        }
+      } else {
+        final leaveMatches = _leaves.where((l) {
+          final matchesUser = l.userId.toLowerCase() == emp.userId.toLowerCase() ||
+              l.userId.toLowerCase() == emp.username.toLowerCase();
+          if (!matchesUser) return false;
+          return l.coversDate(dateIsoStr);
+        }).toList();
+
+        if (leaveMatches.isNotEmpty) {
+          final l = leaveMatches.first;
+          if (l.isApproved) {
+            records.add(_DayAttendanceRecord(
+              employee: emp,
+              status: 'leave',
+              statusLabel: 'Approved Leave',
+              leave: l,
+              dateStr: dateIsoStr,
+            ));
+          } else {
+            // Unapproved leave: if future date, mark pending; if past/today, absent
+            records.add(_DayAttendanceRecord(
+              employee: emp,
+              status: isFuture ? 'upcoming' : 'absent',
+              statusLabel: isFuture ? 'Pending Leave Request' : 'Absent (Unapproved Leave)',
+              leave: l,
+              dateStr: dateIsoStr,
+            ));
+          }
+        } else {
+          if (isNonWorking || isLeaveDay) {
+            records.add(_DayAttendanceRecord(
+              employee: emp,
+              status: 'off',
+              statusLabel: 'Weekly Off / Holiday',
+              dateStr: dateIsoStr,
+            ));
+          } else if (isFuture) {
+            records.add(_DayAttendanceRecord(
+              employee: emp,
+              status: 'upcoming',
+              statusLabel: 'Scheduled / Upcoming',
+              dateStr: dateIsoStr,
+            ));
+          } else {
+            records.add(_DayAttendanceRecord(
+              employee: emp,
+              status: 'absent',
+              statusLabel: 'Absent',
+              dateStr: dateIsoStr,
+            ));
+          }
+        }
+      }
+    }
+
+    return records;
+  }
+
+  // Search records matching employee name, role, dept, or status on the selected calendar date
+  List<_DayAttendanceRecord> _getSearchMatchingRecords() {
+    var records = _computeDayAttendanceRecords(_selectedCalendarDate);
+    if (_selectedDayLogFilter != 'all') {
+      records = records.where((r) => r.status == _selectedDayLogFilter).toList();
+    }
+    final q = _attendanceSearchQuery.trim().toLowerCase();
+    if (q.isEmpty) return records;
+    return records.where((r) {
+      final name = r.employee.name.toLowerCase();
+      final username = r.employee.username.toLowerCase();
+      final uid = r.employee.userId.toLowerCase();
+      final id = r.employee.id.toLowerCase();
+      final dept = (r.employee.department ?? '').toLowerCase();
+      final desig = (r.employee.designation ?? '').toLowerCase();
+      final status = r.status.toLowerCase();
+      final statusLabel = r.statusLabel.toLowerCase();
+      return name.contains(q) ||
+          username.contains(q) ||
+          uid.contains(q) ||
+          id.contains(q) ||
+          dept.contains(q) ||
+          desig.contains(q) ||
+          status.contains(q) ||
+          statusLabel.contains(q);
+    }).toList();
+  }
+
+  // Instant Search Results Card (Directly visible beneath search bar when typing)
+  Widget _buildAttendanceSearchResultsCard() {
+    final matchingRecords = _getSearchMatchingRecords();
+    return _buildGlassCard(
+      borderRadius: 18,
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Search Results (${matchingRecords.length})',
+                style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Colors.white),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.3)),
+                ),
+                child: Text(
+                  _formatHeaderDate(_selectedCalendarDate),
+                  style: const TextStyle(fontSize: 10.5, color: Color(0xFF34D399), fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Divider(color: Colors.white12, height: 1),
+          const SizedBox(height: 8),
+          if (matchingRecords.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              child: Center(
+                child: Text(
+                  'No employee found matching "$_attendanceSearchQuery" on this date.',
+                  style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 11.5),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            )
+          else
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: matchingRecords.length,
+              itemBuilder: (ctx, idx) => _buildDayAttendanceRecordTile(matchingRecords[idx]),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // Attendance Filter Sheet triggered from the first search box filter icon (100% overflow-safe on all phones)
+  void _showAttendanceFilterSheet() {
+    final allRecords = _computeDayAttendanceRecords(_selectedCalendarDate);
+    final presentCount = allRecords.where((r) => r.status == 'present').length;
+    final lateCount = allRecords.where((r) => r.status == 'late').length;
+    final absentCount = allRecords.where((r) => r.status == 'absent').length;
+    final leaveCount = allRecords.where((r) => r.status == 'leave').length;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final options = [
+          {'key': 'all', 'label': 'All Attendance Logs', 'count': allRecords.length, 'color': const Color(0xFF10B981), 'icon': Icons.list_alt_rounded},
+          {'key': 'present', 'label': 'Present Only', 'count': presentCount, 'color': const Color(0xFF10B981), 'icon': Icons.check_circle_outline_rounded},
+          {'key': 'absent', 'label': 'Absent Only', 'count': absentCount, 'color': const Color(0xFFEF4444), 'icon': Icons.cancel_outlined},
+          {'key': 'late', 'label': 'Late Arrivals', 'count': lateCount, 'color': const Color(0xFFF59E0B), 'icon': Icons.schedule_rounded},
+          {'key': 'leave', 'label': 'Approved Leaves', 'count': leaveCount, 'color': const Color(0xFF8B5CF6), 'icon': Icons.event_busy_rounded},
+        ];
+
+        final media = MediaQuery.of(ctx);
+        final maxHeight = media.size.height * 0.78;
+
+        return Container(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          decoration: BoxDecoration(
+            color: const Color(0xFF042018),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+            border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.35), width: 1.0),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Header (Pinned)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 16, 10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Filter Attendance Logs',
+                            style: TextStyle(
+                              fontSize: 16.5,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'For ${_formatHeaderDate(_selectedCalendarDate)}',
+                            style: const TextStyle(fontSize: 11.5, color: Color(0xFFBACCC3)),
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, color: Color(0xFFBACCC3), size: 20),
+                        onPressed: () => Navigator.pop(ctx),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(color: Colors.white12, height: 1),
+                // Options (Scrollable, never overflows on any device)
+                Flexible(
+                  child: SingleChildScrollView(
+                    physics: const ClampingScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: options.map((opt) {
+                        final key = opt['key'] as String;
+                        final isSelected = _selectedDayLogFilter == key;
+                        final optColor = opt['color'] as Color;
+                        final count = opt['count'] as int;
+                        final icon = opt['icon'] as IconData;
+
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: InkWell(
+                            onTap: () {
+                              setState(() {
+                                _selectedDayLogFilter = key;
+                                _attendanceDayLogPage = 0;
+                                _selectedEmployeeForDayLog = null;
+                              });
+                              Navigator.pop(ctx);
+                            },
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? optColor.withValues(alpha: 0.18)
+                                    : Colors.white.withValues(alpha: 0.04),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: isSelected ? optColor : Colors.white12,
+                                  width: isSelected ? 1.5 : 0.8,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(7),
+                                    decoration: BoxDecoration(
+                                      color: optColor.withValues(alpha: 0.20),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Icon(icon, color: optColor, size: 18),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      opt['label'] as String,
+                                      style: TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: optColor.withValues(alpha: 0.20),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Text(
+                                      '$count',
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: optColor,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  if (isSelected)
+                                    Icon(Icons.check_circle_rounded, color: optColor, size: 20)
+                                  else
+                                    const SizedBox(width: 20),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDayAttendanceLogsSection() {
+    if (_selectedEmployeeForDayLog != null) {
+      return _buildDayEmployeeDetailView(_selectedEmployeeForDayLog!);
+    }
+
+    final allRecords = _computeDayAttendanceRecords(_selectedCalendarDate);
+    final presentCount = allRecords.where((r) => r.status == 'present').length;
+    final lateCount = allRecords.where((r) => r.status == 'late').length;
+    final absentCount = allRecords.where((r) => r.status == 'absent').length;
+    final leaveCount = allRecords.where((r) => r.status == 'leave').length;
+
+    List<_DayAttendanceRecord> filtered = allRecords;
+    if (_selectedDayLogFilter == 'present') {
+      filtered = filtered.where((r) => r.status == 'present').toList();
+    } else if (_selectedDayLogFilter == 'late') {
+      filtered = filtered.where((r) => r.status == 'late').toList();
+    } else if (_selectedDayLogFilter == 'absent') {
+      filtered = filtered.where((r) => r.status == 'absent').toList();
+    } else if (_selectedDayLogFilter == 'leave') {
+      filtered = filtered.where((r) => r.status == 'leave').toList();
+    }
+
+    if (_attendanceSearchQuery.isNotEmpty) {
+      final q = _attendanceSearchQuery.toLowerCase();
+      filtered = filtered.where((r) {
+        return r.employee.name.toLowerCase().contains(q) ||
+            r.employee.username.toLowerCase().contains(q) ||
+            r.employee.userId.toLowerCase().contains(q) ||
+            (r.employee.department != null && r.employee.department!.toLowerCase().contains(q)) ||
+            (r.employee.designation != null && r.employee.designation!.toLowerCase().contains(q)) ||
+            r.statusLabel.toLowerCase().contains(q);
+      }).toList();
+    }
+
+    const int pageSize = 6;
+    final totalPages = (filtered.length / pageSize).ceil().clamp(1, 999);
+    final safePage = _attendanceDayLogPage.clamp(0, totalPages - 1);
+    final pagedList = filtered.skip(safePage * pageSize).take(pageSize).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Section Header
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Logs for ${_formatHeaderDate(_selectedCalendarDate)}',
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${allRecords.length} employees tracked on this day',
+                  style: const TextStyle(fontSize: 11.5, color: Color(0xFFBACCC3)),
+                ),
+              ],
+            ),
+            InkWell(
+              onTap: _showAttendanceRosterSheet,
+              child: const Text('View All Logs →', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF34D399))),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        // Filter Pills: [All] [Present] [Absent] [Late] [Leave]
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              _buildDayLogFilterChip('All', 'all', allRecords.length, const Color(0xFF10B981)),
+              const SizedBox(width: 6),
+              _buildDayLogFilterChip('Present', 'present', presentCount, const Color(0xFF10B981)),
+              const SizedBox(width: 6),
+              _buildDayLogFilterChip('Absent', 'absent', absentCount, const Color(0xFFEF4444)),
+              const SizedBox(width: 6),
+              _buildDayLogFilterChip('Late', 'late', lateCount, const Color(0xFFF59E0B)),
+              const SizedBox(width: 6),
+              _buildDayLogFilterChip('Leave', 'leave', leaveCount, const Color(0xFF8B5CF6)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // 6-Employee Paginated List
+        if (pagedList.isEmpty)
+          _buildEmptyDarkState('No employee records found for ${_selectedDayLogFilter.toUpperCase()} on this date.')
+        else ...[
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: pagedList.length,
+            itemBuilder: (ctx, idx) => _buildDayAttendanceRecordTile(pagedList[idx]),
+          ),
+          const SizedBox(height: 10),
+
+          // Pagination Controls
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Showing ${safePage * pageSize + 1} - ${(safePage + 1) * pageSize > filtered.length ? filtered.length : (safePage + 1) * pageSize} of ${filtered.length}',
+                style: const TextStyle(fontSize: 12, color: Color(0xFFBACCC3)),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left_rounded, color: Colors.white, size: 20),
+                    onPressed: safePage > 0
+                        ? () => setState(() => _attendanceDayLogPage = safePage - 1)
+                        : null,
+                  ),
+                  Text(
+                    '${safePage + 1} / $totalPages',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 20),
+                    onPressed: safePage < totalPages - 1
+                        ? () => setState(() => _attendanceDayLogPage = safePage + 1)
+                        : null,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildDayLogFilterChip(String label, String filterKey, int count, Color accentColor) {
+    final isSelected = _selectedDayLogFilter == filterKey;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedDayLogFilter = filterKey;
+          _attendanceDayLogPage = 0;
+          _selectedEmployeeForDayLog = null;
+        });
+      },
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: isSelected ? accentColor.withValues(alpha: 0.90) : const Color(0xFF0C241B).withValues(alpha: 0.65),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isSelected ? accentColor : const Color(0xFF34D399).withValues(alpha: 0.2),
+                width: 1.0,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                    color: isSelected ? Colors.white : const Color(0xFFCBD5E1),
+                  ),
+                ),
+                const SizedBox(width: 5),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: isSelected ? Colors.white.withValues(alpha: 0.25) : accentColor.withValues(alpha: 0.25),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '$count',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: isSelected ? Colors.white : accentColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDayAttendanceRecordTile(_DayAttendanceRecord r) {
+    final displayName = r.employee.name.isNotEmpty ? r.employee.name : r.employee.username;
+
+    Color badgeColor = const Color(0xFF10B981);
+    IconData statusIcon = Icons.check_circle_outline_rounded;
+    if (r.status == 'late') {
+      badgeColor = const Color(0xFFF59E0B);
+      statusIcon = Icons.schedule_rounded;
+    } else if (r.status == 'absent') {
+      badgeColor = const Color(0xFFEF4444);
+      statusIcon = Icons.cancel_outlined;
+    } else if (r.status == 'leave') {
+      badgeColor = const Color(0xFF8B5CF6);
+      statusIcon = Icons.event_busy_rounded;
+    } else if (r.status == 'off') {
+      badgeColor = const Color(0xFF8B5CF6);
+      statusIcon = Icons.weekend_rounded;
+    } else if (r.status == 'upcoming') {
+      badgeColor = const Color(0xFF38BDF8);
+      statusIcon = Icons.calendar_today_rounded;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        onTap: () => setState(() => _selectedEmployeeForDayLog = r),
+        borderRadius: BorderRadius.circular(16),
+        child: _buildGlassCard(
+          borderRadius: 16,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              _buildEmployeeAvatar(r.employee, size: 40),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            r.employee.role.toUpperCase(),
+                            style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: Color(0xFF34D399)),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      r.employee.department ?? r.employee.designation ?? 'Team Member',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 11, color: Color(0xFFBACCC3)),
+                    ),
+                    if (r.checkIn != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        'In: ${r.checkIn} • Out: ${r.checkOut ?? 'Active'}',
+                        style: const TextStyle(fontSize: 10.5, color: Color(0xFF6EE7B7)),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: badgeColor.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: badgeColor.withValues(alpha: 0.4)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(statusIcon, size: 12, color: badgeColor),
+                    const SizedBox(width: 4),
+                    Text(
+                      r.statusLabel,
+                      style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: badgeColor),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              const Icon(Icons.chevron_right_rounded, color: Color(0xFFBACCC3), size: 18),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDayEmployeeDetailView(_DayAttendanceRecord r) {
+    final displayName = r.employee.name.isNotEmpty ? r.employee.name : r.employee.username;
+
+    Color badgeColor = const Color(0xFF10B981);
+    IconData statusIcon = Icons.check_circle_outline_rounded;
+    if (r.status == 'late') {
+      badgeColor = const Color(0xFFF59E0B);
+      statusIcon = Icons.schedule_rounded;
+    } else if (r.status == 'absent') {
+      badgeColor = const Color(0xFFEF4444);
+      statusIcon = Icons.cancel_outlined;
+    } else if (r.status == 'leave') {
+      badgeColor = const Color(0xFF8B5CF6);
+      statusIcon = Icons.event_busy_rounded;
+    } else if (r.status == 'off') {
+      badgeColor = const Color(0xFF8B5CF6);
+      statusIcon = Icons.weekend_rounded;
+    } else if (r.status == 'upcoming') {
+      badgeColor = const Color(0xFF38BDF8);
+      statusIcon = Icons.calendar_today_rounded;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Back Navigation Bar
+        InkWell(
+          onTap: () => setState(() => _selectedEmployeeForDayLog = null),
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Icon(Icons.arrow_back_rounded, color: Color(0xFF34D399), size: 20),
+                SizedBox(width: 8),
+                Text(
+                  'Back to Attendance Logs',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF34D399),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // Full Detailed Profile Card
+        _buildGlassCard(
+          borderRadius: 22,
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Employee Header Row
+              Row(
+                children: [
+                  _buildEmployeeAvatar(r.employee, size: 56),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          displayName,
+                          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Colors.white),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          'ID: ${r.employee.userId} • @${r.employee.username}',
+                          style: const TextStyle(fontSize: 12, color: Color(0xFFBACCC3)),
+                        ),
+                        const SizedBox(height: 5),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF10B981).withValues(alpha: 0.18),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.3)),
+                              ),
+                              child: Text(
+                                r.employee.role.toUpperCase(),
+                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF34D399)),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: badgeColor.withValues(alpha: 0.18),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: badgeColor.withValues(alpha: 0.4)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(statusIcon, size: 11, color: badgeColor),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    r.statusLabel,
+                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: badgeColor),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              const Divider(color: Colors.white12, height: 1),
+              const SizedBox(height: 16),
+
+              // Date & Timing Grid
+              Text(
+                'Log Date: ${_formatHeaderDate(_selectedCalendarDate)}',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF6EE7B7)),
+              ),
+              const SizedBox(height: 12),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildDetailTile(
+                      'Check-In Time',
+                      r.checkIn ?? (r.status == 'present' ? '09:20 AM' : (r.status == 'late' ? '10:15 AM' : 'Not Recorded')),
+                      Icons.login_rounded,
+                      r.status == 'present' ? const Color(0xFF10B981) : (r.status == 'late' ? const Color(0xFFF59E0B) : const Color(0xFF94A3B8)),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _buildDetailTile(
+                      'Check-Out Time',
+                      r.checkOut ?? (r.status == 'present' || r.status == 'late' ? '06:30 PM' : 'Not Recorded'),
+                      Icons.logout_rounded,
+                      const Color(0xFF10B981),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildDetailTile(
+                      'Department',
+                      r.employee.department ?? 'Engineering',
+                      Icons.business_rounded,
+                      const Color(0xFF34D399),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _buildDetailTile(
+                      'Designation',
+                      r.employee.designation ?? 'Team Member',
+                      Icons.work_outline_rounded,
+                      const Color(0xFF34D399),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildDetailTile(
+                      'Contact Number',
+                      r.employee.phone ?? '+91 98765 43210',
+                      Icons.phone_rounded,
+                      const Color(0xFF38BDF8),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _buildDetailTile(
+                      'Shift Policy',
+                      '${_workSchedule.shiftStart} - ${_workSchedule.shiftEnd}',
+                      Icons.timer_outlined,
+                      const Color(0xFFA78BFA),
+                    ),
+                  ),
+                ],
+              ),
+
+              if (r.leave != null) ...[
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.35)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.event_note_rounded, size: 16, color: Color(0xFFA78BFA)),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Leave Details: ${r.leave!.displayType}',
+                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.white),
+                          ),
+                          const Spacer(),
+                          Text(
+                            r.leave!.status.toUpperCase(),
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w800,
+                              color: r.leave!.isApproved ? const Color(0xFF34D399) : const Color(0xFFEF4444),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Period: ${r.leave!.startDate} to ${r.leave!.endDate}',
+                        style: const TextStyle(fontSize: 11.5, color: Color(0xFFCBD5E1)),
+                      ),
+                      if (r.leave!.reason != null && r.leave!.reason!.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          'Reason: "${r.leave!.reason}"',
+                          style: const TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: Color(0xFFBACCC3)),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDetailTile(String label, String value, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF04100B).withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.25), width: 0.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 13, color: color),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8), fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.white),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 
@@ -7276,4 +8456,26 @@ class TeamAttendanceTrendChartPainter extends CustomPainter {
   bool shouldRepaint(covariant TeamAttendanceTrendChartPainter oldDelegate) {
     return oldDelegate.trendRates != trendRates || oldDelegate.selectedIndex != selectedIndex;
   }
+}
+
+class _DayAttendanceRecord {
+  final UserModel employee;
+  final String status; // 'present', 'late', 'absent', 'leave', 'off'
+  final String statusLabel; // 'Present', 'Late', 'Absent', 'Approved Leave', 'Weekly Off / Holiday'
+  final AttendanceModel? attendance;
+  final LeaveModel? leave;
+  final String? checkIn;
+  final String? checkOut;
+  final String dateStr;
+
+  const _DayAttendanceRecord({
+    required this.employee,
+    required this.status,
+    required this.statusLabel,
+    this.attendance,
+    this.leave,
+    this.checkIn,
+    this.checkOut,
+    required this.dateStr,
+  });
 }

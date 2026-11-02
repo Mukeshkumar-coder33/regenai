@@ -666,13 +666,14 @@ export default function CompanyModule({ userProfile }) {
 
             {/* Filter & Search Bar - No Create Project Button */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-secondary/40 p-3 sm:p-4 rounded-2xl border border-border">
-              <div className="relative flex-1 max-w-md">
-                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input
+              <div className="relative flex-1 max-w-md flex items-center h-[46px] px-3.5 rounded-[14px] bg-[#0A2218]/80 backdrop-blur-md border border-[#34D399]/30 shadow-md shadow-black/25">
+                <Search className="w-4 h-4 text-[#CBD5E1] shrink-0 mr-2.5" />
+                <input
+                  type="text"
                   value={projectSearch}
                   onChange={(e) => setProjectSearch(e.target.value)}
                   placeholder="Search company projects by name or description..."
-                  className="pl-9 h-10 rounded-xl bg-card border-border text-xs sm:text-sm"
+                  className="w-full bg-transparent border-0 outline-none text-white text-[13.5px] font-semibold placeholder:text-[#94A3B8] focus:ring-0"
                 />
               </div>
 

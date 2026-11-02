@@ -420,7 +420,7 @@ class _TeamDirectoryViewState extends State<TeamDirectoryView> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFF061A13),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -435,24 +435,58 @@ class _TeamDirectoryViewState extends State<TeamDirectoryView> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(
-                controller: _searchController,
-                autofocus: true,
-                decoration: InputDecoration(
-                  hintText: 'Search by name or department...',
-                  prefixIcon: const Icon(Icons.search_rounded, color: CeladonColors.primary),
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.clear_rounded),
-                    onPressed: () {
-                      _searchController.clear();
-                      setState(() => _searchQuery = '');
-                      Navigator.pop(context);
-                    },
+              Container(
+                height: 48,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0A2218).withValues(alpha: 0.70),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: const Color(0xFF34D399).withValues(alpha: 0.22),
+                    width: 1.0,
                   ),
                 ),
-                onChanged: (val) {
-                  setState(() => _searchQuery = val);
-                },
+                child: Row(
+                  children: [
+                    const Icon(Icons.search_rounded, color: Color(0xFFCBD5E1), size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: _searchController,
+                        autofocus: true,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        decoration: const InputDecoration(
+                          filled: true,
+                          fillColor: Colors.transparent,
+                          hintText: 'Search by name or department...',
+                          hintStyle: TextStyle(
+                            color: Color(0xFF94A3B8),
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                        ),
+                        onChanged: (val) {
+                          setState(() => _searchQuery = val);
+                        },
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.clear_rounded, color: Color(0xFFBACCC3)),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _searchQuery = '');
+                        Navigator.pop(context);
+                      },
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

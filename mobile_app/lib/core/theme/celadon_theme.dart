@@ -145,27 +145,27 @@ abstract final class CeladonTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        fillColor: Colors.transparent,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: CeladonColors.border, width: 1.2),
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0x3834D399), width: 1.0),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: CeladonColors.border, width: 1.2),
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0x3834D399), width: 1.0),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: CeladonColors.primary, width: 2),
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xFF34D399), width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: CeladonColors.error, width: 1.2),
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: CeladonColors.error, width: 1.0),
         ),
         hintStyle: const TextStyle(
-          color: CeladonColors.textMuted,
-          fontSize: 14,
+          color: Color(0xFF94A3B8),
+          fontSize: 13.5,
         ),
       ),
       dividerTheme: const DividerThemeData(

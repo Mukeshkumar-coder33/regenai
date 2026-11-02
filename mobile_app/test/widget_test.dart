@@ -10,6 +10,7 @@ import 'package:regen_mobile/features/auth/presentation/login_screen.dart';
 import 'package:regen_mobile/features/calendar/data/holiday_model.dart';
 import 'package:regen_mobile/features/calendar/presentation/calendar_view.dart';
 import 'package:regen_mobile/features/company/data/company_model.dart';
+import 'package:regen_mobile/features/company/presentation/add_employee_view.dart';
 import 'package:regen_mobile/features/company/presentation/company_dashboard_view.dart';
 import 'package:regen_mobile/features/dashboard/data/dashboard_service.dart';
 import 'package:regen_mobile/features/dashboard/data/leave_model.dart';
@@ -890,6 +891,118 @@ void main() {
       expect(find.text('Filter Employees'), findsOneWidget);
       expect(find.text('ROLE (FROM WEBSITE)'), findsOneWidget);
       expect(find.text('Apply Filters'), findsOneWidget);
+    });
+
+    testWidgets('CompanyDashboardView total employee count excludes company owner and admin',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanyDashboardView(
+            user: const UserModel(
+              id: 'owner_test',
+              userId: 'Vyshwa',
+              username: 'Vyshwa',
+              name: 'Vyshwa',
+              role: 'owner',
+              company: 'krish Tech Computer',
+              token: 'tok_owner',
+            ),
+            dashboardService: MockDashboardService(),
+            authService: MockAuthService(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Total Employees metric card should display '1' (only staff Eswaran M, excluding owner Vyshwa)
+      expect(find.text('Total Employees'), findsOneWidget);
+      expect(find.text('1'), findsWidgets);
+    });
+
+    testWidgets('CompanyDashboardView attendance trend has interactive Present, Absent, Late, Leave tabs and drill-down with back arrow',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanyDashboardView(
+            user: const UserModel(
+              id: 'owner_test',
+              userId: 'Vyshwa',
+              username: 'Vyshwa',
+              name: 'Vyshwa',
+              role: 'owner',
+              company: 'krish Tech Computer',
+              token: 'tok_owner',
+            ),
+            dashboardService: MockDashboardService(),
+            authService: MockAuthService(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Attendance trend interactive tabs should be present
+      expect(find.text('Present'), findsWidgets);
+      expect(find.text('Absent'), findsWidgets);
+      expect(find.text('Late'), findsWidgets);
+      expect(find.text('Leave'), findsWidgets);
+
+      // Scroll to reveal the Attendance Trend section
+      await tester.scrollUntilVisible(find.text('Employee Attendance Details'), 300);
+      await tester.pumpAndSettle();
+
+      // Tap on the Absent tab in the trend section where staff Eswaran M is located
+      await tester.tap(find.text('Absent').last);
+      await tester.pumpAndSettle();
+
+      // Verify employee is listed in Absent tab
+      expect(find.text('eswaran M'), findsOneWidget);
+
+      // Tap on the employee to drill down into details
+      await tester.tap(find.text('eswaran M'));
+      await tester.pumpAndSettle();
+
+      // Verified: Employee detail view opened with back arrow and details
+      expect(find.text('Employee Details'), findsOneWidget);
+      expect(find.text('Employee ID'), findsOneWidget);
+      expect(find.text('Phone Number'), findsOneWidget);
+      expect(find.text('Check-In Time'), findsOneWidget);
+      expect(find.text('Check-Out Time'), findsOneWidget);
+
+      // Tap the back arrow to return to list
+      await tester.tap(find.byIcon(Icons.arrow_back_rounded));
+      await tester.pumpAndSettle();
+
+      // Verified returned to roster list
+      expect(find.text('Employee Details'), findsNothing);
+      expect(find.text('eswaran M'), findsOneWidget);
+    });
+
+    testWidgets('AddEmployeeView requires mandatory profile photo',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: AddEmployeeView(
+            currentUser: UserModel(
+              id: 'owner_test',
+              userId: 'Vyshwa',
+              username: 'Vyshwa',
+              name: 'Vyshwa',
+              role: 'owner',
+              company: 'krish Tech Computer',
+              token: 'tok_owner',
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Verified: Photo upload card with mandatory indicator
+      expect(find.text('Profile Picture'), findsOneWidget);
+      expect(find.text('⚠️ Photo Upload Mandatory *'), findsOneWidget);
+      expect(find.text('Register Employee'), findsOneWidget);
     });
   });
 }

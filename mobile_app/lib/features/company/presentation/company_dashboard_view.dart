@@ -88,6 +88,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   int _selectedWeekDayIndex = (DateTime.now().weekday - 1).clamp(0, 6); // 0=Mon, 6=Sun
   int _selectedMonthIndex = DateTime.now().month; // 1=Jan .. 12=Dec
   int _selectedMonthWeekIndex = 0; // 0=Week 1, 1=Week 2, 2=Week 3, 3=Week 4
+  String _selectedTrendStatusTab = 'present'; // 'present', 'absent', 'late', 'leave'
+  UserModel? _selectedTrendDetailEmployee;
+  int _trendListPaginationCount = 3;
+  bool _isTrendViewAll = false;
 
   DateTime _selectedCalendarDate = DateTime.now();
   DateTime _currentCalendarMonth = DateTime.now();
@@ -244,8 +248,18 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     );
   }
 
+  bool _isStaffEmployee(UserModel u) {
+    final r = u.role.toLowerCase().trim();
+    return r != 'owner' && r != 'admin' && r != 'param';
+  }
+
+  List<UserModel> get _allNonAdminEmployees {
+    return _users.where(_isStaffEmployee).toList();
+  }
+
   int get _departmentCount {
-    final depts = _users
+    final staff = _allNonAdminEmployees.isNotEmpty ? _allNonAdminEmployees : _users;
+    final depts = staff
         .map((u) => u.department?.trim())
         .where((d) => d != null && d.isNotEmpty)
         .toSet();
@@ -262,7 +276,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       return _company!.startingYear;
     }
     int start = DateTime.now().year;
-    for (final u in _users) {
+    final staff = _allNonAdminEmployees.isNotEmpty ? _allNonAdminEmployees : _users;
+    for (final u in staff) {
       final yr = u.joinedDate.year;
       if (yr >= 1990 && yr < start) {
         start = yr;
@@ -277,7 +292,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       return _company!.startingMonth;
     }
     int minM = 12;
-    for (final u in _users) {
+    final staff = _allNonAdminEmployees.isNotEmpty ? _allNonAdminEmployees : _users;
+    for (final u in staff) {
       if (u.joinedDate.year == _companyStartingYear && u.joinedDate.month < minM) {
         minM = u.joinedDate.month;
       }
@@ -297,13 +313,14 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   // Dynamic monthly staff accumulation:
   // "if one employee joined on june means then consider that one employee after addition of next employee then consider the next one"
   List<UserModel> _getStaffActiveInMonth(int year, int month) {
-    final list = _users.where((u) {
+    final staff = _allNonAdminEmployees.isNotEmpty ? _allNonAdminEmployees : _users;
+    final list = staff.where((u) {
       final j = u.joinedDate;
       if (j.year < year) return true;
       if (j.year == year && j.month <= month) return true;
       return false;
     }).toList();
-    return list.isNotEmpty ? list : _users;
+    return list;
   }
 
   List<int> get _availableYears {
@@ -320,15 +337,17 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
 
   // Active employees in selectedYear (joined on or before selectedYear)
   List<UserModel> get _employeesInSelectedYear {
-    final list = _users.where((u) => u.joinedDate.year <= _selectedYear).toList();
-    return list.isNotEmpty ? list : _users;
+    final staff = _allNonAdminEmployees.isNotEmpty ? _allNonAdminEmployees : _users;
+    final list = staff.where((u) => u.joinedDate.year <= _selectedYear).toList();
+    return list;
   }
 
   int get _totalStaffInYear => _employeesInSelectedYear.length;
 
   // Joined strictly in selectedYear
   int get _joinedInSelectedYear {
-    return _users.where((u) => u.joinedDate.year == _selectedYear).length;
+    final staff = _allNonAdminEmployees.isNotEmpty ? _allNonAdminEmployees : _users;
+    return staff.where((u) => u.joinedDate.year == _selectedYear).length;
   }
 
   int get _departmentCountInYear {
@@ -340,11 +359,18 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     return _departmentCount;
   }
 
-  // Today's attendance logs from MongoDB
+  // Today's attendance logs from MongoDB (strictly staff employees, excluding owner/admin)
   List<AttendanceModel> get _todayAttendanceLogs {
     final now = DateTime.now();
     final todayStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    return _attendance.where((a) => a.date == todayStr).toList();
+    final nonAdminIds = _allNonAdminEmployees.map((u) => u.userId.toLowerCase()).toSet();
+    final nonAdminUsernames = _allNonAdminEmployees.map((u) => u.username.toLowerCase()).toSet();
+    return _attendance.where((a) {
+      if (a.date != todayStr) return false;
+      if (_allNonAdminEmployees.isEmpty) return true;
+      final uid = a.userId.toLowerCase();
+      return nonAdminIds.contains(uid) || nonAdminUsernames.contains(uid);
+    }).toList();
   }
 
   int get _todayPresentCount {
@@ -413,12 +439,15 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     return ((_yearAttendedCount / totalPossible) * 100).round().clamp(0, 100);
   }
 
-  // 1. Week Trend Data: 7 days (Mon-Sun) with dynamic staff count
+  // 1. Week Trend Data: 7 days (Mon-Sun) with dynamic staff count (strictly non-admin)
   List<Map<String, dynamic>> get _weekTrendDays {
     final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     final now = DateTime.now();
     final dayOfWeek = (now.weekday - 1); // 0=Mon, 6=Sun
     final monday = DateTime(now.year, now.month, now.day - dayOfWeek);
+
+    final nonAdminIds = _allNonAdminEmployees.map((u) => u.userId.toLowerCase()).toSet();
+    final nonAdminUsernames = _allNonAdminEmployees.map((u) => u.username.toLowerCase()).toSet();
 
     final result = <Map<String, dynamic>>[];
     for (int i = 0; i < 7; i++) {
@@ -427,13 +456,24 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       final staffList = _getStaffActiveInMonth(date.year, date.month);
       final totalStaff = staffList.isNotEmpty ? staffList.length : (_totalStaffInYear > 0 ? _totalStaffInYear : 1);
 
-      final dayLogs = _attendance.where((a) => a.date == dateStr).toList();
+      final dayLogs = _attendance.where((a) {
+        if (a.date != dateStr) return false;
+        if (_allNonAdminEmployees.isEmpty) return true;
+        final uid = a.userId.toLowerCase();
+        return nonAdminIds.contains(uid) || nonAdminUsernames.contains(uid);
+      }).toList();
+
       final presentCount = dayLogs.where((a) {
         final st = a.status.toLowerCase();
         return st == 'present' || st == 'late';
       }).length;
       final lateCount = dayLogs.where((a) => a.status.toLowerCase() == 'late').length;
-      final leaveCount = _leaves.where((l) => l.isApproved && l.coversDate(dateStr)).length;
+      final leaveCount = _leaves.where((l) {
+        if (!l.isApproved || !l.coversDate(dateStr)) return false;
+        if (_allNonAdminEmployees.isEmpty) return true;
+        final uid = l.userId.toLowerCase();
+        return nonAdminIds.contains(uid) || nonAdminUsernames.contains(uid);
+      }).length;
       final absentCount = (totalStaff - presentCount - leaveCount).clamp(0, totalStaff);
       final rate = ((presentCount / totalStaff) * 100.0).clamp(0.0, 100.0);
 
@@ -460,6 +500,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     final staffList = _getStaffActiveInMonth(_selectedYear, targetMonth);
     final totalStaff = staffList.isNotEmpty ? staffList.length : (_totalStaffInYear > 0 ? _totalStaffInYear : 1);
 
+    final nonAdminIds = _allNonAdminEmployees.map((u) => u.userId.toLowerCase()).toSet();
+    final nonAdminUsernames = _allNonAdminEmployees.map((u) => u.username.toLowerCase()).toSet();
+
     final weeks = [
       {'name': 'Week 1', 'start': 1, 'end': 7},
       {'name': 'Week 2', 'start': 8, 'end': 14},
@@ -478,7 +521,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         final parts = a.date.split('-');
         if (parts.length != 3) return false;
         final dayPart = int.tryParse(parts[2]) ?? 0;
-        return dayPart >= start && dayPart <= end;
+        if (dayPart < start || dayPart > end) return false;
+        if (_allNonAdminEmployees.isEmpty) return true;
+        final uid = a.userId.toLowerCase();
+        return nonAdminIds.contains(uid) || nonAdminUsernames.contains(uid);
       }).toList();
 
       final present = weekLogs.where((a) => a.status.toLowerCase() == 'present').length;
@@ -487,6 +533,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
 
       final weekLeaveCount = _leaves.where((l) {
         if (!l.isApproved) return false;
+        if (_allNonAdminEmployees.isNotEmpty) {
+          final uid = l.userId.toLowerCase();
+          if (!nonAdminIds.contains(uid) && !nonAdminUsernames.contains(uid)) return false;
+        }
         for (int d = start; d <= end; d++) {
           final dStr = '$_selectedYear-$mStr-${d.toString().padLeft(2, '0')}';
           if (l.coversDate(dStr)) return true;
@@ -890,7 +940,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         ? widget.user.name
         : (widget.user.username.isNotEmpty ? widget.user.username : 'Rithika K P');
     final activeStaff = _attendance.length;
-    final totalStaff = _users.length;
+    final totalStaff = _allNonAdminEmployees.length;
     final pendingLeavesCount = _leaves.where((l) => l.isPending).length;
 
     final drawerWidth = (MediaQuery.of(context).size.width * 0.85).clamp(290.0, 360.0);
@@ -1309,7 +1359,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   }
 
   void _showPayrollSheet() {
-    final totalStaff = _users.length;
+    final totalStaff = _allNonAdminEmployees.length;
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF031A14),
@@ -2450,11 +2500,33 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     final day = dayList[_selectedWeekDayIndex.clamp(0, 6)];
     final dateStr = day['dateStr'] as String;
     final dateObj = day['date'] as DateTime;
-    final present = day['present'] as int;
-    final absent = day['absent'] as int;
-    final late = day['late'] as int;
-    final leave = day['leave'] as int;
     final employees = _getStaffActiveInMonth(dateObj.year, dateObj.month);
+
+    final presentEmployees = <UserModel>[];
+    final lateEmployees = <UserModel>[];
+    final leaveEmployees = <UserModel>[];
+    final absentEmployees = <UserModel>[];
+
+    for (final emp in employees) {
+      final att = _getEmployeeAttendanceOnDate(emp, dateStr);
+      final isOnLeave = _leaves.any((l) =>
+          l.isApproved &&
+          l.coversDate(dateStr) &&
+          (l.userId == emp.userId || l.userId == emp.id || l.userId == emp.username));
+
+      if (att != null) {
+        final st = att.status.toLowerCase();
+        if (st == 'late') {
+          lateEmployees.add(emp);
+        } else {
+          presentEmployees.add(emp);
+        }
+      } else if (isOnLeave) {
+        leaveEmployees.add(emp);
+      } else {
+        absentEmployees.add(emp);
+      }
+    }
 
     return _buildGlassCard(
       borderRadius: 20,
@@ -2473,7 +2545,12 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 2),
                   child: InkWell(
-                    onTap: () => setState(() => _selectedWeekDayIndex = i),
+                    onTap: () => setState(() {
+                      _selectedWeekDayIndex = i;
+                      _selectedTrendDetailEmployee = null;
+                      _trendListPaginationCount = 3;
+                      _isTrendViewAll = false;
+                    }),
                     borderRadius: BorderRadius.circular(10),
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 7),
@@ -2560,130 +2637,15 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           ),
           const SizedBox(height: 12),
 
-          // Summary Badges Row (Present, Absent, Late, Leave)
-          Row(
-            children: [
-              _buildStatusCountBadge('Present', present, const Color(0xFF34D399)),
-              const SizedBox(width: 6),
-              _buildStatusCountBadge('Absent', absent, const Color(0xFFFB7185)),
-              const SizedBox(width: 6),
-              _buildStatusCountBadge('Late', late, const Color(0xFFFCD34D)),
-              const SizedBox(width: 6),
-              _buildStatusCountBadge('Leave', leave, const Color(0xFF38BDF8)),
-            ],
+          // 4-Way Status Tabs & Interactive Roster
+          _buildTrendStatusTabsAndRoster(
+            presentEmployees: presentEmployees,
+            absentEmployees: absentEmployees,
+            lateEmployees: lateEmployees,
+            leaveEmployees: leaveEmployees,
+            dateStr: dateStr,
+            periodContextLabel: '${day["dayName"]}, ${dateObj.day} ${_getMonthName(dateObj.month)}',
           ),
-          const SizedBox(height: 12),
-          const Divider(color: Colors.white12, height: 1),
-          const SizedBox(height: 8),
-
-          // Detailed List of Employees on this day
-          if (employees.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text(
-                'No employees active in this year.',
-                style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 11.5),
-              ),
-            )
-          else
-            ...employees.map((emp) {
-              final att = _getEmployeeAttendanceOnDate(emp, dateStr);
-              final isOnLeave = _leaves.any((l) =>
-                  l.isApproved &&
-                  l.coversDate(dateStr) &&
-                  (l.userId == emp.userId || l.userId == emp.id || l.userId == emp.username));
-
-              String statusLabel = 'Absent';
-              Color statusColor = const Color(0xFFFB7185);
-              String timingInfo = 'No check-in record';
-
-              if (att != null) {
-                final st = att.status.toLowerCase();
-                if (st == 'present') {
-                  statusLabel = 'Present';
-                  statusColor = const Color(0xFF34D399);
-                  timingInfo = 'In: \${att.checkIn ?? "--"} • Out: \${att.checkOut ?? "--"}';
-                } else if (st == 'late') {
-                  statusLabel = 'Late';
-                  statusColor = const Color(0xFFFCD34D);
-                  timingInfo = 'In: \${att.checkIn ?? "--"} (Late arrival)';
-                } else if (st == 'half_day') {
-                  statusLabel = 'Half Day';
-                  statusColor = const Color(0xFF38BDF8);
-                  timingInfo = 'Half Day shift';
-                }
-              } else if (isOnLeave) {
-                statusLabel = 'On Leave';
-                statusColor = const Color(0xFF38BDF8);
-                timingInfo = 'Approved time off';
-              }
-
-              final empName = emp.name.isNotEmpty ? emp.name : emp.username;
-
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 5),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 30,
-                      height: 30,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: statusColor.withValues(alpha: 0.15),
-                        border: Border.all(color: statusColor.withValues(alpha: 0.4)),
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        empName.isNotEmpty ? empName[0].toUpperCase() : 'E',
-                        style: TextStyle(fontWeight: FontWeight.w800, color: statusColor, fontSize: 12),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            empName,
-                            style: const TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          Text(
-                            timingInfo,
-                            style: const TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w500,
-                              color: Color(0xFFCBD5E1),
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: statusColor.withValues(alpha: 0.35)),
-                      ),
-                      child: Text(
-                        statusLabel,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          color: statusColor,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }),
         ],
       ),
     );
@@ -2695,13 +2657,46 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     final currentWeek = weeks[_selectedMonthWeekIndex.clamp(0, 3)];
     final startDay = currentWeek['start'] as int;
     final endDay = currentWeek['end'] as int;
-    final present = currentWeek['present'] as int;
-    final absent = currentWeek['absent'] as int;
-    final late = currentWeek['late'] as int;
-    final leave = currentWeek['leave'] as int;
     final rate = currentWeek['rate'] as double;
     final targetMonth = _selectedMonthIndex.clamp(1, 12);
+    final mStr = targetMonth.toString().padLeft(2, '0');
     final employees = _getStaffActiveInMonth(_selectedYear, targetMonth);
+
+    final presentEmployees = <UserModel>[];
+    final lateEmployees = <UserModel>[];
+    final leaveEmployees = <UserModel>[];
+    final absentEmployees = <UserModel>[];
+
+    for (final emp in employees) {
+      final userLogs = _attendance.where((a) {
+        if (a.userId != emp.userId && a.userId != emp.id && a.userId != emp.username) return false;
+        if (!a.date.startsWith('$_selectedYear-$mStr-')) return false;
+        final parts = a.date.split('-');
+        if (parts.length != 3) return false;
+        final dayPart = int.tryParse(parts[2]) ?? 0;
+        return dayPart >= startDay && dayPart <= endDay;
+      }).toList();
+
+      final hasApprovedLeave = _leaves.any((l) {
+        if (!l.isApproved) return false;
+        if (l.userId != emp.userId && l.userId != emp.id && l.userId != emp.username) return false;
+        for (int d = startDay; d <= endDay; d++) {
+          final dStr = '$_selectedYear-$mStr-${d.toString().padLeft(2, '0')}';
+          if (l.coversDate(dStr)) return true;
+        }
+        return false;
+      });
+
+      if (userLogs.any((a) => a.status.toLowerCase() == 'late')) {
+        lateEmployees.add(emp);
+      } else if (userLogs.isNotEmpty) {
+        presentEmployees.add(emp);
+      } else if (hasApprovedLeave) {
+        leaveEmployees.add(emp);
+      } else {
+        absentEmployees.add(emp);
+      }
+    }
 
     return _buildGlassCard(
       borderRadius: 20,
@@ -2721,84 +2716,80 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 separatorBuilder: (_, index) => const SizedBox(width: 6),
                 itemBuilder: (ctx, i) {
                   final mNum = startMonth + i;
-                final isSelected = mNum == _selectedMonthIndex;
-                final mName = _getMonthName(mNum);
-                return InkWell(
-                  onTap: () => setState(() => _selectedMonthIndex = mNum),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? const Color(0xFF10B981)
-                          : const Color(0xFF042F24).withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: isSelected ? const Color(0xFF34D399) : Colors.white12,
-                        width: isSelected ? 1.5 : 0.8,
-                      ),
-                    ),
-                    child: Text(
-                      mName,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                        color: isSelected ? Colors.white : const Color(0xFFCBD5E1),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          );
-        }),
-          const SizedBox(height: 12),
-
-          // 2. 4 Weeks Selector (Week 1, Week 2, Week 3, Week 4)
-          Row(
-            children: List.generate(4, (i) {
-              final isSelected = i == _selectedMonthWeekIndex;
-              final weekInfo = weeks[i.clamp(0, 3)];
-              return Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2.5),
-                  child: InkWell(
-                    onTap: () => setState(() => _selectedMonthWeekIndex = i),
-                    borderRadius: BorderRadius.circular(10),
+                  final isSelected = mNum == _selectedMonthIndex;
+                  final mName = _getMonthName(mNum);
+                  return InkWell(
+                    onTap: () => setState(() {
+                      _selectedMonthIndex = mNum;
+                      _selectedTrendDetailEmployee = null;
+                      _trendListPaginationCount = 3;
+                      _isTrendViewAll = false;
+                    }),
+                    borderRadius: BorderRadius.circular(8),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 7),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
                         color: isSelected
                             ? const Color(0xFF10B981)
                             : const Color(0xFF042F24).withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                          color: isSelected
-                              ? const Color(0xFF34D399)
-                              : Colors.white.withValues(alpha: 0.1),
+                          color: isSelected ? const Color(0xFF34D399) : Colors.white12,
                           width: isSelected ? 1.5 : 0.8,
                         ),
                       ),
-                      child: Column(
-                        children: [
-                          Text(
-                            'Week ${i + 1}',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                              color: isSelected ? Colors.white : const Color(0xFFCBD5E1),
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '${weekInfo["start"]}-${weekInfo["end"]}',
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w800,
-                              color: isSelected ? Colors.white : const Color(0xFFCBD5E1),
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        mName,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                          color: isSelected ? Colors.white : const Color(0xFFCBD5E1),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            );
+          }),
+          const SizedBox(height: 12),
+
+          // 2. Week Pills Row
+          Row(
+            children: List.generate(weeks.length, (i) {
+              final isSel = i == _selectedMonthWeekIndex;
+              final w = weeks[i];
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: InkWell(
+                    onTap: () => setState(() {
+                      _selectedMonthWeekIndex = i;
+                      _selectedTrendDetailEmployee = null;
+                      _trendListPaginationCount = 3;
+                      _isTrendViewAll = false;
+                    }),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      decoration: BoxDecoration(
+                        color: isSel
+                            ? const Color(0xFF10B981)
+                            : const Color(0xFF042F24).withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isSel ? const Color(0xFF34D399) : Colors.white12,
+                          width: isSel ? 1.5 : 0.8,
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        w['name'] as String,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: isSel ? FontWeight.w800 : FontWeight.w600,
+                          color: isSel ? Colors.white : const Color(0xFFCBD5E1),
+                        ),
                       ),
                     ),
                   ),
@@ -2808,33 +2799,27 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           ),
           const SizedBox(height: 14),
 
-          // 3. Header & Attended Rate
+          // 3. Week Header
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Week ${_selectedMonthWeekIndex + 1} ($startDay - $endDay ${_getMonthName(_selectedMonthIndex)} $_selectedYear)',
-                      style: const TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${currentWeek["name"]} (${_getMonthName(targetMonth)} $startDay - $endDay)',
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
                     ),
-                    const SizedBox(height: 2),
-                    const Text(
-                      'Weekly Employee Attendance Details',
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFFCBD5E1),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 2),
+                  const Text(
+                    'Weekly Team Attendance Details',
+                    style: TextStyle(fontSize: 10.5, color: Color(0xFFCBD5E1), fontWeight: FontWeight.w500),
+                  ),
+                ],
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -2856,72 +2841,398 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           ),
           const SizedBox(height: 12),
 
-          // 4. Summary Badges Row (Present, Absent, Late, Leave)
+          // 4-Way Status Tabs & Interactive Roster
+          _buildTrendStatusTabsAndRoster(
+            presentEmployees: presentEmployees,
+            absentEmployees: absentEmployees,
+            lateEmployees: lateEmployees,
+            leaveEmployees: leaveEmployees,
+            dateStr: '$_selectedYear-$mStr-${startDay.toString().padLeft(2, '0')}',
+            periodContextLabel: '${currentWeek["name"]} (${_getMonthName(targetMonth)} $startDay - $endDay)',
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Shared 4-Way Status Tabs & Interactive Drill-Down Roster
+  Widget _buildTrendStatusTabsAndRoster({
+    required List<UserModel> presentEmployees,
+    required List<UserModel> absentEmployees,
+    required List<UserModel> lateEmployees,
+    required List<UserModel> leaveEmployees,
+    required String dateStr,
+    required String periodContextLabel,
+  }) {
+    final presentCount = presentEmployees.length;
+    final absentCount = absentEmployees.length;
+    final lateCount = lateEmployees.length;
+    final leaveCount = leaveEmployees.length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // 1. Interactive 4-Way Status Tabs (Present, Absent, Late, Leave)
+        Row(
+          children: [
+            _buildInteractiveTrendStatusTab('present', 'Present', presentCount, const Color(0xFF34D399)),
+            const SizedBox(width: 6),
+            _buildInteractiveTrendStatusTab('absent', 'Absent', absentCount, const Color(0xFFFB7185)),
+            const SizedBox(width: 6),
+            _buildInteractiveTrendStatusTab('late', 'Late', lateCount, const Color(0xFFFCD34D)),
+            const SizedBox(width: 6),
+            _buildInteractiveTrendStatusTab('leave', 'Leave', leaveCount, const Color(0xFF38BDF8)),
+          ],
+        ),
+        const SizedBox(height: 12),
+        const Divider(color: Colors.white12, height: 1),
+        const SizedBox(height: 10),
+
+        // 2. Content: Either Detailed Single Employee Card (with back arrow) OR Status Filtered Roster
+        if (_selectedTrendDetailEmployee != null)
+          _buildTrendEmployeeDetailCard(
+            employee: _selectedTrendDetailEmployee!,
+            dateStr: dateStr,
+          )
+        else
+          _buildTrendStatusEmployeeRoster(
+            presentEmployees: presentEmployees,
+            absentEmployees: absentEmployees,
+            lateEmployees: lateEmployees,
+            leaveEmployees: leaveEmployees,
+            dateStr: dateStr,
+          ),
+      ],
+    );
+  }
+
+  Widget _buildInteractiveTrendStatusTab(String tabKey, String label, int count, Color color) {
+    final isSelected = _selectedTrendStatusTab == tabKey;
+    return Expanded(
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _selectedTrendStatusTab = tabKey;
+            _selectedTrendDetailEmployee = null;
+            _trendListPaginationCount = 3;
+            _isTrendViewAll = false;
+          });
+        },
+        borderRadius: BorderRadius.circular(10),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 7),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? color.withValues(alpha: 0.28)
+                : color.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isSelected ? color : color.withValues(alpha: 0.30),
+              width: isSelected ? 1.8 : 0.9,
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.35),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Column(
+            children: [
+              Text(
+                '$count',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  color: isSelected ? Colors.white : color,
+                ),
+              ),
+              const SizedBox(height: 1),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 9.5,
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w700,
+                  color: isSelected ? Colors.white : color,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTrendEmployeeDetailCard({
+    required UserModel employee,
+    required String dateStr,
+  }) {
+    final att = _getEmployeeAttendanceOnDate(employee, dateStr);
+    final empName = employee.name.isNotEmpty ? employee.name : employee.username;
+    final empId = employee.userId.isNotEmpty ? employee.userId : (employee.id.isNotEmpty ? employee.id : 'N/A');
+    final phone = employee.phone?.isNotEmpty == true ? employee.phone! : '--';
+    final checkIn = att?.checkIn?.isNotEmpty == true ? att!.checkIn! : 'No check-in record';
+    final checkOut = att?.checkOut?.isNotEmpty == true ? att!.checkOut! : '--';
+    final dept = employee.department?.isNotEmpty == true
+        ? employee.department!
+        : (employee.designation?.isNotEmpty == true ? employee.designation! : 'Team Member');
+
+    String statusLabel = 'Absent';
+    Color statusColor = const Color(0xFFFB7185);
+    if (_selectedTrendStatusTab == 'present') {
+      statusLabel = 'Present';
+      statusColor = const Color(0xFF34D399);
+    } else if (_selectedTrendStatusTab == 'late') {
+      statusLabel = 'Late';
+      statusColor = const Color(0xFFFCD34D);
+    } else if (_selectedTrendStatusTab == 'leave') {
+      statusLabel = 'On Leave';
+      statusColor = const Color(0xFF38BDF8);
+    } else {
+      statusLabel = 'Absent';
+      statusColor = const Color(0xFFFB7185);
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF072118).withValues(alpha: 0.90),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: statusColor.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header with Back Arrow and Status Badge
           Row(
             children: [
-              _buildStatusCountBadge('Present', present, const Color(0xFF34D399)),
-              const SizedBox(width: 6),
-              _buildStatusCountBadge('Absent', absent, const Color(0xFFFB7185)),
-              const SizedBox(width: 6),
-              _buildStatusCountBadge('Late', late, const Color(0xFFFCD34D)),
-              const SizedBox(width: 6),
-              _buildStatusCountBadge('Leave', leave, const Color(0xFF38BDF8)),
+              InkWell(
+                onTap: () => setState(() => _selectedTrendDetailEmployee = null),
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 18),
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Employee Details',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: statusColor.withValues(alpha: 0.40)),
+                ),
+                child: Text(
+                  statusLabel,
+                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: statusColor),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
           const Divider(color: Colors.white12, height: 1),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
 
-          // 5. Detailed List of Employees for this week
-          if (employees.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text(
-                'No employees active in this year.',
-                style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 11.5),
+          // Employee Profile Header (Avatar + Name + Department)
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: statusColor.withValues(alpha: 0.15),
+                  border: Border.all(color: statusColor, width: 1.5),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  empName.isNotEmpty ? empName[0].toUpperCase() : 'E',
+                  style: TextStyle(fontWeight: FontWeight.w800, color: statusColor, fontSize: 18),
+                ),
               ),
-            )
-          else
-            ...employees.map((emp) {
-              final stats = _getEmployeeWeekAttendanceStats(emp, _selectedMonthIndex, startDay, endDay);
-              final presentDays = stats['presentDays'] as int;
-              final lateDays = stats['lateDays'] as int;
-              final leaveDays = stats['leaveDays'] as int;
-              final totalAttended = stats['totalAttended'] as int;
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      empName,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      dept,
+                      style: const TextStyle(fontSize: 11.5, color: Color(0xFFBACCC3)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
 
-              String statusLabel = 'Absent';
-              Color statusColor = const Color(0xFFFB7185);
-              String timingInfo = 'No check-in logs this week';
+          // Detail Fields List: ID, Phone Number, Check-In, Check-Out
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.25),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white10),
+            ),
+            child: Column(
+              children: [
+                _buildTrendDetailRow(Icons.badge_outlined, 'Employee ID', empId),
+                const SizedBox(height: 8),
+                _buildTrendDetailRow(Icons.phone_outlined, 'Phone Number', phone),
+                const SizedBox(height: 8),
+                _buildTrendDetailRow(Icons.login_rounded, 'Check-In Time', checkIn),
+                const SizedBox(height: 8),
+                _buildTrendDetailRow(Icons.logout_rounded, 'Check-Out Time', checkOut),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-              if (totalAttended > 0) {
-                if (lateDays > 0) {
-                  statusLabel = '$totalAttended days ($lateDays late)';
-                  statusColor = const Color(0xFFFCD34D);
-                  timingInfo = '$presentDays on-time • $lateDays late arrival(s)';
-                } else {
-                  statusLabel = '$totalAttended days attended';
-                  statusColor = const Color(0xFF34D399);
-                  timingInfo = 'Full on-time attendance ($presentDays days)';
-                }
-              } else if (leaveDays > 0) {
-                statusLabel = 'On Leave';
-                statusColor = const Color(0xFF38BDF8);
-                timingInfo = '$leaveDays approved leave day(s)';
-              }
+  Widget _buildTrendDetailRow(IconData icon, String title, String value) {
+    return Row(
+      children: [
+        Icon(icon, size: 15, color: const Color(0xFF34D399)),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: const TextStyle(fontSize: 11.5, color: Color(0xFFBACCC3), fontWeight: FontWeight.w600),
+        ),
+        const Spacer(),
+        Text(
+          value,
+          style: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w700),
+        ),
+      ],
+    );
+  }
 
-              final empName = emp.name.isNotEmpty ? emp.name : emp.username;
+  Widget _buildTrendStatusEmployeeRoster({
+    required List<UserModel> presentEmployees,
+    required List<UserModel> absentEmployees,
+    required List<UserModel> lateEmployees,
+    required List<UserModel> leaveEmployees,
+    required String dateStr,
+  }) {
+    List<UserModel> currentList;
+    String statusLabel;
+    Color statusColor;
 
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 5),
+    if (_selectedTrendStatusTab == 'present') {
+      currentList = presentEmployees;
+      statusLabel = 'Present';
+      statusColor = const Color(0xFF34D399);
+    } else if (_selectedTrendStatusTab == 'late') {
+      currentList = lateEmployees;
+      statusLabel = 'Late';
+      statusColor = const Color(0xFFFCD34D);
+    } else if (_selectedTrendStatusTab == 'leave') {
+      currentList = leaveEmployees;
+      statusLabel = 'On Leave';
+      statusColor = const Color(0xFF38BDF8);
+    } else {
+      currentList = absentEmployees;
+      statusLabel = 'Absent';
+      statusColor = const Color(0xFFFB7185);
+    }
+
+    if (currentList.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        child: Center(
+          child: Text(
+            'No employees categorized as $statusLabel on this date.',
+            style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 11.5),
+          ),
+        ),
+      );
+    }
+
+    final total = currentList.length;
+    final displayCount = _isTrendViewAll ? total : _trendListPaginationCount.clamp(0, total);
+    final displayedEmployees = currentList.take(displayCount).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ...displayedEmployees.map((emp) {
+          final att = _getEmployeeAttendanceOnDate(emp, dateStr);
+          final empName = emp.name.isNotEmpty ? emp.name : emp.username;
+
+          String timingInfo = 'No check-in record';
+          if (att != null) {
+            final st = att.status.toLowerCase();
+            if (st == 'present') {
+              timingInfo = 'In: ${att.checkIn ?? "--"} • Out: ${att.checkOut ?? "--"}';
+            } else if (st == 'late') {
+              timingInfo = 'In: ${att.checkIn ?? "--"} (Late arrival)';
+            } else if (st == 'half_day') {
+              timingInfo = 'Half Day shift';
+            }
+          } else if (_selectedTrendStatusTab == 'leave') {
+            timingInfo = 'Approved time off';
+          } else if (_selectedTrendFilter == 'Month') {
+            final stats = _getEmployeeWeekAttendanceStats(emp, _selectedMonthIndex, 1, 31);
+            if ((stats['totalAttended'] as int) > 0) {
+              timingInfo = '${stats["presentDays"]} on-time • ${stats["lateDays"]} late';
+            }
+          }
+
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: InkWell(
+              onTap: () {
+                setState(() {
+                  _selectedTrendDetailEmployee = emp;
+                });
+              },
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.04),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                ),
                 child: Row(
                   children: [
                     Container(
-                      width: 30,
-                      height: 30,
+                      width: 32,
+                      height: 32,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: statusColor.withValues(alpha: 0.15),
-                        border: Border.all(color: statusColor.withValues(alpha: 0.40)),
+                        border: Border.all(color: statusColor.withValues(alpha: 0.45)),
                       ),
                       alignment: Alignment.center,
                       child: Text(
@@ -2929,7 +3240,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                         style: TextStyle(fontWeight: FontWeight.w800, color: statusColor, fontSize: 12),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2971,15 +3282,80 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                         ),
                       ),
                     ),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.chevron_right_rounded, size: 18, color: Color(0xFFCBD5E1)),
                   ],
                 ),
-              );
-            }),
+              ),
+            ),
+          );
+        }),
+
+        // Pagination & View All Controls
+        if (total > 3) ...[
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (!_isTrendViewAll && displayCount < total) ...[
+                InkWell(
+                  onTap: () {
+                    setState(() {
+                      _trendListPaginationCount += 3;
+                    });
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.35)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Icon(Icons.expand_more_rounded, size: 16, color: Color(0xFF34D399)),
+                        SizedBox(width: 4),
+                        Text(
+                          'Load Next 3',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF34D399)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
+              InkWell(
+                onTap: () {
+                  setState(() {
+                    _isTrendViewAll = !_isTrendViewAll;
+                    if (!_isTrendViewAll) {
+                      _trendListPaginationCount = 3;
+                    }
+                  });
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: Text(
+                    _isTrendViewAll ? 'Show Less (3)' : 'View All ($total)',
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
-      ),
+      ],
     );
   }
-
   // Full Year Annual Performance Summary Card
   Widget _buildYearEmployeeDetailsCard() {
     final employees = _employeesInSelectedYear;
@@ -4072,7 +4448,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   // ---------------------------------------------------------
   Widget _buildAttendanceTab() {
     final activeStaff = _attendance.length;
-    final totalStaff = _users.length;
+    final totalStaff = _allNonAdminEmployees.length;
     final rate = totalStaff > 0 ? ((activeStaff / totalStaff) * 100).clamp(0, 100).round() : 100;
 
     return SingleChildScrollView(
@@ -5267,13 +5643,13 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
             child: Container(
-              height: maxLines == 1 ? 46 : null,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+              height: maxLines == 1 ? 48 : null,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: const Color(0xFF0A2218).withValues(alpha: 0.70),
+                color: const Color(0xFF0A2218).withValues(alpha: 0.85),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  color: const Color(0xFF34D399).withValues(alpha: 0.22),
+                  color: const Color(0xFF34D399).withValues(alpha: 0.25),
                   width: 1.0,
                 ),
                 boxShadow: [
@@ -5287,51 +5663,63 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               child: Row(
                 children: [
                   if (prefixIcon != null) ...[
-                    Icon(prefixIcon, size: 19, color: const Color(0xFFCBD5E1)),
-                    const SizedBox(width: 10),
+                    Icon(prefixIcon, size: 20, color: const Color(0xFFCBD5E1)),
+                    const SizedBox(width: 8),
                   ],
                   Expanded(
-                    child: TextField(
-                      controller: controller,
-                      onChanged: onChanged,
-                      obscureText: obscureText,
-                      keyboardType: keyboardType,
-                      maxLines: maxLines,
-                      readOnly: readOnly,
-                      onTap: onTap,
-                      cursorColor: const Color(0xFF34D399),
-                      style: const TextStyle(
+                    child: Container(
+                      height: maxLines == 1 ? 34 : null,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      decoration: BoxDecoration(
                         color: Colors.white,
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600,
+                        borderRadius: BorderRadius.circular(20),
                       ),
-                      decoration: InputDecoration(
-                        isDense: true,
-                        filled: true,
-                        fillColor: Colors.transparent,
-                        hintText: hintText,
-                        hintStyle: const TextStyle(
-                          color: Color(0xFF94A3B8),
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w500,
+                      alignment: Alignment.centerLeft,
+                      child: TextField(
+                        controller: controller,
+                        onChanged: onChanged,
+                        obscureText: obscureText,
+                        keyboardType: keyboardType,
+                        maxLines: maxLines,
+                        readOnly: readOnly,
+                        onTap: onTap,
+                        cursorColor: const Color(0xFF0F172A),
+                        style: const TextStyle(
+                          color: Color(0xFF0F172A),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
                         ),
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        disabledBorder: InputBorder.none,
-                        errorBorder: InputBorder.none,
-                        focusedErrorBorder: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(vertical: maxLines == 1 ? 12 : 8),
+                        decoration: InputDecoration(
+                          isDense: true,
+                          filled: true,
+                          fillColor: Colors.transparent,
+                          hintText: hintText,
+                          hintStyle: const TextStyle(
+                            color: Color(0xFF94A3B8),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
+                          errorBorder: InputBorder.none,
+                          focusedErrorBorder: InputBorder.none,
+                          contentPadding: EdgeInsets.zero,
+                        ),
                       ),
                     ),
                   ),
-                  if (suffixWidget != null)
-                    suffixWidget
-                  else if (prefixIcon == Icons.search_rounded)
+                  if (suffixWidget != null) ...[
+                    const SizedBox(width: 8),
+                    suffixWidget,
+                  ] else if (prefixIcon == Icons.search_rounded) ...[
+                    const SizedBox(width: 8),
                     const Padding(
-                      padding: EdgeInsets.only(left: 4, right: 2),
+                      padding: EdgeInsets.only(left: 2, right: 2),
                       child: Icon(Icons.filter_list_rounded, size: 20, color: Color(0xFFCBD5E1)),
                     ),
+                  ],
                 ],
               ),
             ),

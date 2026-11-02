@@ -21,6 +21,7 @@ class CompanyModel {
   final int? radius;
   final String? createdAt;
   final int? establishmentYear;
+  final int? establishmentMonth;
   final String? founded;
 
   const CompanyModel({
@@ -43,6 +44,7 @@ class CompanyModel {
     this.radius,
     this.createdAt,
     this.establishmentYear,
+    this.establishmentMonth,
     this.founded,
   });
 
@@ -66,6 +68,28 @@ class CompanyModel {
       } catch (_) {}
     }
     return DateTime.now().year;
+  }
+
+  int get startingMonth {
+    if (establishmentMonth != null && establishmentMonth! >= 1 && establishmentMonth! <= 12) {
+      return establishmentMonth!;
+    }
+    if (founded != null && founded!.isNotEmpty) {
+      final dt = DateTime.tryParse(founded!);
+      if (dt != null) return dt.month;
+    }
+    if (createdAt != null && createdAt!.isNotEmpty) {
+      final dt = DateTime.tryParse(createdAt!);
+      if (dt != null) return dt.month;
+    }
+    if (id.length == 24) {
+      try {
+        final sec = int.parse(id.substring(0, 8), radix: 16);
+        final dt = DateTime.fromMillisecondsSinceEpoch(sec * 1000);
+        return dt.month;
+      } catch (_) {}
+    }
+    return 1;
   }
 
   factory CompanyModel.fromJson(Map<String, dynamic> json) {
@@ -101,6 +125,9 @@ class CompanyModel {
       createdAt: (json['createdAt'] ?? json['created_at'])?.toString(),
       establishmentYear: json['establishmentYear'] != null
           ? int.tryParse(json['establishmentYear'].toString())
+          : null,
+      establishmentMonth: json['establishmentMonth'] != null
+          ? int.tryParse(json['establishmentMonth'].toString())
           : null,
       founded: (json['founded'] ?? json['establishmentDate'] ?? json['startingDate'] ?? json['startDate'])?.toString(),
     );

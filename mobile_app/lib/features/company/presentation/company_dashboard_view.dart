@@ -90,6 +90,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   DateTime _currentCalendarMonth = DateTime.now();
   final TextEditingController _employeeSearchController = TextEditingController();
   String _employeeSearchQuery = '';
+  final TextEditingController _attendanceSearchController = TextEditingController();
+  String _attendanceSearchQuery = '';
+  final TextEditingController _leaveSearchController = TextEditingController();
+  String _leaveSearchQuery = '';
 
   @override
   void initState() {
@@ -102,6 +106,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   @override
   void dispose() {
     _employeeSearchController.dispose();
+    _attendanceSearchController.dispose();
+    _leaveSearchController.dispose();
     super.dispose();
   }
 
@@ -247,31 +253,54 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     return _tasks.where((t) => t.status.toLowerCase() != 'completed').length;
   }
 
-  int _getEmployeeYear(UserModel emp) {
-    if (emp.joiningDate != null && emp.joiningDate!.isNotEmpty) {
-      final dt = DateTime.tryParse(emp.joiningDate!);
-      if (dt != null) return dt.year;
-    }
-    if (emp.createdAt != null && emp.createdAt!.isNotEmpty) {
-      final dt = DateTime.tryParse(emp.createdAt!);
-      if (dt != null) return dt.year;
-    }
-    return DateTime.now().year;
-  }
-
   // Company starting year strictly computed from live MongoDB
   int get _companyStartingYear {
-    int start = DateTime.now().year;
     if (_company != null) {
-      start = _company!.startingYear;
+      return _company!.startingYear;
     }
+    int start = DateTime.now().year;
     for (final u in _users) {
-      final yr = _getEmployeeYear(u);
+      final yr = u.joinedDate.year;
       if (yr >= 1990 && yr < start) {
         start = yr;
       }
     }
     return start <= DateTime.now().year ? start : DateTime.now().year;
+  }
+
+  // Company starting month strictly computed from live MongoDB
+  int get _companyStartingMonth {
+    if (_company != null) {
+      return _company!.startingMonth;
+    }
+    int minM = 12;
+    for (final u in _users) {
+      if (u.joinedDate.year == _companyStartingYear && u.joinedDate.month < minM) {
+        minM = u.joinedDate.month;
+      }
+    }
+    for (final a in _attendance) {
+      if (a.date.startsWith('$_companyStartingYear-')) {
+        final parts = a.date.split('-');
+        if (parts.length >= 2) {
+          final m = int.tryParse(parts[1]) ?? 12;
+          if (m < minM) minM = m;
+        }
+      }
+    }
+    return minM <= 12 ? minM : 1;
+  }
+
+  // Dynamic monthly staff accumulation:
+  // "if one employee joined on june means then consider that one employee after addition of next employee then consider the next one"
+  List<UserModel> _getStaffActiveInMonth(int year, int month) {
+    final list = _users.where((u) {
+      final j = u.joinedDate;
+      if (j.year < year) return true;
+      if (j.year == year && j.month <= month) return true;
+      return false;
+    }).toList();
+    return list.isNotEmpty ? list : _users;
   }
 
   List<int> get _availableYears {
@@ -288,7 +317,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
 
   // Active employees in selectedYear (joined on or before selectedYear)
   List<UserModel> get _employeesInSelectedYear {
-    final list = _users.where((u) => _getEmployeeYear(u) <= _selectedYear).toList();
+    final list = _users.where((u) => u.joinedDate.year <= _selectedYear).toList();
     return list.isNotEmpty ? list : _users;
   }
 
@@ -296,7 +325,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
 
   // Joined strictly in selectedYear
   int get _joinedInSelectedYear {
-    return _users.where((u) => _getEmployeeYear(u) == _selectedYear).length;
+    return _users.where((u) => u.joinedDate.year == _selectedYear).length;
   }
 
   int get _departmentCountInYear {
@@ -381,18 +410,19 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     return ((_yearAttendedCount / totalPossible) * 100).round().clamp(0, 100);
   }
 
-  // 1. Week Trend Data: 7 days (Mon-Sun)
+  // 1. Week Trend Data: 7 days (Mon-Sun) with dynamic staff count
   List<Map<String, dynamic>> get _weekTrendDays {
     final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     final now = DateTime.now();
     final dayOfWeek = (now.weekday - 1); // 0=Mon, 6=Sun
     final monday = DateTime(now.year, now.month, now.day - dayOfWeek);
-    final totalStaff = _totalStaffInYear > 0 ? _totalStaffInYear : 1;
 
     final result = <Map<String, dynamic>>[];
     for (int i = 0; i < 7; i++) {
       final date = monday.add(Duration(days: i));
       final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      final staffList = _getStaffActiveInMonth(date.year, date.month);
+      final totalStaff = staffList.isNotEmpty ? staffList.length : (_totalStaffInYear > 0 ? _totalStaffInYear : 1);
 
       final dayLogs = _attendance.where((a) => a.date == dateStr).toList();
       final presentCount = dayLogs.where((a) {
@@ -414,6 +444,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         'leave': leaveCount,
         'rate': rate,
         'logs': dayLogs,
+        'staffList': staffList,
       });
     }
     return result;
@@ -423,7 +454,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   List<Map<String, dynamic>> get _monthTrendWeeks {
     final targetMonth = _selectedMonthIndex.clamp(1, 12);
     final daysInMonth = DateTime(_selectedYear, targetMonth + 1, 0).day;
-    final totalStaff = _totalStaffInYear > 0 ? _totalStaffInYear : 1;
+    final staffList = _getStaffActiveInMonth(_selectedYear, targetMonth);
+    final totalStaff = staffList.isNotEmpty ? staffList.length : (_totalStaffInYear > 0 ? _totalStaffInYear : 1);
 
     final weeks = [
       {'name': 'Week 1', 'start': 1, 'end': 7},
@@ -477,18 +509,22 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         'leave': weekLeaveCount,
         'rate': rate,
         'logs': weekLogs,
+        'staffList': staffList,
       });
     }
     return result;
   }
 
-  // 3. Year Trend Data: 12 months for selectedYear
+  // 3. Year Trend Data: Months for selectedYear
+  // Starts from company starting month if selectedYear is company starting year!
   List<Map<String, dynamic>> get _yearTrendMonths {
-    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    final totalStaff = _totalStaffInYear > 0 ? _totalStaffInYear : 1;
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     final result = <Map<String, dynamic>>[];
 
-    for (int m = 1; m <= 12; m++) {
+    // If selectedYear is company starting year, starts from company starting month!
+    final startMonth = (_selectedYear == _companyStartingYear) ? _companyStartingMonth : 1;
+
+    for (int m = startMonth; m <= 12; m++) {
       final mPrefix = '$_selectedYear-${m.toString().padLeft(2, '0')}';
       final mLogs = _attendance.where((a) {
         if (!a.date.startsWith(mPrefix)) return false;
@@ -497,16 +533,26 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       }).toList();
 
       final attended = mLogs.length;
+
+      // Dynamic staff count for this specific month based on join date:
+      // "if one employee joined on june means then consider that one employee after addition of next employee then consider the next one"
+      final staffList = _getStaffActiveInMonth(_selectedYear, m);
+      final staffCount = staffList.isNotEmpty ? staffList.length : (_totalStaffInYear > 0 ? _totalStaffInYear : 1);
+
       final dateSet = mLogs.map((a) => a.date).toSet();
       final workingDays = dateSet.isNotEmpty ? dateSet.length : 20;
-      final possible = totalStaff * workingDays;
+      final possible = staffCount * workingDays;
       final rate = (attended > 0 && possible > 0)
           ? ((attended / possible) * 100.0).clamp(0.0, 100.0)
           : 0.0;
 
       result.add({
         'name': months[m - 1],
+        'month': m,
         'rate': rate,
+        'attended': attended,
+        'staffCount': staffCount,
+        'staffList': staffList,
         'logs': mLogs,
       });
     }
@@ -872,21 +918,24 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 ),
               ),
 
-              // 2. Translucent Ambient Glass Overlay (Allows subtle bokeh depth to show through)
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      const Color(0xFF0A2218).withValues(alpha: 0.68),
-                      const Color(0xFF04120D).withValues(alpha: 0.80),
-                    ],
-                  ),
-                  border: Border(
-                    right: BorderSide(
-                      color: const Color(0xFF34D399).withValues(alpha: 0.25),
-                      width: 1.0,
+              // 2. Translucent Ambient Lighting Preservation (Exact Match to Dashboard UI)
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        const Color(0xFF04100B).withValues(alpha: 0.12),
+                        Colors.transparent,
+                        const Color(0xFF020906).withValues(alpha: 0.30),
+                      ],
+                    ),
+                    border: Border(
+                      right: BorderSide(
+                        color: const Color(0xFF34D399).withValues(alpha: 0.25),
+                        width: 1.0,
+                      ),
                     ),
                   ),
                 ),
@@ -1193,95 +1242,64 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     final accentColor = highlightColor ?? const Color(0xFF10B981);
     return Padding(
       padding: const EdgeInsets.only(bottom: 9),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(18),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(18),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
+      child: _buildGlassCard(
+        borderRadius: 18,
+        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
+        onTap: onTap,
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    const Color(0xFF1A4032).withValues(alpha: 0.45),
-                    const Color(0xFF102D22).withValues(alpha: 0.52),
-                    const Color(0xFF081C15).withValues(alpha: 0.60),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(18),
+                color: accentColor.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  color: accentColor.withValues(alpha: 0.28),
+                  color: accentColor.withValues(alpha: 0.40),
                   width: 1.2,
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.16),
-                    blurRadius: 14,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
               ),
-              child: Row(
+              child: Icon(
+                icon,
+                size: 21,
+                color: accentColor == const Color(0xFF10B981)
+                    ? const Color(0xFF34D399)
+                    : accentColor,
+              ),
+            ),
+            const SizedBox(width: 13),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: accentColor.withValues(alpha: 0.20),
-                      borderRadius: BorderRadius.circular(13),
-                      border: Border.all(
-                        color: accentColor.withValues(alpha: 0.40),
-                        width: 1.2,
-                      ),
-                    ),
-                    child: Icon(
-                      icon,
-                      size: 21,
-                      color: accentColor == const Color(0xFF10B981)
-                          ? const Color(0xFF34D399)
-                          : accentColor,
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      letterSpacing: -0.2,
                     ),
                   ),
-                  const SizedBox(width: 13),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          title,
-                          style: const TextStyle(
-                            fontSize: 14.5,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                            letterSpacing: -0.2,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          subtitle,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFFE2E8F0),
-                          ),
-                        ),
-                      ],
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFFCBD5E1),
                     ),
-                  ),
-                  const Icon(
-                    Icons.chevron_right_rounded,
-                    color: Color(0xFFA7F3D0),
-                    size: 22,
                   ),
                 ],
               ),
             ),
-          ),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: Color(0xFFCBD5E1),
+              size: 22,
+            ),
+          ],
         ),
       ),
     );
@@ -2384,7 +2402,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                       trendRates: rates,
                       selectedIndex: _selectedTrendFilter == 'Week'
                           ? _selectedWeekDayIndex
-                          : (_selectedTrendFilter == 'Month' ? (_selectedMonthIndex - 1) : null),
+                          : (_selectedTrendFilter == 'Month'
+                              ? ((_selectedMonthIndex - ((_selectedYear == _companyStartingYear) ? _companyStartingMonth : 1)).clamp(0, rates.length - 1))
+                              : null),
                     ),
                   ),
                 ),
@@ -2431,7 +2451,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     final absent = day['absent'] as int;
     final late = day['late'] as int;
     final leave = day['leave'] as int;
-    final employees = _employeesInSelectedYear;
+    final employees = _getStaffActiveInMonth(dateObj.year, dateObj.month);
 
     return _buildGlassCard(
       borderRadius: 20,
@@ -2677,7 +2697,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     final late = currentWeek['late'] as int;
     final leave = currentWeek['leave'] as int;
     final rate = currentWeek['rate'] as double;
-    final employees = _employeesInSelectedYear;
+    final targetMonth = _selectedMonthIndex.clamp(1, 12);
+    final employees = _getStaffActiveInMonth(_selectedYear, targetMonth);
 
     return _buildGlassCard(
       borderRadius: 20,
@@ -2685,15 +2706,18 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 1. Month Horizontal Selector (Jan - Dec)
-          SizedBox(
-            height: 32,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: 12,
-              separatorBuilder: (_, index) => const SizedBox(width: 6),
-              itemBuilder: (ctx, i) {
-                final mNum = i + 1;
+          // 1. Month Horizontal Selector (Starts from company starting month if selectedYear is company starting year)
+          Builder(builder: (ctx) {
+            final startMonth = (_selectedYear == _companyStartingYear) ? _companyStartingMonth : 1;
+            final count = 12 - startMonth + 1;
+            return SizedBox(
+              height: 32,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: count,
+                separatorBuilder: (_, index) => const SizedBox(width: 6),
+                itemBuilder: (ctx, i) {
+                  final mNum = startMonth + i;
                 final isSelected = mNum == _selectedMonthIndex;
                 final mName = _getMonthName(mNum);
                 return InkWell(
@@ -2723,7 +2747,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 );
               },
             ),
-          ),
+          );
+        }),
           const SizedBox(height: 12),
 
           // 2. 4 Weeks Selector (Week 1, Week 2, Week 3, Week 4)
@@ -3474,6 +3499,15 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           ),
           const SizedBox(height: 14),
 
+          // Search Attendance Logs (Image 2 Design)
+          _buildCompanyTypingBox(
+            controller: _attendanceSearchController,
+            hintText: 'Search attendance logs...',
+            prefixIcon: Icons.search_rounded,
+            onChanged: (val) => setState(() => _attendanceSearchQuery = val),
+          ),
+          const SizedBox(height: 14),
+
           // 1. Calendar Month Card (Image 1 Screen 4)
           _buildMonthCalendarCard(),
           const SizedBox(height: 16),
@@ -3547,10 +3581,22 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           ),
           const SizedBox(height: 10),
 
-          if (_attendance.isEmpty)
-            _buildEmptyDarkState('No attendance recorded for this date yet.')
-          else
-            ..._attendance.take(5).map((att) => _buildAttendanceLogTile(att)),
+          Builder(builder: (context) {
+            final displayLogs = _attendanceSearchQuery.isNotEmpty
+                ? _attendance.where((a) =>
+                    a.userId.toLowerCase().contains(_attendanceSearchQuery.toLowerCase()) ||
+                    a.status.toLowerCase().contains(_attendanceSearchQuery.toLowerCase()) ||
+                    a.date.contains(_attendanceSearchQuery)
+                  ).toList()
+                : _attendance;
+
+            if (displayLogs.isEmpty) {
+              return _buildEmptyDarkState('No attendance logs match your search.');
+            }
+            return Column(
+              children: displayLogs.take(5).map((att) => _buildAttendanceLogTile(att)).toList(),
+            );
+          }),
 
           const SizedBox(height: 28),
         ],
@@ -3743,6 +3789,14 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   // ---------------------------------------------------------
   Widget _buildLeaveTab() {
     List<LeaveModel> filtered = _leaves;
+    if (_leaveSearchQuery.isNotEmpty) {
+      final q = _leaveSearchQuery.toLowerCase();
+      filtered = filtered.where((l) =>
+        l.userId.toLowerCase().contains(q) ||
+        l.type.toLowerCase().contains(q) ||
+        (l.reason?.toLowerCase().contains(q) ?? false)
+      ).toList();
+    }
     if (_selectedLeaveFilter == 1) {
       filtered = filtered.where((l) => l.isPending).toList();
     } else if (_selectedLeaveFilter == 2) {
@@ -3773,6 +3827,15 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             style: TextStyle(fontSize: 13, color: Color(0xFFBACCC3)),
           ),
           const SizedBox(height: 14),
+
+          // Search Bar (Image 2 Design)
+          _buildCompanyTypingBox(
+            controller: _leaveSearchController,
+            hintText: 'Search leave requests...',
+            prefixIcon: Icons.search_rounded,
+            onChanged: (val) => setState(() => _leaveSearchQuery = val),
+          ),
+          const SizedBox(height: 12),
 
           // Filter Segment Chips: [All] [Pending] [Approved] [Rejected]
           SingleChildScrollView(
@@ -4655,7 +4718,13 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                       ),
                     ),
                   ),
-                  ?suffixWidget,
+                  if (suffixWidget != null)
+                    suffixWidget
+                  else if (prefixIcon == Icons.search_rounded)
+                    const Padding(
+                      padding: EdgeInsets.only(left: 4, right: 2),
+                      child: Icon(Icons.filter_list_rounded, size: 20, color: Color(0xFFCBD5E1)),
+                    ),
                 ],
               ),
             ),
@@ -5316,7 +5385,22 @@ class TeamAttendanceTrendChartPainter extends CustomPainter {
     }
 
     final n = trendRates.length;
-    if (n < 2) return;
+    if (n < 1) return;
+    if (n == 1) {
+      final normalizedY = (1.0 - (trendRates[0] / 100.0).clamp(0.0, 1.0));
+      final py = (normalizedY * (size.height - 14)) + 7;
+      final px = size.width / 2.0;
+      final p = Offset(px, py);
+      final outerDot = Paint()
+        ..color = const Color(0xFF34D399).withValues(alpha: 0.35)
+        ..style = PaintingStyle.fill;
+      final innerDot = Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(p, 8.0, outerDot);
+      canvas.drawCircle(p, 4.0, innerDot);
+      return;
+    }
 
     final displayRates = trendRates;
 

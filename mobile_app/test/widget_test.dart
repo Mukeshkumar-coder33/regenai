@@ -750,5 +750,63 @@ void main() {
       expect(find.byIcon(Icons.search_rounded), findsOneWidget);
       expect(find.byIcon(Icons.filter_list_rounded), findsOneWidget);
     });
+
+    test('CompanyModel startingMonth is derived dynamically from createdAt or establishmentMonth', () {
+      const compJune = CompanyModel(
+        id: 'comp_june',
+        name: 'June Enterprise',
+        createdAt: '2026-06-15T09:00:00Z',
+      );
+      expect(compJune.startingYear, 2026);
+      expect(compJune.startingMonth, 6);
+
+      const compOct = CompanyModel(
+        id: 'comp_oct',
+        name: 'October Tech',
+        establishmentYear: 2026,
+        establishmentMonth: 10,
+      );
+      expect(compOct.startingYear, 2026);
+      expect(compOct.startingMonth, 10);
+    });
+
+    testWidgets('CompanyDashboardView drawer renders executive card UI and red glass sign out button',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanyDashboardView(
+            user: const UserModel(
+              id: 'owner_test',
+              userId: 'Vyshwa',
+              username: 'Vyshwa',
+              name: 'Vyshwa',
+              role: 'owner',
+              company: 'krish Tech Computer',
+              token: 'tok_owner',
+            ),
+            dashboardService: MockDashboardService(),
+            authService: MockAuthService(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Open drawer using hamburger icon
+      await tester.tap(find.byIcon(Icons.menu_rounded));
+      await tester.pumpAndSettle();
+
+      // Drawer UI verification
+      expect(find.text('COMPANY OPERATIONS'), findsOneWidget);
+      expect(find.text('Employee Management'), findsOneWidget);
+      expect(find.text('Attendance'), findsWidgets);
+
+      // Scroll drawer to reveal all items and Sign Out
+      await tester.drag(find.text('Employee Management'), const Offset(0, -350));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Sign Out'), findsOneWidget);
+      expect(find.byIcon(Icons.logout_rounded), findsOneWidget);
+    });
   });
 }

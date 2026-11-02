@@ -127,6 +127,24 @@ class UserModel {
     );
   }
 
+  DateTime get joinedDate {
+    if (joiningDate != null && joiningDate!.isNotEmpty) {
+      final dt = DateTime.tryParse(joiningDate!);
+      if (dt != null) return dt;
+    }
+    if (createdAt != null && createdAt!.isNotEmpty) {
+      final dt = DateTime.tryParse(createdAt!);
+      if (dt != null) return dt;
+    }
+    if (id.length == 24) {
+      try {
+        final sec = int.parse(id.substring(0, 8), radix: 16);
+        return DateTime.fromMillisecondsSinceEpoch(sec * 1000);
+      } catch (_) {}
+    }
+    return DateTime(2026, 1, 1);
+  }
+
   // Role resolution helpers
   bool get isSuperAdmin => role == 'param';
   bool get isCompanyAdmin => role == 'owner' || role == 'admin';

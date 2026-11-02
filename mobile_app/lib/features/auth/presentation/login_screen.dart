@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/celadon_colors.dart';
 import '../../dashboard/presentation/dashboard_screen.dart';
 import 'auth_controller.dart';
+import '../../../app/app_config.dart';
 
 /// ReGen Premium Emerald-Green Glassmorphism Login Screen
 ///
@@ -569,6 +570,40 @@ class _LoginScreenState extends State<LoginScreen> {
                                       ),
                                     ],
                                   ),
+                                   const SizedBox(height: 18),
+                                   Center(
+                                     child: GestureDetector(
+                                       onTap: _showServerUrlDialog,
+                                       child: Container(
+                                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                         decoration: BoxDecoration(
+                                           color: Colors.black.withValues(alpha: 0.35),
+                                           borderRadius: BorderRadius.circular(10),
+                                           border: Border.all(
+                                             color: const Color(0xFF34D399).withValues(alpha: 0.25),
+                                             width: 0.8,
+                                           ),
+                                         ),
+                                         child: Row(
+                                           mainAxisSize: MainAxisSize.min,
+                                           children: [
+                                             const Icon(Icons.dns_rounded, size: 13, color: Color(0xFF34D399)),
+                                             const SizedBox(width: 5),
+                                             Text(
+                                                'Server Settings',
+                                               style: const TextStyle(
+                                                 fontSize: 11,
+                                                 color: Color(0xFF94A3B8),
+                                                 fontWeight: FontWeight.w500,
+                                               ),
+                                             ),
+                                             const SizedBox(width: 4),
+                                             const Icon(Icons.edit_rounded, size: 11, color: Color(0xFF94A3B8)),
+                                           ],
+                                         ),
+                                       ),
+                                     ),
+                                   ),
                                 ],
                               ),
                             ),
@@ -687,6 +722,112 @@ class _LoginScreenState extends State<LoginScreen> {
           customBorder: const CircleBorder(),
           child: Center(child: icon),
         ),
+      ),
+    );
+  }
+
+  void _showServerUrlDialog() {
+    final ctrl = TextEditingController(text: AppConfig.activeBaseUrl);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0A2218),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: const Color(0xFF34D399).withValues(alpha: 0.3)),
+        ),
+        title: Row(
+          children: const [
+            Icon(Icons.dns_rounded, color: Color(0xFF34D399), size: 20),
+            SizedBox(width: 8),
+            Text(
+              'Server Configuration',
+              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Connect your mobile device to the ReGen backend API server:',
+              style: TextStyle(color: Color(0xFFBACCC3), fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctrl,
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: const Color(0xFF04100B),
+                labelText: 'Backend Base URL',
+                labelStyle: const TextStyle(color: Color(0xFF34D399), fontSize: 12),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: const Color(0xFF34D399).withValues(alpha: 0.3)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: Color(0xFF34D399)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                _buildPresetUrlChip('Wi-Fi PC (192.168.1.50)', 'http://192.168.1.50:5006', ctrl),
+                _buildPresetUrlChip('Emulator (10.0.2.2)', 'http://10.0.2.2:5006', ctrl),
+                _buildPresetUrlChip('Localhost', 'http://127.0.0.1:5006', ctrl),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF94A3B8))),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final newUrl = ctrl.text.trim();
+              if (newUrl.isNotEmpty) {
+                setState(() => AppConfig.activeBaseUrl = newUrl);
+              }
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Server connected to ${AppConfig.activeBaseUrl}'),
+                  backgroundColor: const Color(0xFF10B981),
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF10B981),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Save & Connect'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPresetUrlChip(String label, String url, TextEditingController ctrl) {
+    return InkWell(
+      onTap: () => ctrl.text = url,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: const Color(0xFF10B981).withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.3)),
+        ),
+        child: Text(label, style: const TextStyle(fontSize: 10, color: Color(0xFF6EE7B7))),
       ),
     );
   }

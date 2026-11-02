@@ -21,13 +21,17 @@ abstract final class AppConfig {
   /// - iOS Simulator: `http://localhost:5006`
   /// - Physical Phone: Configure with your machine's LAN IP (e.g. `http://192.168.1.x:5006`)
   static String get defaultBaseUrl {
+    const customUrl = String.fromEnvironment('BACKEND_URL');
+    if (customUrl.isNotEmpty) {
+      return customUrl;
+    }
     if (kIsWeb) {
       return 'http://127.0.0.1:$backendPort';
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
-        // Android Emulator routes 10.0.2.2 to the development machine's 127.0.0.1
-        return 'http://10.0.2.2:$backendPort';
+        // Physical phone on local Wi-Fi: host PC LAN IP 192.168.1.50
+        return 'http://192.168.1.50:$backendPort';
       case TargetPlatform.iOS:
       case TargetPlatform.macOS:
       case TargetPlatform.windows:

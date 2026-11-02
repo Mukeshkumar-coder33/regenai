@@ -3210,17 +3210,38 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   ),
                 ],
               ),
-              ElevatedButton.icon(
-                onPressed: _showAddEmployeeDialog,
-                icon: const Icon(Icons.add_rounded, size: 17),
-                label: const Text('+ Add Employee', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF10B981),
-                  foregroundColor: Colors.white,
+              InkWell(
+                onTap: _showAddEmployeeDialog,
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  elevation: 0,
-                  shadowColor: const Color(0xFF10B981).withValues(alpha: 0.5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF22C55E),
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF22C55E).withValues(alpha: 0.35),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Icon(Icons.add_rounded, size: 16, color: Colors.white),
+                      SizedBox(width: 4),
+                      Text(
+                        'Add Employee',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                          letterSpacing: 0.1,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -3257,19 +3278,16 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           const SizedBox(height: 12),
 
           // Filter Segment Chips: [All] [Active] [On Leave] [Inactive]
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _buildSegmentChip('All', 0, _selectedEmployeeFilter, (idx) => setState(() => _selectedEmployeeFilter = idx)),
-                const SizedBox(width: 8),
-                _buildSegmentChip('Active', 1, _selectedEmployeeFilter, (idx) => setState(() => _selectedEmployeeFilter = idx)),
-                const SizedBox(width: 8),
-                _buildSegmentChip('On Leave', 2, _selectedEmployeeFilter, (idx) => setState(() => _selectedEmployeeFilter = idx)),
-                const SizedBox(width: 8),
-                _buildSegmentChip('Inactive', 3, _selectedEmployeeFilter, (idx) => setState(() => _selectedEmployeeFilter = idx)),
-              ],
-            ),
+          Row(
+            children: [
+              Expanded(child: _buildSegmentChip('All', 0, _selectedEmployeeFilter, (idx) => setState(() => _selectedEmployeeFilter = idx))),
+              const SizedBox(width: 8),
+              Expanded(child: _buildSegmentChip('Active', 1, _selectedEmployeeFilter, (idx) => setState(() => _selectedEmployeeFilter = idx))),
+              const SizedBox(width: 8),
+              Expanded(child: _buildSegmentChip('On Leave', 2, _selectedEmployeeFilter, (idx) => setState(() => _selectedEmployeeFilter = idx))),
+              const SizedBox(width: 8),
+              Expanded(child: _buildSegmentChip('Inactive', 3, _selectedEmployeeFilter, (idx) => setState(() => _selectedEmployeeFilter = idx))),
+            ],
           ),
           const SizedBox(height: 14),
 
@@ -3296,17 +3314,19 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(vertical: 8),
             decoration: BoxDecoration(
-              color: isSelected ? const Color(0xFF10B981) : const Color(0xFF0C1410).withValues(alpha: 0.65),
+              color: isSelected ? const Color(0xFF22C55E) : const Color(0xFF0C241B).withValues(alpha: 0.65),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: isSelected ? const Color(0xFF10B981) : const Color(0xFF10B981).withValues(alpha: 0.18),
+                color: isSelected ? const Color(0xFF22C55E) : const Color(0xFF34D399).withValues(alpha: 0.18),
+                width: 1.0,
               ),
               boxShadow: isSelected
                   ? [
                       BoxShadow(
-                        color: const Color(0xFF10B981).withValues(alpha: 0.4),
+                        color: const Color(0xFF22C55E).withValues(alpha: 0.40),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),
@@ -3315,10 +3335,12 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             ),
             child: Text(
               label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                color: isSelected ? Colors.white : const Color(0xFFBACCC3),
+                fontSize: 12.5,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                color: isSelected ? const Color(0xFF042017) : const Color(0xFFE2E8F0),
               ),
             ),
           ),
@@ -3327,88 +3349,149 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     );
   }
 
+  Widget _buildEmployeeAvatar(UserModel emp) {
+    final empName = emp.name.isNotEmpty ? emp.name : emp.username;
+    final initial = empName.isNotEmpty ? empName[0].toUpperCase() : 'E';
+
+    if (emp.avatar != null && emp.avatar!.isNotEmpty) {
+      return Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.35), width: 1.2),
+        ),
+        child: ClipOval(
+          child: Image.network(
+            emp.avatar!,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => _buildAvatarFallback(empName, initial),
+          ),
+        ),
+      );
+    }
+
+    return _buildAvatarFallback(empName, initial);
+  }
+
+  Widget _buildAvatarFallback(String name, String initial) {
+    final colorHash = name.hashCode.abs() % 4;
+    final bgColors = [
+      const Color(0xFF0E3D2F),
+      const Color(0xFF1E3A5F),
+      const Color(0xFF3B2F4C),
+      const Color(0xFF2C3E2D),
+    ];
+    final accentColors = [
+      const Color(0xFF34D399),
+      const Color(0xFF60A5FA),
+      const Color(0xFFA78BFA),
+      const Color(0xFF4ADE80),
+    ];
+    final bg = bgColors[colorHash];
+    final accent = accentColors[colorHash];
+
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: bg,
+        border: Border.all(color: accent.withValues(alpha: 0.50), width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: bg.withValues(alpha: 0.4),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        initial,
+        style: TextStyle(
+          fontSize: 17,
+          fontWeight: FontWeight.w800,
+          color: accent,
+        ),
+      ),
+    );
+  }
+
   Widget _buildEmployeeCard(UserModel emp) {
     final todayAtt = _getEmployeeTodayAttendance(emp);
     final isPresent = todayAtt != null;
-    final isOnLeave = _leaves.any((l) => l.isApproved && (l.userId == emp.userId || l.userId == emp.username));
+    final isOnLeave = _leaves.any((l) => l.isApproved && (l.userId.toLowerCase() == emp.userId.toLowerCase() || l.userId.toLowerCase() == emp.username.toLowerCase()));
 
     String statusText = 'Active';
-    Color statusColor = const Color(0xFF34D399);
-    Color statusBg = const Color(0xFF10B981).withValues(alpha: 0.20);
+    Color statusColor = const Color(0xFF22C55E);
 
     if (isOnLeave) {
       statusText = 'On Leave';
       statusColor = const Color(0xFFF59E0B);
-      statusBg = const Color(0xFFF59E0B).withValues(alpha: 0.20);
     } else if (!isPresent) {
       statusText = 'Inactive';
-      statusColor = const Color(0xFF88A89A);
-      statusBg = Colors.white.withValues(alpha: 0.08);
+      statusColor = const Color(0xFF94A398);
     }
 
     final designation = emp.designation?.isNotEmpty == true
         ? emp.designation!
         : (emp.department?.isNotEmpty == true ? emp.department! : emp.roleDisplayName);
 
+    final empName = emp.name.isNotEmpty ? emp.name : emp.username;
+
     return _buildGlassCard(
-      borderRadius: 18,
-      margin: const EdgeInsets.only(bottom: 10),
+      borderRadius: 16,
+      margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
         children: [
           // Avatar
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: statusColor, width: 1.5),
-              color: const Color(0xFF0F3A2E),
-            ),
-            child: Center(
-              child: Text(
-                emp.name.isNotEmpty ? emp.name[0].toUpperCase() : (emp.username.isNotEmpty ? emp.username[0].toUpperCase() : 'U'),
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
+          _buildEmployeeAvatar(emp),
+          const SizedBox(width: 14),
 
-          // Name and Role
+          // Name, Designation, and Status (3 lines matching user reference image)
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  emp.name.isNotEmpty ? emp.name : emp.username,
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white),
+                  empName,
+                  style: const TextStyle(
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    letterSpacing: -0.2,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
                 Text(
                   designation,
-                  style: const TextStyle(fontSize: 11.5, color: Color(0xFFBACCC3)),
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w400,
+                    color: Color(0xFF94A3B8),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  statusText,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: statusColor,
+                  ),
                 ),
               ],
             ),
           ),
 
-          // Status Badge
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: statusBg,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              statusText,
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: statusColor),
-            ),
-          ),
-          const SizedBox(width: 6),
-
-          // Three dots menu
+          // Three dots menu on right
           IconButton(
-            icon: const Icon(Icons.more_vert_rounded, size: 18, color: Color(0xFFBACCC3)),
+            icon: const Icon(Icons.more_vert_rounded, size: 20, color: Color(0xFFCBD5E1)),
             onPressed: () => _showEmployeeActionMenu(emp),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
@@ -4919,7 +5002,13 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             borderRadius: BorderRadius.circular(22),
             side: BorderSide(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
           ),
-          title: const Text('Add Team Member', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+          title: Row(
+            children: const [
+              Icon(Icons.person_add_rounded, color: Color(0xFF22C55E), size: 22),
+              SizedBox(width: 10),
+              Text('Add Employee', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
+            ],
+          ),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -5046,10 +5135,14 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                       }
                     },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF10B981),
+                backgroundColor: const Color(0xFF22C55E),
                 foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               ),
-              child: isSubmitting ? const CircularProgressIndicator(color: Colors.white) : const Text('Register'),
+              child: isSubmitting
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Add Employee', style: TextStyle(fontWeight: FontWeight.w700)),
             ),
           ],
         ),

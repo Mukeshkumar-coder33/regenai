@@ -397,25 +397,56 @@ class _TasksViewState extends State<TasksView> {
   Widget _buildSearchBar(Color primaryGreen) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 14),
+      height: 46,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFF0A2218).withValues(alpha: 0.70),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: primaryGreen.withValues(alpha: 0.2)),
-        boxShadow: const [
-          BoxShadow(color: Color(0x0A000000), blurRadius: 6, offset: Offset(0, 2)),
+        border: Border.all(
+          color: const Color(0xFF34D399).withValues(alpha: 0.22),
+          width: 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.25),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
         ],
       ),
-      child: TextField(
-        controller: _searchController,
-        autofocus: true,
-        decoration: InputDecoration(
-          icon: Icon(Icons.search_rounded, color: primaryGreen, size: 20),
-          hintText: 'Search by task title, assignee, or priority...',
-          hintStyle: TextStyle(fontSize: 13, color: Colors.grey.shade500),
-          border: InputBorder.none,
-        ),
-        onChanged: (_) => setState(() {}),
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Row(
+        children: [
+          const Icon(Icons.search_rounded, size: 19, color: Color(0xFFCBD5E1)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              autofocus: true,
+              cursorColor: const Color(0xFF34D399),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+              ),
+              decoration: const InputDecoration(
+                hintText: 'Search tasks by title, assignee, or priority...',
+                hintStyle: TextStyle(
+                  color: Color(0xFF94A3B8),
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w500,
+                ),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(vertical: 12),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.only(left: 4, right: 2),
+            child: Icon(Icons.filter_list_rounded, size: 20, color: Color(0xFFCBD5E1)),
+          ),
+        ],
       ),
     );
   }

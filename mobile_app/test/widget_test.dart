@@ -749,6 +749,14 @@ void main() {
       expect(find.text('Search employees...'), findsOneWidget);
       expect(find.byIcon(Icons.search_rounded), findsOneWidget);
       expect(find.byIcon(Icons.filter_list_rounded), findsOneWidget);
+
+      // Add Employee button and filter segment chips matching reference image
+      expect(find.text('Add Employee'), findsOneWidget);
+      expect(find.text('All'), findsOneWidget);
+      expect(find.text('Active'), findsWidgets);
+      expect(find.text('On Leave'), findsWidgets);
+      expect(find.text('Inactive'), findsWidgets);
+      expect(find.byIcon(Icons.more_vert_rounded), findsWidgets);
     });
 
     test('CompanyModel startingMonth is derived dynamically from createdAt or establishmentMonth', () {

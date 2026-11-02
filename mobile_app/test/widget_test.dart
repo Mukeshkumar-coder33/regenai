@@ -70,7 +70,25 @@ class MockDashboardService extends DashboardService {
   Future<List<LeaveModel>> getLeaves() async {
     return [];
   }
+
+  @override
+  Future<UserModel> updateUser(String id, Map<String, dynamic> userData) async {
+    return UserModel(
+      id: id,
+      userId: id,
+      username: (userData['username'] ?? 'eswaran').toString(),
+      name: (userData['name'] ?? 'eswaran M').toString(),
+      role: (userData['role'] ?? 'staff').toString(),
+      token: 'tok_updated',
+    );
+  }
+
+  @override
+  Future<void> deleteUser(String id) async {
+    return;
+  }
 }
+
 
 class MockAuthService extends AuthService {
   @override
@@ -1003,6 +1021,125 @@ void main() {
       expect(find.text('Profile Picture'), findsOneWidget);
       expect(find.text('⚠️ Photo Upload Mandatory *'), findsOneWidget);
       expect(find.text('Register Employee'), findsOneWidget);
+    });
+
+    testWidgets('CompanyDashboardView employee card has 3-dots with Edit and Delete options only',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanyDashboardView(
+            user: const UserModel(
+              id: 'owner_1',
+              userId: 'Vyshwa',
+              username: 'Vyshwa',
+              name: 'Vyshwa',
+              role: 'owner',
+              company: 'krish Tech Computer',
+              token: 'tok_owner',
+            ),
+            dashboardService: MockDashboardService(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Navigate to Employees tab (tab index 1)
+      await tester.tap(find.text('Employees').first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Manage your team'), findsOneWidget);
+      expect(find.text('eswaran M'), findsOneWidget);
+
+      // Verify search box hint is present
+      expect(find.text('Search employees...'), findsOneWidget);
+
+      // Tap 3-dots menu on employee card
+      final moreVert = find.byIcon(Icons.more_vert_rounded).first;
+      await tester.tap(moreVert);
+      await tester.pumpAndSettle();
+
+      // Verified: ONLY Edit and Delete options are present
+      expect(find.text('Edit'), findsOneWidget);
+      expect(find.text('Delete'), findsOneWidget);
+      expect(find.text('View Attendance History'), findsNothing);
+      expect(find.text('Employee Details'), findsNothing);
+    });
+
+    testWidgets('CompanyDashboardView Attendance tab has Work Schedule & Break Policy at top with website fields',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanyDashboardView(
+            user: const UserModel(
+              id: 'owner_1',
+              userId: 'Vyshwa',
+              username: 'Vyshwa',
+              name: 'Vyshwa',
+              role: 'owner',
+              company: 'krish Tech Computer',
+              token: 'tok_owner',
+            ),
+            dashboardService: MockDashboardService(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Navigate to Attendance tab (tab index 2)
+      await tester.tap(find.text('Attendance').first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Track employee attendance'), findsOneWidget);
+      expect(find.text('Work Policy'), findsOneWidget);
+      expect(find.text('Work Schedule & Break Policy'), findsOneWidget);
+
+      // Tap Work Schedule & Break Policy
+      await tester.tap(find.text('Work Schedule & Break Policy').first);
+      await tester.pumpAndSettle();
+
+      // Verified: Fields matching website AttendanceModule.jsx
+      expect(find.text('Standard Check-In'), findsOneWidget);
+      expect(find.text('Standard Check-Out'), findsOneWidget);
+      expect(find.text('Working Hours / Day'), findsOneWidget);
+      expect(find.text('Working Days / Week'), findsOneWidget);
+      expect(find.text('Break Time Limits & Salary Delay Deductions'), findsOneWidget);
+      expect(find.text('Lunch Break (Mins)'), findsOneWidget);
+      expect(find.text('Casual Break (Mins)'), findsOneWidget);
+      expect(find.text('Save Schedule & Policy'), findsOneWidget);
+    });
+
+    testWidgets('CompanyDashboardView Late Arrivals in dashboard displays only today count and has null onTap',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanyDashboardView(
+            user: const UserModel(
+              id: 'owner_1',
+              userId: 'Vyshwa',
+              username: 'Vyshwa',
+              name: 'Vyshwa',
+              role: 'owner',
+              company: 'krish Tech Computer',
+              token: 'tok_owner',
+            ),
+            dashboardService: MockDashboardService(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.text('Late Arrivals'), findsOneWidget);
+      expect(find.text("Today's late check-ins"), findsOneWidget);
+
+      // Tap Late Arrivals card -> should not show any dialog (onTap is null)
+      await tester.ensureVisible(find.text('Late Arrivals'));
+      await tester.tap(find.text('Late Arrivals'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Company Shift Timings'), findsNothing);
     });
   });
 }

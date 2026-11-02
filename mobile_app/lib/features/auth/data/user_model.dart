@@ -18,6 +18,7 @@ class UserModel {
   final String token;
   final String? authSource;
   final String? joiningDate;
+  final String? dateOfBirth;
   final String? createdAt;
 
   const UserModel({
@@ -37,6 +38,7 @@ class UserModel {
     required this.token,
     this.authSource,
     this.joiningDate,
+    this.dateOfBirth,
     this.createdAt,
   });
 
@@ -60,6 +62,7 @@ class UserModel {
       token: tkn,
       authSource: json['authSource']?.toString(),
       joiningDate: json['joiningDate']?.toString(),
+      dateOfBirth: (json['dateOfBirth'] ?? json['dob'])?.toString(),
       createdAt: json['createdAt']?.toString(),
     );
   }
@@ -83,6 +86,7 @@ class UserModel {
       'token': token,
       'authSource': authSource,
       'joiningDate': joiningDate,
+      'dateOfBirth': dateOfBirth,
       'createdAt': createdAt,
     };
   }
@@ -104,6 +108,7 @@ class UserModel {
     String? token,
     String? authSource,
     String? joiningDate,
+    String? dateOfBirth,
     String? createdAt,
   }) {
     return UserModel(
@@ -123,6 +128,7 @@ class UserModel {
       token: token ?? this.token,
       authSource: authSource ?? this.authSource,
       joiningDate: joiningDate ?? this.joiningDate,
+      dateOfBirth: dateOfBirth ?? this.dateOfBirth,
       createdAt: createdAt ?? this.createdAt,
     );
   }

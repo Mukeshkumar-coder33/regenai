@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../../core/services/location_service.dart';
@@ -437,6 +438,57 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     final totalPossible = _totalStaffInYear * 200;
     if (totalPossible <= 0) return 0;
     return ((_yearAttendedCount / totalPossible) * 100).round().clamp(0, 100);
+  }
+
+  bool _isCompanyLeave(DateTime date) {
+    for (final l in _leaves) {
+      if (!l.isApproved) continue;
+      try {
+        final start = DateTime.parse(l.startDate);
+        final end = DateTime.parse(l.endDate);
+        final dZero = DateTime(date.year, date.month, date.day);
+        final sZero = DateTime(start.year, start.month, start.day);
+        final eZero = DateTime(end.year, end.month, end.day);
+        if ((dZero.isAtSameMomentAs(sZero) || dZero.isAfter(sZero)) &&
+            (dZero.isAtSameMomentAs(eZero) || dZero.isBefore(eZero))) {
+          return true;
+        }
+      } catch (_) {
+        final dStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+        if (l.startDate.startsWith(dStr)) return true;
+      }
+    }
+    return false;
+  }
+
+  bool _isNonWorkingDay(DateTime date) {
+    final daysPerWeek = _workSchedule.workingDaysPerWeek;
+    if (daysPerWeek == 5) {
+      return date.weekday == DateTime.saturday || date.weekday == DateTime.sunday;
+    } else if (daysPerWeek == 6) {
+      return date.weekday == DateTime.sunday;
+    } else if (daysPerWeek == 4) {
+      return date.weekday == DateTime.friday || date.weekday == DateTime.saturday || date.weekday == DateTime.sunday;
+    } else if (daysPerWeek == 7) {
+      return false;
+    }
+    return _workSchedule.isWeeklyOff(date);
+  }
+
+  bool _isNonWorkingOrLeave(DateTime date) {
+    return _isNonWorkingDay(date) || _isCompanyLeave(date);
+  }
+
+  List<UserModel> _getBirthdayEmployees(DateTime date) {
+    return _allNonAdminEmployees.where((u) {
+      if (u.dateOfBirth == null || u.dateOfBirth!.isEmpty) return false;
+      try {
+        final dob = DateTime.parse(u.dateOfBirth!);
+        return dob.month == date.month && dob.day == date.day;
+      } catch (_) {
+        return false;
+      }
+    }).toList();
   }
 
   // 1. Week Trend Data: 7 days (Mon-Sun) with dynamic staff count (strictly non-admin)
@@ -1934,14 +1986,12 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               Expanded(
                 child: _buildStatSubCard(
                   title: 'Late Arrivals',
-                  value: _isCurrentYear ? '$_todayLateCount' : '$_yearLateCount',
-                  subtitle: _isCurrentYear
-                      ? 'After ${_workSchedule.shiftStart.isNotEmpty ? _workSchedule.shiftStart : "09:30"}'
-                      : 'Recorded in $_selectedYear',
+                  value: '$_todayLateCount',
+                  subtitle: "Today's late check-ins",
                   icon: Icons.access_time_rounded,
                   iconColor: const Color(0xFFFCD34D),
                   iconBg: const Color(0xFFFBBF24).withValues(alpha: 0.18),
-                  onTap: _showShiftSettingsDialog,
+                  onTap: null,
                 ),
               ),
             ],
@@ -2283,7 +2333,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     required IconData icon,
     required Color iconColor,
     required Color iconBg,
-    required VoidCallback onTap,
+    VoidCallback? onTap,
   }) {
     return _buildGlassCard(
       onTap: onTap,
@@ -2539,31 +2589,38 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: List.generate(7, (i) {
               final d = dayList[i];
-              final isSelected = i == _selectedWeekDayIndex;
               final dObj = d['date'] as DateTime;
+              final isLeaveOrOff = _isNonWorkingOrLeave(dObj);
+              final isSelected = i == _selectedWeekDayIndex && !isLeaveOrOff;
               return Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 2),
                   child: InkWell(
-                    onTap: () => setState(() {
-                      _selectedWeekDayIndex = i;
-                      _selectedTrendDetailEmployee = null;
-                      _trendListPaginationCount = 3;
-                      _isTrendViewAll = false;
-                    }),
+                    onTap: isLeaveOrOff
+                        ? null
+                        : () => setState(() {
+                              _selectedWeekDayIndex = i;
+                              _selectedTrendDetailEmployee = null;
+                              _trendListPaginationCount = 3;
+                              _isTrendViewAll = false;
+                            }),
                     borderRadius: BorderRadius.circular(10),
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 7),
                       decoration: BoxDecoration(
-                        color: isSelected
-                            ? const Color(0xFF10B981)
-                            : const Color(0xFF042F24).withValues(alpha: 0.5),
+                        color: isLeaveOrOff
+                            ? const Color(0xFF7C3AED).withValues(alpha: 0.35)
+                            : (isSelected
+                                ? const Color(0xFF10B981)
+                                : const Color(0xFF042F24).withValues(alpha: 0.5)),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: isSelected
-                              ? const Color(0xFF34D399)
-                              : Colors.white.withValues(alpha: 0.1),
-                          width: isSelected ? 1.5 : 0.8,
+                          color: isLeaveOrOff
+                              ? const Color(0xFF8B5CF6).withValues(alpha: 0.65)
+                              : (isSelected
+                                  ? const Color(0xFF34D399)
+                                  : Colors.white.withValues(alpha: 0.1)),
+                          width: (isSelected || isLeaveOrOff) ? 1.5 : 0.8,
                         ),
                       ),
                       child: Column(
@@ -2572,17 +2629,21 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                             d['dayName'] as String,
                             style: TextStyle(
                               fontSize: 10,
-                              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                              color: isSelected ? Colors.white : const Color(0xFFCBD5E1),
+                              fontWeight: (isSelected || isLeaveOrOff) ? FontWeight.w800 : FontWeight.w600,
+                              color: isLeaveOrOff
+                                  ? const Color(0xFFC4B5FD)
+                                  : (isSelected ? Colors.white : const Color(0xFFCBD5E1)),
                             ),
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            '${dObj.day}',
+                            isLeaveOrOff ? 'Off' : '${dObj.day}',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w800,
-                              color: isSelected ? Colors.white : const Color(0xFFF1F5F9),
+                              color: isLeaveOrOff
+                                  ? const Color(0xFFE9D5FF)
+                                  : (isSelected ? Colors.white : const Color(0xFFF1F5F9)),
                             ),
                           ),
                         ],
@@ -3867,6 +3928,28 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     final initial = empName.isNotEmpty ? empName[0].toUpperCase() : 'E';
 
     if (emp.avatar != null && emp.avatar!.isNotEmpty) {
+      Widget imageWidget;
+      if (emp.avatar!.startsWith('data:image')) {
+        try {
+          final commaIdx = emp.avatar!.indexOf(',');
+          final base64Data = commaIdx != -1 ? emp.avatar!.substring(commaIdx + 1) : emp.avatar!;
+          final bytes = base64Decode(base64Data);
+          imageWidget = Image.memory(
+            bytes,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => _buildAvatarFallback(empName, initial),
+          );
+        } catch (_) {
+          imageWidget = _buildAvatarFallback(empName, initial);
+        }
+      } else {
+        imageWidget = Image.network(
+          emp.avatar!,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => _buildAvatarFallback(empName, initial),
+        );
+      }
+
       return Container(
         width: 44,
         height: 44,
@@ -3874,13 +3957,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           shape: BoxShape.circle,
           border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.35), width: 1.2),
         ),
-        child: ClipOval(
-          child: Image.network(
-            emp.avatar!,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) => _buildAvatarFallback(empName, initial),
-          ),
-        ),
+        child: ClipOval(child: imageWidget),
       );
     }
 
@@ -4002,7 +4079,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             ),
           ),
 
-          // Three dots menu on right
+          // Three dots menu on right (Edit and Delete options only)
           IconButton(
             icon: const Icon(Icons.more_vert_rounded, size: 20, color: Color(0xFFCBD5E1)),
             onPressed: () => _showEmployeeActionMenu(emp),
@@ -4017,46 +4094,414 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   void _showEmployeeActionMenu(UserModel emp) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF072118),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                emp.name.isNotEmpty ? emp.name : emp.username,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
-              ),
-              Text(
-                'ID: ${emp.userId.isNotEmpty ? emp.userId : emp.id} • ${emp.email ?? ''}',
-                style: const TextStyle(fontSize: 12, color: Color(0xFFBACCC3)),
-              ),
-              const SizedBox(height: 16),
-              ListTile(
-                leading: const Icon(Icons.calendar_month_rounded, color: Color(0xFF10B981)),
-                title: const Text('View Attendance History', style: TextStyle(color: Colors.white)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  setState(() => _selectedBottomTab = 2);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.badge_outlined, color: Color(0xFFA7F3D0)),
-                title: const Text('Employee Details', style: TextStyle(color: Colors.white)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      backgroundColor: const Color(0xFF10B981),
-                      content: Text('Employee registered under ${emp.department ?? 'General'} department.'),
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+            decoration: BoxDecoration(
+              color: const Color(0xFF072118).withValues(alpha: 0.95),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+              border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.25)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF34D399).withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(2),
                     ),
-                  );
-                },
+                  ),
+                ),
+                Text(
+                  emp.name.isNotEmpty ? emp.name : emp.username,
+                  style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800, color: Colors.white),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'ID: ${emp.userId.isNotEmpty ? emp.userId : emp.id} • ${emp.designation ?? emp.roleDisplayName}',
+                  style: const TextStyle(fontSize: 12, color: Color(0xFFBACCC3)),
+                ),
+                const SizedBox(height: 16),
+                Material(
+                  color: Colors.transparent,
+                  child: ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.edit_outlined, color: Color(0xFF34D399), size: 20),
+                    ),
+                    title: const Text('Edit', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                    subtitle: const Text('Update credentials, username, password, or role', style: TextStyle(color: Color(0xFFBACCC3), fontSize: 11)),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _showEditEmployeeDialog(emp);
+                    },
+                  ),
+                ),
+                const Divider(color: Colors.white12, height: 16),
+                Material(
+                  color: Colors.transparent,
+                  child: ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEF4444).withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444), size: 20),
+                    ),
+                    title: const Text('Delete', style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.w700)),
+                    subtitle: const Text('Remove from company roster & revoke login credentials', style: TextStyle(color: Color(0xFFBACCC3), fontSize: 11)),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _confirmDeleteEmployee(emp);
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteEmployee(UserModel emp) async {
+    final empName = emp.name.isNotEmpty ? emp.name : emp.username;
+    final empId = emp.userId.isNotEmpty ? emp.userId : emp.id;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF072118),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: BorderSide(color: const Color(0xFFEF4444).withValues(alpha: 0.35)),
+        ),
+        title: Row(
+          children: const [
+            Icon(Icons.warning_amber_rounded, color: Color(0xFFEF4444), size: 24),
+            SizedBox(width: 10),
+            Text('Delete Employee', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 17)),
+          ],
+        ),
+        content: Text(
+          'Are you sure you want to delete "$empName"?\n\nThey will be removed from this company roster. Their login credentials will become invalid and access permanently revoked.',
+          style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 13, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.w600)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete Employee', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await _dashboardService.deleteUser(empId);
+        await _loadCompanyData();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: const Color(0xFF10B981),
+              content: Text('✓ Employee "$empName" deleted and access revoked.'),
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: const Color(0xFFEF4444),
+              content: Text('Failed to delete employee: $e'),
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  void _showEditEmployeeDialog(UserModel emp) {
+    final nameCtrl = TextEditingController(text: emp.name);
+    final usernameCtrl = TextEditingController(text: emp.username);
+    final passwordCtrl = TextEditingController();
+    final emailCtrl = TextEditingController(text: emp.email ?? '');
+    final phoneCtrl = TextEditingController(text: emp.phone ?? '');
+    final deptCtrl = TextEditingController(text: emp.department ?? '');
+    final designationCtrl = TextEditingController(text: emp.designation ?? '');
+    String role = emp.role.isNotEmpty ? emp.role : 'staff';
+    bool isSaving = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+            child: Container(
+              padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(ctx).viewInsets.bottom + 24),
+              decoration: BoxDecoration(
+                color: const Color(0xFF072118).withValues(alpha: 0.96),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.28)),
               ),
-            ],
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF34D399).withValues(alpha: 0.35),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Edit Employee Details',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded, color: Color(0xFFCBD5E1), size: 20),
+                          onPressed: () => Navigator.pop(ctx),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Update credentials and placement. If username or password is changed, old credentials become invalid immediately.',
+                      style: TextStyle(fontSize: 11.5, color: Color(0xFFBACCC3)),
+                    ),
+                    const SizedBox(height: 16),
+
+                    _buildCompanyTypingBox(
+                      controller: nameCtrl,
+                      labelText: 'Full Name',
+                      hintText: 'e.g. John Doe',
+                      prefixIcon: Icons.badge_outlined,
+                    ),
+                    const SizedBox(height: 12),
+
+                    _buildCompanyTypingBox(
+                      controller: usernameCtrl,
+                      labelText: 'Username (Login ID)',
+                      hintText: 'e.g. jdoe',
+                      prefixIcon: Icons.account_circle_outlined,
+                    ),
+                    const SizedBox(height: 12),
+
+                    _buildCompanyTypingBox(
+                      controller: passwordCtrl,
+                      labelText: 'New Password',
+                      hintText: 'Leave blank to keep current password',
+                      prefixIcon: Icons.lock_outline_rounded,
+                      obscureText: true,
+                    ),
+                    const SizedBox(height: 12),
+
+                    _buildCompanyTypingBox(
+                      controller: emailCtrl,
+                      labelText: 'Email Address',
+                      hintText: 'e.g. user@company.com',
+                      prefixIcon: Icons.email_outlined,
+                      keyboardType: TextInputType.emailAddress,
+                    ),
+                    const SizedBox(height: 12),
+
+                    _buildCompanyTypingBox(
+                      controller: phoneCtrl,
+                      labelText: 'Phone Number',
+                      hintText: 'e.g. +91 9876543210',
+                      prefixIcon: Icons.phone_outlined,
+                      keyboardType: TextInputType.phone,
+                    ),
+                    const SizedBox(height: 12),
+
+                    _buildCompanyTypingBox(
+                      controller: designationCtrl,
+                      labelText: 'Designation',
+                      hintText: 'e.g. Software Engineer',
+                      prefixIcon: Icons.work_outline_rounded,
+                    ),
+                    const SizedBox(height: 12),
+
+                    _buildCompanyTypingBox(
+                      controller: deptCtrl,
+                      labelText: 'Department',
+                      hintText: 'e.g. Engineering',
+                      prefixIcon: Icons.domain_rounded,
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Role Selector
+                    const Text(
+                      'Employee Role',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFCBD5E1)),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: ['staff', 'admin', 'intern', 'freelancer'].map((r) {
+                        final isSel = role == r;
+                        return Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 2),
+                            child: InkWell(
+                              onTap: () => setModalState(() => role = r),
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: isSel ? const Color(0xFF10B981) : const Color(0xFF042F24).withValues(alpha: 0.5),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: isSel ? const Color(0xFF34D399) : Colors.white12,
+                                  ),
+                                ),
+                                child: Text(
+                                  r.toUpperCase(),
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: isSel ? FontWeight.w800 : FontWeight.w600,
+                                    color: isSel ? Colors.white : const Color(0xFFCBD5E1),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Save Button
+                    InkWell(
+                      onTap: isSaving
+                          ? null
+                          : () async {
+                              final newName = nameCtrl.text.trim();
+                              final newUsername = usernameCtrl.text.trim();
+                              if (newName.isEmpty || newUsername.isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    backgroundColor: Color(0xFFEF4444),
+                                    content: Text('Name and username are required.'),
+                                  ),
+                                );
+                                return;
+                              }
+
+                              setModalState(() => isSaving = true);
+                              final payload = <String, dynamic>{
+                                'name': newName,
+                                'username': newUsername,
+                                'email': emailCtrl.text.trim(),
+                                'phone': phoneCtrl.text.trim(),
+                                'department': deptCtrl.text.trim(),
+                                'designation': designationCtrl.text.trim(),
+                                'role': role,
+                              };
+                              if (passwordCtrl.text.trim().isNotEmpty) {
+                                payload['password'] = passwordCtrl.text.trim();
+                              }
+
+                              final empId = emp.userId.isNotEmpty ? emp.userId : emp.id;
+                              try {
+                                await _dashboardService.updateUser(empId, payload);
+                                if (ctx.mounted) Navigator.pop(ctx);
+                                await _loadCompanyData();
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      backgroundColor: const Color(0xFF10B981),
+                                      content: Text('✓ Employee "$newName" updated successfully! Old credentials invalidated.'),
+                                    ),
+                                  );
+                                }
+                              } catch (e) {
+                                setModalState(() => isSaving = false);
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      backgroundColor: const Color(0xFFEF4444),
+                                      content: Text('Failed to update employee: $e'),
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10B981),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: const Color(0xFF34D399).withValues(alpha: 0.35),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.35),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        alignment: Alignment.center,
+                        child: isSaving
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Text(
+                                'Save Changes',
+                                style: TextStyle(
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
       ),
@@ -4457,21 +4902,128 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Header
-          const Text(
-            'Attendance',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
-              letterSpacing: -0.4,
-              shadows: [Shadow(offset: Offset(0, 2), blurRadius: 4, color: Colors.black45)],
-            ),
+          // Header with Work Policy Action
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text(
+                    'Attendance',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      letterSpacing: -0.4,
+                      shadows: [Shadow(offset: Offset(0, 2), blurRadius: 4, color: Colors.black45)],
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Track employee attendance',
+                    style: TextStyle(fontSize: 13, color: Color(0xFFBACCC3)),
+                  ),
+                ],
+              ),
+              InkWell(
+                onTap: _showWorkScheduleAndBreakPolicySheet,
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: const Color(0xFF34D399).withValues(alpha: 0.30),
+                      width: 1.0,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.25),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Icon(Icons.timer_outlined, size: 16, color: Colors.white),
+                      SizedBox(width: 5),
+                      Text(
+                        'Work Policy',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 2),
-          const Text(
-            'Track employee attendance',
-            style: TextStyle(fontSize: 13, color: Color(0xFFBACCC3)),
+          const SizedBox(height: 12),
+
+          // Work Schedule & Break Policy Top Banner
+          InkWell(
+            onTap: _showWorkScheduleAndBreakPolicySheet,
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF0F4733).withValues(alpha: 0.65),
+                    const Color(0xFF07241A).withValues(alpha: 0.75),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: const Color(0xFF34D399).withValues(alpha: 0.35),
+                  width: 1.0,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.22),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.timer_outlined, size: 18, color: Color(0xFF34D399)),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Work Schedule & Break Policy',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                        Text(
+                          '${_workSchedule.shiftStart} - ${_workSchedule.shiftEnd} • ${_workSchedule.workingDaysPerWeek} Days/wk • ${_workSchedule.workingHoursPerDay}h • Lunch: ${_workSchedule.breakTime}m',
+                          style: const TextStyle(fontSize: 10.5, color: Color(0xFFBACCC3)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.arrow_forward_ios_rounded, size: 12, color: Color(0xFF34D399)),
+                ],
+              ),
+            ),
           ),
           const SizedBox(height: 14),
 
@@ -4667,38 +5219,489 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   dayDate.month == _selectedCalendarDate.month &&
                   dayDate.day == _selectedCalendarDate.day;
 
-              return GestureDetector(
-                onTap: () {
+              final birthdayEmployees = _getBirthdayEmployees(dayDate);
+              final hasBirthday = birthdayEmployees.isNotEmpty;
+              final isLeaveOrOff = _isNonWorkingOrLeave(dayDate);
+
+              Color bgColor = Colors.transparent;
+              Color borderColor = Colors.transparent;
+              Color textColor = const Color(0xFFCBD5E1);
+              List<BoxShadow>? shadows;
+              VoidCallback? onTapAction;
+
+              if (hasBirthday) {
+                // Gold color for employee birthday (tap to view employee details)
+                bgColor = const Color(0xFFF59E0B);
+                borderColor = const Color(0xFFFBBF24);
+                textColor = Colors.white;
+                shadows = [
+                  BoxShadow(
+                    color: const Color(0xFFF59E0B).withValues(alpha: 0.5),
+                    blurRadius: 8,
+                  ),
+                ];
+                onTapAction = () => _showBirthdayEmployeesDialog(dayDate, birthdayEmployees);
+              } else if (isLeaveOrOff) {
+                // Violet color for leaves & non-working days (unclickable: "we cant touch that because that is leave")
+                bgColor = const Color(0xFF7C3AED).withValues(alpha: 0.35);
+                borderColor = const Color(0xFF8B5CF6).withValues(alpha: 0.65);
+                textColor = const Color(0xFFC4B5FD);
+                onTapAction = null;
+              } else {
+                // Regular working day
+                if (isSelected) {
+                  bgColor = const Color(0xFF10B981);
+                  borderColor = const Color(0xFF34D399);
+                  textColor = Colors.white;
+                  shadows = [
+                    BoxShadow(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.5),
+                      blurRadius: 8,
+                    ),
+                  ];
+                }
+                onTapAction = () {
                   setState(() => _selectedCalendarDate = dayDate);
-                },
+                };
+              }
+
+              return GestureDetector(
+                onTap: onTapAction,
                 child: Container(
                   decoration: BoxDecoration(
-                    color: isSelected ? const Color(0xFF10B981) : Colors.transparent,
+                    color: bgColor,
                     shape: BoxShape.circle,
-                    boxShadow: isSelected
-                        ? [
-                            BoxShadow(
-                              color: const Color(0xFF10B981).withValues(alpha: 0.5),
-                              blurRadius: 8,
-                            ),
-                          ]
-                        : null,
+                    border: Border.all(color: borderColor, width: 1.0),
+                    boxShadow: shadows,
                   ),
                   child: Center(
-                    child: Text(
-                      '$dayNum',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
-                        color: isSelected ? Colors.white : const Color(0xFFCBD5E1),
-                      ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '$dayNum',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: (isSelected || hasBirthday || isLeaveOrOff) ? FontWeight.w800 : FontWeight.w500,
+                            color: textColor,
+                          ),
+                        ),
+                        if (hasBirthday)
+                          const Text('🎂', style: TextStyle(fontSize: 8, height: 0.8)),
+                      ],
                     ),
                   ),
                 ),
               );
             },
           ),
+          const SizedBox(height: 12),
+
+          // Calendar Color Legend
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildCalendarLegendDot(const Color(0xFF10B981), 'Working Day'),
+              const SizedBox(width: 12),
+              _buildCalendarLegendDot(const Color(0xFF8B5CF6), 'Leave / Off (Locked)'),
+              const SizedBox(width: 12),
+              _buildCalendarLegendDot(const Color(0xFFF59E0B), 'Birthday 🎂'),
+            ],
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildCalendarLegendDot(Color color, String label) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 5),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 10.5, color: Color(0xFFBACCC3), fontWeight: FontWeight.w600),
+        ),
+      ],
+    );
+  }
+
+  void _showBirthdayEmployeesDialog(DateTime date, List<UserModel> employees) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF072118),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: Color(0xFFF59E0B), width: 1.5),
+        ),
+        title: Row(
+          children: const [
+            Text('🎂', style: TextStyle(fontSize: 22)),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Birthday Celebration!',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFFFCD34D),
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '${date.day} ${_getMonthName(date.month)} • Team Birthday Celebrations',
+              style: const TextStyle(fontSize: 12, color: Color(0xFFBACCC3)),
+            ),
+            const SizedBox(height: 12),
+            ...employees.map((emp) {
+              final empName = emp.name.isNotEmpty ? emp.name : emp.username;
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.35)),
+                ),
+                child: Row(
+                  children: [
+                    _buildEmployeeAvatar(emp),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            empName,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${emp.designation ?? emp.roleDisplayName} • ${emp.department ?? "General"}',
+                            style: const TextStyle(fontSize: 11.5, color: Color(0xFFFCD34D)),
+                          ),
+                          if (emp.phone != null && emp.phone!.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              'Phone: ${emp.phone}',
+                              style: const TextStyle(fontSize: 11, color: Color(0xFFBACCC3)),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFF59E0B),
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close', style: TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showWorkScheduleAndBreakPolicySheet() {
+    final checkInCtrl = TextEditingController(text: _workSchedule.checkInTime.isNotEmpty ? _workSchedule.checkInTime : '09:30');
+    final checkOutCtrl = TextEditingController(text: _workSchedule.checkOutTime.isNotEmpty ? _workSchedule.checkOutTime : '18:30');
+    final hoursCtrl = TextEditingController(text: '${_workSchedule.workingHoursPerDay}');
+    final breakCtrl = TextEditingController(text: '${_workSchedule.breakTime}');
+    final casualBreakCtrl = TextEditingController(text: '${_workSchedule.casualBreakTime}');
+    int daysPerWeek = _workSchedule.workingDaysPerWeek > 0 ? _workSchedule.workingDaysPerWeek : 5;
+    bool isSaving = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+            child: Container(
+              padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(ctx).viewInsets.bottom + 24),
+              decoration: BoxDecoration(
+                color: const Color(0xFF072118).withValues(alpha: 0.96),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.28)),
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF34D399).withValues(alpha: 0.35),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.timer_outlined, color: Color(0xFF34D399), size: 22),
+                            SizedBox(width: 10),
+                            Text(
+                              'Work Schedule & Break Policy',
+                              style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800, color: Colors.white),
+                            ),
+                          ],
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded, color: Color(0xFFCBD5E1), size: 20),
+                          onPressed: () => Navigator.pop(ctx),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Configure standard work schedules, working hours, and official & casual break time limits.',
+                      style: TextStyle(fontSize: 11.5, color: Color(0xFFBACCC3)),
+                    ),
+                    const SizedBox(height: 16),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildCompanyTypingBox(
+                            controller: checkInCtrl,
+                            labelText: 'Standard Check-In',
+                            hintText: '09:30',
+                            prefixIcon: Icons.login_rounded,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _buildCompanyTypingBox(
+                            controller: checkOutCtrl,
+                            labelText: 'Standard Check-Out',
+                            hintText: '18:30',
+                            prefixIcon: Icons.logout_rounded,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    _buildCompanyTypingBox(
+                      controller: hoursCtrl,
+                      labelText: 'Working Hours / Day',
+                      hintText: '8',
+                      prefixIcon: Icons.schedule_rounded,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Working Days / Week
+                    const Text(
+                      'Working Days / Week',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFCBD5E1)),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [4, 5, 6, 7].map((days) {
+                        final isSel = daysPerWeek == days;
+                        return Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 2),
+                            child: InkWell(
+                              onTap: () => setModalState(() => daysPerWeek = days),
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: isSel ? const Color(0xFF10B981) : const Color(0xFF042F24).withValues(alpha: 0.5),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: isSel ? const Color(0xFF34D399) : Colors.white12,
+                                  ),
+                                ),
+                                child: Text(
+                                  '$days Days',
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: isSel ? FontWeight.w800 : FontWeight.w600,
+                                    color: isSel ? Colors.white : const Color(0xFFCBD5E1),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Break Limits Container
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF042F24).withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.22)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Break Time Limits & Salary Delay Deductions',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF6EE7B7)),
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildCompanyTypingBox(
+                                  controller: breakCtrl,
+                                  labelText: 'Lunch Break (Mins)',
+                                  hintText: '60',
+                                  prefixIcon: Icons.restaurant_rounded,
+                                  keyboardType: TextInputType.number,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: _buildCompanyTypingBox(
+                                  controller: casualBreakCtrl,
+                                  labelText: 'Casual Break (Mins)',
+                                  hintText: '15',
+                                  prefixIcon: Icons.coffee_rounded,
+                                  keyboardType: TextInputType.number,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Exceeding break limits calculates salary deduction on a per-minute delay basis.',
+                            style: TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Save Button
+                    InkWell(
+                      onTap: isSaving
+                          ? null
+                          : () async {
+                              setModalState(() => isSaving = true);
+                              final offDays = daysPerWeek == 4
+                                  ? [0, 5, 6]
+                                  : (daysPerWeek == 5 ? [0, 6] : (daysPerWeek == 6 ? [0] : <int>[]));
+                              final updated = WorkScheduleModel(
+                                id: _workSchedule.id,
+                                companyId: _workSchedule.companyId,
+                                checkInTime: checkInCtrl.text.trim().isNotEmpty ? checkInCtrl.text.trim() : '09:30',
+                                checkOutTime: checkOutCtrl.text.trim().isNotEmpty ? checkOutCtrl.text.trim() : '18:30',
+                                workingHoursPerDay: int.tryParse(hoursCtrl.text.trim()) ?? 8,
+                                workingDaysPerWeek: daysPerWeek,
+                                breakTime: int.tryParse(breakCtrl.text.trim()) ?? 60,
+                                casualBreakTime: int.tryParse(casualBreakCtrl.text.trim()) ?? 15,
+                                weeklyOffDays: offDays,
+                                graceMinutes: _workSchedule.graceMinutes,
+                              );
+
+                              try {
+                                await _attendanceService.updateWorkSchedule(updated);
+                                setState(() => _workSchedule = updated);
+                                if (ctx.mounted) Navigator.pop(ctx);
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      backgroundColor: Color(0xFF10B981),
+                                      content: Text('✓ Work schedule and break policy updated successfully!'),
+                                    ),
+                                  );
+                                }
+                              } catch (e) {
+                                setModalState(() => isSaving = false);
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      backgroundColor: const Color(0xFFEF4444),
+                                      content: Text('Failed to update schedule: $e'),
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10B981),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.35)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.35),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        alignment: Alignment.center,
+                        child: isSaving
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Text(
+                                'Save Schedule & Policy',
+                                style: TextStyle(
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -5325,6 +6328,12 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           onTap: _showNotificationsSheet,
         ),
         _buildSettingsMenuCard(
+          icon: Icons.timer_outlined,
+          title: 'Work Schedule & Break Policy',
+          subtitle: 'Shift timings, working days & break deductions',
+          onTap: _showShiftSettingsDialog,
+        ),
+        _buildSettingsMenuCard(
           icon: Icons.shield_outlined,
           title: 'Security',
           subtitle: 'Password, 2FA, login activity',
@@ -5644,7 +6653,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
             child: Container(
               height: maxLines == 1 ? 48 : null,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
               decoration: BoxDecoration(
                 color: const Color(0xFF0A2218).withValues(alpha: 0.85),
                 borderRadius: BorderRadius.circular(14),
@@ -5664,49 +6673,39 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 children: [
                   if (prefixIcon != null) ...[
                     Icon(prefixIcon, size: 20, color: const Color(0xFFCBD5E1)),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 10),
                   ],
                   Expanded(
-                    child: Container(
-                      height: maxLines == 1 ? 34 : null,
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      decoration: BoxDecoration(
+                    child: TextField(
+                      controller: controller,
+                      onChanged: onChanged,
+                      obscureText: obscureText,
+                      keyboardType: keyboardType,
+                      maxLines: maxLines,
+                      readOnly: readOnly,
+                      onTap: onTap,
+                      cursorColor: const Color(0xFF34D399),
+                      style: const TextStyle(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
                       ),
-                      alignment: Alignment.centerLeft,
-                      child: TextField(
-                        controller: controller,
-                        onChanged: onChanged,
-                        obscureText: obscureText,
-                        keyboardType: keyboardType,
-                        maxLines: maxLines,
-                        readOnly: readOnly,
-                        onTap: onTap,
-                        cursorColor: const Color(0xFF0F172A),
-                        style: const TextStyle(
-                          color: Color(0xFF0F172A),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
+                      decoration: InputDecoration(
+                        isDense: true,
+                        filled: false,
+                        hintText: hintText,
+                        hintStyle: const TextStyle(
+                          color: Color(0xFF94A3B8),
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w500,
                         ),
-                        decoration: InputDecoration(
-                          isDense: true,
-                          filled: true,
-                          fillColor: Colors.transparent,
-                          hintText: hintText,
-                          hintStyle: const TextStyle(
-                            color: Color(0xFF94A3B8),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          disabledBorder: InputBorder.none,
-                          errorBorder: InputBorder.none,
-                          focusedErrorBorder: InputBorder.none,
-                          contentPadding: EdgeInsets.zero,
-                        ),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        focusedErrorBorder: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(vertical: maxLines > 1 ? 8 : 10),
                       ),
                     ),
                   ),
@@ -6019,76 +7018,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   }
 
   void _showShiftSettingsDialog() {
-    final startCtrl = TextEditingController(text: _workSchedule.checkInTime);
-    final endCtrl = TextEditingController(text: _workSchedule.checkOutTime);
-    final graceCtrl = TextEditingController(text: '${_workSchedule.graceMinutes}');
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF072118),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(22),
-          side: BorderSide(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
-        ),
-        title: const Text('Company Shift Timings', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildCompanyTypingBox(
-              controller: startCtrl,
-              labelText: 'Shift Start (HH:mm)',
-              hintText: '09:00',
-              prefixIcon: Icons.schedule_rounded,
-            ),
-            const SizedBox(height: 12),
-            _buildCompanyTypingBox(
-              controller: endCtrl,
-              labelText: 'Shift End (HH:mm)',
-              hintText: '18:00',
-              prefixIcon: Icons.update_rounded,
-            ),
-            const SizedBox(height: 12),
-            _buildCompanyTypingBox(
-              controller: graceCtrl,
-              labelText: 'Grace Minutes',
-              hintText: '15',
-              prefixIcon: Icons.timer_outlined,
-              keyboardType: TextInputType.number,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: Color(0xFF88A89A)))),
-          ElevatedButton(
-            onPressed: () async {
-              final nav = Navigator.of(ctx);
-              final messenger = ScaffoldMessenger.of(context);
-              try {
-                await _attendanceService.updateWorkSchedule(
-                  WorkScheduleModel(
-                    checkInTime: startCtrl.text.trim(),
-                    checkOutTime: endCtrl.text.trim(),
-                    graceMinutes: int.tryParse(graceCtrl.text.trim()) ?? 15,
-                  ),
-                );
-                nav.pop();
-                messenger.showSnackBar(
-                  const SnackBar(backgroundColor: Color(0xFF10B981), content: Text('Shift timings updated!')),
-                );
-                _loadCompanyData();
-              } catch (e) {
-                messenger.showSnackBar(
-                  SnackBar(backgroundColor: Colors.red, content: Text('Error: $e')),
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981), foregroundColor: Colors.white),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
+    _showWorkScheduleAndBreakPolicySheet();
   }
 
   void _showAttendanceReportSheet() {

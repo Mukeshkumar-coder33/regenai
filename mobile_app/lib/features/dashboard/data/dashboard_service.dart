@@ -183,4 +183,49 @@ class DashboardService {
       throw const AuthException(message: 'Server connection unreachable', statusCode: 0);
     }
   }
+
+  /// Update user / employee details (/api/users/:id)
+  Future<UserModel> updateUser(String id, Map<String, dynamic> userData) async {
+    final headers = await _getHeaders();
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/users/$id');
+
+    try {
+      final res = await _client
+          .put(url, headers: headers, body: jsonEncode(userData))
+          .timeout(const Duration(seconds: 12));
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        final Map<String, dynamic> data = jsonDecode(res.body) as Map<String, dynamic>;
+        return UserModel.fromJson(data);
+      }
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw AuthException(
+        message: body['message']?.toString() ?? 'Failed to update user (${res.statusCode})',
+        statusCode: res.statusCode,
+      );
+    } on SocketException {
+      throw const AuthException(message: 'Server connection unreachable', statusCode: 0);
+    }
+  }
+
+  /// Delete user / employee from company roster and revoke access (/api/users/:id)
+  Future<void> deleteUser(String id) async {
+    final headers = await _getHeaders();
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/users/$id');
+
+    try {
+      final res = await _client
+          .delete(url, headers: headers)
+          .timeout(const Duration(seconds: 12));
+      if (res.statusCode == 200 || res.statusCode == 204) {
+        return;
+      }
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw AuthException(
+        message: body['message']?.toString() ?? 'Failed to delete user (${res.statusCode})',
+        statusCode: res.statusCode,
+      );
+    } on SocketException {
+      throw const AuthException(message: 'Server connection unreachable', statusCode: 0);
+    }
+  }
 }

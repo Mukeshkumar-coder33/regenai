@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../../core/widgets/brand_logo.dart';
 import '../../auth/data/user_model.dart';
 import '../../dashboard/data/dashboard_service.dart';
@@ -142,18 +144,6 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
   bool _isValidAadhaar(String value) {
     final digits = value.replaceAll(RegExp(r'\D'), '');
     return digits.length == 12 && !digits.startsWith('0') && !digits.startsWith('1');
-  }
-
-  String get _currentAvatarUrl {
-    if (_customAvatarUrl != null && _customAvatarUrl!.isNotEmpty) {
-      return _customAvatarUrl!;
-    }
-    final seed = _usernameCtrl.text.trim().isNotEmpty
-        ? _usernameCtrl.text.trim()
-        : (_firstNameCtrl.text.trim().isNotEmpty ? _firstNameCtrl.text.trim() : _staffIdCtrl.text.trim());
-    final safeSeed = Uri.encodeComponent(seed.isNotEmpty ? seed : 'employee');
-    final g = _gender.toLowerCase();
-    return 'https://api.dicebear.com/7.x/avataaars/png?seed=$safeSeed&gender=$g';
   }
 
   Future<void> _pickDate(TextEditingController controller, {bool isDob = false}) async {
@@ -517,14 +507,7 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
                       ),
                       child: ClipOval(
                         child: _hasUploadedProfilePic && _customAvatarUrl != null
-                            ? Image.network(
-                                _customAvatarUrl!,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) => Container(
-                                  color: const Color(0xFF10B981).withValues(alpha: 0.2),
-                                  child: const Icon(Icons.person_rounded, size: 34, color: Color(0xFF34D399)),
-                                ),
-                              )
+                            ? _buildAvatarImagePreview(_customAvatarUrl!)
                             : Container(
                                 color: const Color(0xFF0B2B20),
                                 child: const Icon(Icons.add_a_photo_rounded, size: 28, color: Color(0xFF34D399)),
@@ -656,207 +639,197 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
     );
   }
 
-  void _showPhotoPickerSheet() {
-    final urlCtrl = TextEditingController(text: _customAvatarUrl ?? '');
-    final presets = [
-      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
-      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80',
-      'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=400&q=80',
-      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80',
-      'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=400&q=80',
-      'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=400&q=80',
-    ];
+  Widget _buildAvatarImagePreview(String url) {
+    if (url.startsWith('data:image')) {
+      try {
+        final commaIdx = url.indexOf(',');
+        final base64Data = commaIdx != -1 ? url.substring(commaIdx + 1) : url;
+        final bytes = base64Decode(base64Data);
+        return Image.memory(
+          bytes,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => Container(
+            color: const Color(0xFF10B981).withValues(alpha: 0.2),
+            child: const Icon(Icons.person_rounded, size: 34, color: Color(0xFF34D399)),
+          ),
+        );
+      } catch (_) {}
+    }
+    return Image.network(
+      url,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => Container(
+        color: const Color(0xFF10B981).withValues(alpha: 0.2),
+        child: const Icon(Icons.person_rounded, size: 34, color: Color(0xFF34D399)),
+      ),
+    );
+  }
 
+  Future<void> _pickImageFromSource(ImageSource source) async {
+    try {
+      final picker = ImagePicker();
+      final XFile? file = await picker.pickImage(
+        source: source,
+        maxWidth: 800,
+        maxHeight: 800,
+        imageQuality: 85,
+      );
+      if (file != null) {
+        final bytes = await file.readAsBytes();
+        final ext = file.name.split('.').last.toLowerCase();
+        final mime = (ext == 'png') ? 'image/png' : 'image/jpeg';
+        final base64Str = 'data:$mime;base64,${base64Encode(bytes)}';
+        setState(() {
+          _customAvatarUrl = base64Str;
+          _hasUploadedProfilePic = true;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              backgroundColor: Color(0xFF10B981),
+              content: Text('✓ Profile picture uploaded successfully from device!'),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        _showError('Failed to access device photo: $e');
+      }
+    }
+  }
+
+  void _showPhotoPickerSheet() {
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => ClipRRect(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
           child: Container(
-            padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(ctx).viewInsets.bottom + 24),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
             decoration: BoxDecoration(
               color: const Color(0xFF072118).withValues(alpha: 0.95),
               borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
               border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.25)),
             ),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: 14),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF34D399).withValues(alpha: 0.35),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF34D399).withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(2),
                     ),
                   ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Upload Profile Picture *',
-                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Colors.white),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close_rounded, color: Color(0xFFCBD5E1), size: 20),
-                        onPressed: () => Navigator.pop(ctx),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'Profile picture is mandatory to register an employee in the database.',
-                    style: TextStyle(fontSize: 12, color: Color(0xFFBACCC3)),
-                  ),
-                  const SizedBox(height: 16),
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Upload Profile Photo *',
+                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Colors.white),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, color: Color(0xFFCBD5E1), size: 20),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Upload employee photo directly from device files or gallery.',
+                  style: TextStyle(fontSize: 12, color: Color(0xFFBACCC3)),
+                ),
+                const SizedBox(height: 20),
 
-                  // Option A: Preset Corporate Executive Photos
-                  const Text(
-                    'CHOOSE FROM EXECUTIVE PROFILES',
-                    style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFF6EE7B7), letterSpacing: 1.0),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: presets.map((url) {
-                      return GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _customAvatarUrl = url;
-                            _hasUploadedProfilePic = true;
-                          });
-                          Navigator.pop(ctx);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              backgroundColor: Color(0xFF10B981),
-                              content: Text('✓ Profile picture selected successfully!'),
-                            ),
-                          );
-                        },
-                        child: Container(
-                          width: 46,
-                          height: 46,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: _customAvatarUrl == url ? const Color(0xFF10B981) : Colors.white24,
-                              width: _customAvatarUrl == url ? 2.5 : 1.0,
-                            ),
-                          ),
-                          child: ClipOval(
-                            child: Image.network(
-                              url,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => const Icon(Icons.person, color: Colors.white54),
-                            ),
+                // Device Gallery Option
+                InkWell(
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickImageFromSource(ImageSource.gallery);
+                  },
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.40)),
+                    ),
+                    child: Row(
+                      children: const [
+                        Icon(Icons.photo_library_rounded, color: Color(0xFF34D399), size: 22),
+                        SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Choose from Device Gallery',
+                                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                'Select employee photo from device files or gallery',
+                                style: TextStyle(fontSize: 11, color: Color(0xFFBACCC3)),
+                              ),
+                            ],
                           ),
                         ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 18),
-
-                  // Option B: Confirm Generated Avatar
-                  InkWell(
-                    onTap: () {
-                      final generated = _currentAvatarUrl;
-                      setState(() {
-                        _customAvatarUrl = generated;
-                        _hasUploadedProfilePic = true;
-                      });
-                      Navigator.pop(ctx);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          backgroundColor: Color(0xFF10B981),
-                          content: Text('✓ Gender-aligned corporate avatar confirmed!'),
-                        ),
-                      );
-                    },
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF10B981).withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.35)),
-                      ),
-                      child: Row(
-                        children: const [
-                          Icon(Icons.auto_awesome_rounded, color: Color(0xFF34D399), size: 18),
-                          SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              'Confirm Generated Corporate Avatar',
-                              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.white),
-                            ),
-                          ),
-                          Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 18),
-                        ],
-                      ),
+                        Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFF34D399), size: 14),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 18),
+                ),
+                const SizedBox(height: 12),
 
-                  // Option C: Custom Image URL / Data URI
-                  const Text(
-                    'OR ENTER IMAGE URL / DATA URI',
-                    style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFF6EE7B7), letterSpacing: 1.0),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildCompanyInputField(
-                    controller: urlCtrl,
-                    labelText: 'Photo Web Address',
-                    hintText: 'https://... or data:image/png;base64,...',
-                    prefixIcon: Icons.link_rounded,
-                  ),
-                  const SizedBox(height: 14),
-                  InkWell(
-                    onTap: () {
-                      final text = urlCtrl.text.trim();
-                      if (text.isEmpty) {
-                        _showError('Please enter a valid image URL or choose a preset.');
-                        return;
-                      }
-                      setState(() {
-                        _customAvatarUrl = text;
-                        _hasUploadedProfilePic = true;
-                      });
-                      Navigator.pop(ctx);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          backgroundColor: Color(0xFF10B981),
-                          content: Text('✓ Custom profile picture URL saved!'),
+                // Device Camera Option
+                InkWell(
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickImageFromSource(ImageSource.camera);
+                  },
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF042F24).withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.20)),
+                    ),
+                    child: Row(
+                      children: const [
+                        Icon(Icons.camera_alt_rounded, color: Color(0xFF6EE7B7), size: 22),
+                        SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Take Photo with Camera',
+                                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                'Capture photo directly using device camera',
+                                style: TextStyle(fontSize: 11, color: Color(0xFFBACCC3)),
+                              ),
+                            ],
+                          ),
                         ),
-                      );
-                    },
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF10B981),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.30)),
-                        boxShadow: [
-                          BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 6, offset: const Offset(0, 2)),
-                        ],
-                      ),
-                      alignment: Alignment.center,
-                      child: const Text(
-                        'Set Profile Picture',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white),
-                      ),
+                        Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFF6EE7B7), size: 14),
+                      ],
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -1279,7 +1252,7 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
             filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
             child: Container(
               height: maxLines == 1 ? 48 : null,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
               decoration: BoxDecoration(
                 color: const Color(0xFF0A2218).withValues(alpha: 0.85),
                 borderRadius: BorderRadius.circular(14),
@@ -1299,48 +1272,38 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
                 children: [
                   if (prefixIcon != null) ...[
                     Icon(prefixIcon, size: 20, color: const Color(0xFFCBD5E1)),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 10),
                   ],
                   Expanded(
-                    child: Container(
-                      height: maxLines == 1 ? 34 : null,
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      decoration: BoxDecoration(
+                    child: TextField(
+                      controller: controller,
+                      onChanged: onChanged,
+                      obscureText: obscureText,
+                      keyboardType: keyboardType,
+                      maxLines: maxLines,
+                      inputFormatters: inputFormatters,
+                      cursorColor: const Color(0xFF34D399),
+                      style: const TextStyle(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
                       ),
-                      alignment: Alignment.centerLeft,
-                      child: TextField(
-                        controller: controller,
-                        onChanged: onChanged,
-                        obscureText: obscureText,
-                        keyboardType: keyboardType,
-                        maxLines: maxLines,
-                        inputFormatters: inputFormatters,
-                        cursorColor: const Color(0xFF0F172A),
-                        style: const TextStyle(
-                          color: Color(0xFF0F172A),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        filled: false,
+                        hintText: hintText,
+                        hintStyle: const TextStyle(
+                          color: Color(0xFF94A3B8),
                           fontSize: 13,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w500,
                         ),
-                        decoration: InputDecoration(
-                          isDense: true,
-                          filled: true,
-                          fillColor: Colors.transparent,
-                          hintText: hintText,
-                          hintStyle: const TextStyle(
-                            color: Color(0xFF94A3B8),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          disabledBorder: InputBorder.none,
-                          errorBorder: InputBorder.none,
-                          focusedErrorBorder: InputBorder.none,
-                          contentPadding: EdgeInsets.zero,
-                        ),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        focusedErrorBorder: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(vertical: maxLines > 1 ? 8 : 10),
                       ),
                     ),
                   ),

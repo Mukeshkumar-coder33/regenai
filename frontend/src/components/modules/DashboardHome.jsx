@@ -774,7 +774,7 @@ export default function DashboardHome({ userProfile, onNavigate, selectedYear = 
           <div className="flex items-center shrink-0 w-full lg:w-auto">
             {/* Search input container */}
             <div ref={searchContainerRef} className="relative w-full sm:w-[420px] md:w-[460px] lg:w-[500px] xl:w-[540px]">
-              <div className="h-11 sm:h-12 flex items-center bg-gradient-to-br from-[#235C45]/70 via-[#163E2E]/75 to-[#0E2A1F]/80 backdrop-blur-md border border-[#34D399]/28 rounded-xl transition-all focus-within:border-[#34D399] focus-within:ring-1 focus-within:ring-[#34D399]/25 shadow-md shadow-black/25">
+              <div className="h-11 sm:h-12 flex items-center bg-gradient-to-br from-slate-500/40 via-slate-700/50 to-slate-800/65 backdrop-blur-md border border-slate-200/30 rounded-xl transition-all focus-within:border-slate-300 focus-within:ring-1 focus-within:ring-white/20 shadow-md shadow-black/25">
                 <Search className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-[#CBD5E1] shrink-0 ml-3.5 sm:ml-4" />
                 <input
                   type="text"

@@ -1448,7 +1448,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   }
 
   // ---------------------------------------------------------
-  // REUSABLE FROSTED GLASS CONTAINER (Exact Match to User Image)
+  // REUSABLE FROSTED GLASS CONTAINER (Lite Grey Mirror Glass)
   // ---------------------------------------------------------
   Widget _buildGlassCard({
     required Widget child,
@@ -1465,25 +1465,25 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            const Color(0xFF235C45).withValues(alpha: 0.68),
-            const Color(0xFF163E2E).withValues(alpha: 0.74),
-            const Color(0xFF0E2A1F).withValues(alpha: 0.80),
+            const Color(0xFF64748B).withValues(alpha: 0.38), // Lite grey mirror glass reflection
+            const Color(0xFF334155).withValues(alpha: 0.48), // Frosted grey glass body
+            const Color(0xFF1E293B).withValues(alpha: 0.65), // Translucent dark grey backing (blocks background bleed)
           ],
         ),
         borderRadius: BorderRadius.circular(borderRadius),
         border: border ??
             Border.all(
-              color: const Color(0xFF34D399).withValues(alpha: 0.28),
+              color: const Color(0xFFE2E8F0).withValues(alpha: 0.30),
               width: 1.0,
             ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.22),
+            color: Colors.black.withValues(alpha: 0.20),
             blurRadius: 10,
             offset: const Offset(0, 3),
           ),
           BoxShadow(
-            color: const Color(0xFF34D399).withValues(alpha: 0.08),
+            color: Colors.white.withValues(alpha: 0.08),
             blurRadius: 12,
             spreadRadius: -2,
           ),
@@ -1730,14 +1730,14 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    const Color(0xFF235C45).withValues(alpha: 0.68),
-                    const Color(0xFF163E2E).withValues(alpha: 0.74),
-                    const Color(0xFF0E2A1F).withValues(alpha: 0.80),
+                    const Color(0xFF64748B).withValues(alpha: 0.38),
+                    const Color(0xFF334155).withValues(alpha: 0.48),
+                    const Color(0xFF1E293B).withValues(alpha: 0.65),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(22),
                 border: Border.all(
-                  color: const Color(0xFF34D399).withValues(alpha: 0.28),
+                  color: const Color(0xFFE2E8F0).withValues(alpha: 0.30),
                   width: 1.1,
                 ),
                 boxShadow: [
@@ -4700,14 +4700,14 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  const Color(0xFF235C45).withValues(alpha: 0.68),
-                  const Color(0xFF163E2E).withValues(alpha: 0.74),
-                  const Color(0xFF0E2A1F).withValues(alpha: 0.80),
+                  const Color(0xFF64748B).withValues(alpha: 0.38),
+                  const Color(0xFF334155).withValues(alpha: 0.48),
+                  const Color(0xFF1E293B).withValues(alpha: 0.65),
                 ],
               ),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: const Color(0xFF34D399).withValues(alpha: 0.28),
+                color: const Color(0xFFE2E8F0).withValues(alpha: 0.30),
                 width: 1.0,
               ),
               boxShadow: [
@@ -4774,7 +4774,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   }
 
   // ---------------------------------------------------------
-  // 5-TAB FROSTED GLASS DOCKED BOTTOM BAR (Exact Match to User Image 2)
+  // 5-TAB FROSTED GLASS DOCKED BOTTOM BAR (Lite Darker Tint)
   // ---------------------------------------------------------
   Widget _buildCompanyBottomNav() {
     return Container(
@@ -4784,19 +4784,19 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            const Color(0xFF092218).withValues(alpha: 0.95),
-            const Color(0xFF03140E).withValues(alpha: 0.98),
+            const Color(0xFF1E293B).withValues(alpha: 0.72),
+            const Color(0xFF0F172A).withValues(alpha: 0.78),
           ],
         ),
         border: Border(
           top: BorderSide(
-            color: const Color(0xFF34D399).withValues(alpha: 0.20),
+            color: const Color(0xFFE2E8F0).withValues(alpha: 0.20),
             width: 1.0,
           ),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.40),
+            color: Colors.black.withValues(alpha: 0.25),
             blurRadius: 16,
             offset: const Offset(0, -4),
           ),
@@ -4838,21 +4838,26 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Color(0xFF0D4330),
-                    Color(0xFF062319),
+                    Color(0xFF334155),
+                    Color(0xFF1E293B),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: const Color(0xFF34D399).withValues(alpha: 0.65),
+                  color: const Color(0xFFE2E8F0).withValues(alpha: 0.50),
                   width: 1.2,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF10B981).withValues(alpha: 0.45),
-                    blurRadius: 14,
+                    color: Colors.white.withValues(alpha: 0.12),
+                    blurRadius: 10,
                     offset: const Offset(0, 0),
                     spreadRadius: 1,
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.22),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
                   ),
                 ],
               )
@@ -4865,7 +4870,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           children: [
             Icon(
               isSelected ? activeIcon : icon,
-              color: isSelected ? const Color(0xFF6EE7B7) : const Color(0xFF94A3B8),
+              color: isSelected ? Colors.white : const Color(0xFF94A3B8),
               size: isSelected ? 22 : 21,
             ),
             const SizedBox(height: 3),
@@ -5012,14 +5017,14 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                             colors: [
-                              const Color(0xFF235C45).withValues(alpha: 0.68),
-                              const Color(0xFF163E2E).withValues(alpha: 0.74),
-                              const Color(0xFF0E2A1F).withValues(alpha: 0.80),
+                              const Color(0xFF64748B).withValues(alpha: 0.38),
+                              const Color(0xFF334155).withValues(alpha: 0.48),
+                              const Color(0xFF1E293B).withValues(alpha: 0.65),
                             ],
                           ),
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                            color: const Color(0xFF34D399).withValues(alpha: 0.28),
+                            color: const Color(0xFFE2E8F0).withValues(alpha: 0.30),
                             width: 1.0,
                           ),
                         ),

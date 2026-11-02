@@ -561,14 +561,14 @@ class _LoginScreenState extends State<LoginScreen> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            const Color(0xFF235C45).withValues(alpha: 0.68),
-            const Color(0xFF163E2E).withValues(alpha: 0.74),
-            const Color(0xFF0E2A1F).withValues(alpha: 0.80),
+            const Color(0xFF64748B).withValues(alpha: 0.38),
+            const Color(0xFF334155).withValues(alpha: 0.48),
+            const Color(0xFF1E293B).withValues(alpha: 0.65),
           ],
         ),
         borderRadius: BorderRadius.circular(28),
         border: Border.all(
-          color: const Color(0xFF34D399).withValues(alpha: 0.32),
+          color: const Color(0xFFE2E8F0).withValues(alpha: 0.32),
           width: 1.2,
         ),
         boxShadow: [

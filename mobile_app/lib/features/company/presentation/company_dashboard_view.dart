@@ -80,6 +80,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   List<LeaveModel> _leaves = [];
   WorkScheduleModel _workSchedule = const WorkScheduleModel();
 
+  int _selectedYear = 2026;
+  String _selectedTrendFilter = 'Month';
+
   DateTime _selectedCalendarDate = DateTime.now();
   DateTime _currentCalendarMonth = DateTime.now();
   final TextEditingController _employeeSearchController = TextEditingController();
@@ -239,6 +242,184 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
 
   int get _activeTasksCount {
     return _tasks.where((t) => t.status.toLowerCase() != 'completed').length;
+  }
+
+  // 1. Team members joined in selected year (MongoDB dynamic)
+  int get _joinedInSelectedYear {
+    final yearStr = _selectedYear.toString();
+    return _users.where((u) {
+      if (u.joiningDate != null && u.joiningDate!.isNotEmpty) {
+        return u.joiningDate!.startsWith(yearStr);
+      }
+      if (u.createdAt != null && u.createdAt!.isNotEmpty) {
+        return u.createdAt!.startsWith(yearStr);
+      }
+      return false;
+    }).length;
+  }
+
+  // 2. Today's attendance logs from MongoDB
+  List<AttendanceModel> get _todayAttendanceLogs {
+    final now = DateTime.now();
+    final todayStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    return _attendance.where((a) => a.date == todayStr).toList();
+  }
+
+  // 3. Today's present count (present or late)
+  int get _todayPresentCount {
+    final logs = _todayAttendanceLogs;
+    if (logs.isEmpty) {
+      return 0;
+    }
+    return logs.where((a) {
+      final st = a.status.toLowerCase();
+      return st == 'present' || st == 'late';
+    }).length;
+  }
+
+  // 4. Today's late count
+  int get _todayLateCount {
+    return _todayAttendanceLogs.where((a) => a.status.toLowerCase() == 'late').length;
+  }
+
+  // 5. Today's leave & half-day count
+  int get _todayLeaveAndHalfDayCount {
+    final now = DateTime.now();
+    final todayStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final leavesToday = _leaves.where((l) => l.isApproved && l.coversDate(todayStr)).length;
+    final halfDaysToday = _todayAttendanceLogs.where((a) => a.status.toLowerCase() == 'half_day').length;
+    return leavesToday + halfDaysToday;
+  }
+
+  // 6. Today's absent count
+  int get _todayAbsentCount {
+    final total = _users.length;
+    final present = _todayPresentCount;
+    final onLeave = _todayLeaveAndHalfDayCount;
+    return (total - present - onLeave).clamp(0, total);
+  }
+
+  // 7. Today's attendance rate percentage (0 - 100)
+  int get _todayAttendancePct {
+    final total = _users.length;
+    if (total == 0) return 0;
+    return ((_todayPresentCount / total) * 100).round();
+  }
+
+  // 8. Monthly attendance rates for the 12 months in _selectedYear
+  List<double> get _monthlyAttendanceRates {
+    final rates = <double>[];
+    final yearStr = _selectedYear.toString();
+    final totalStaff = _users.isNotEmpty ? _users.length : 1;
+
+    for (int month = 1; month <= 12; month++) {
+      final monthPrefix = '$yearStr-${month.toString().padLeft(2, '0')}';
+      final monthLogs = _attendance.where((a) {
+        if (!a.date.startsWith(monthPrefix)) return false;
+        final st = a.status.toLowerCase();
+        return st == 'present' || st == 'late' || st == 'half_day';
+      }).toList();
+
+      if (monthLogs.isEmpty) {
+        rates.add(0.0);
+      } else {
+        final rate = ((monthLogs.length / (totalStaff * 20)) * 100).clamp(0.0, 100.0);
+        rates.add(rate > 0 ? rate : 10.0);
+      }
+    }
+    return rates;
+  }
+
+  void _showYearPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF031A14),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) {
+        final years = [2026, 2025, 2024, 2023];
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Select Year',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
+                ),
+                const SizedBox(height: 12),
+                ...years.map((y) {
+                  final isSelected = y == _selectedYear;
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      '$y',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                        color: isSelected ? const Color(0xFF34D399) : Colors.white,
+                      ),
+                    ),
+                    trailing: isSelected ? const Icon(Icons.check_rounded, color: Color(0xFF34D399)) : null,
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      setState(() => _selectedYear = y);
+                    },
+                  );
+                }),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showTrendFilterPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF031A14),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) {
+        final filters = ['Month', 'Quarter', 'Year'];
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Select Trend View',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
+                ),
+                const SizedBox(height: 12),
+                ...filters.map((f) {
+                  final isSelected = f == _selectedTrendFilter;
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      f,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                        color: isSelected ? const Color(0xFF34D399) : Colors.white,
+                      ),
+                    ),
+                    trailing: isSelected ? const Icon(Icons.check_rounded, color: Color(0xFF34D399)) : null,
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      setState(() => _selectedTrendFilter = f);
+                    },
+                  );
+                }),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   AttendanceModel? _getEmployeeTodayAttendance(UserModel emp) {
@@ -991,6 +1172,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   // TOP COMMON APP BAR (Image 1 Header)
   // ---------------------------------------------------------
   Widget _buildTopAppBar() {
+    final companyName = _company?.name ?? widget.user.companyName ?? 'krish Tech Computer';
     final displayName = widget.user.name.isNotEmpty
         ? widget.user.name
         : (widget.user.username.isNotEmpty ? widget.user.username : 'Owner');
@@ -1034,22 +1216,37 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             ),
           ),
 
-          // Center: Logo + "ReGen" Brand
+          // Center: Logo + "ReGen" Brand + Subtitle (Image 1 Header)
           Row(
-            children: const [
-              BrandLogo(size: 26, borderRadius: 8),
-              SizedBox(width: 8),
-              Text(
-                'ReGen',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  letterSpacing: -0.2,
-                  shadows: [
-                    Shadow(offset: Offset(0, 1), blurRadius: 4, color: Colors.black54),
-                  ],
-                ),
+            children: [
+              const BrandLogo(size: 28, borderRadius: 8),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'ReGen',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      letterSpacing: -0.2,
+                      shadows: [
+                        Shadow(offset: Offset(0, 1), blurRadius: 4, color: Colors.black54),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    companyName,
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF94A3B8),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
             ],
           ),
@@ -1168,204 +1365,222 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   }
 
   // ---------------------------------------------------------
-  // TAB 0: HOME / DASHBOARD (Image 1, Screen 2)
+  // TAB 0: HOME / DASHBOARD (Exact Match to User Attached Screen)
   // ---------------------------------------------------------
   Widget _buildHomeTab() {
-    final companyName = _company?.name ?? widget.user.companyName ?? 'krish Tech Computer';
-    final activeStaff = _attendance.length;
     final totalStaff = _users.length;
-    final onLeaveCount = _leaves.where((l) => l.isApproved).length;
-    final absentCount = (totalStaff - activeStaff).clamp(0, 999);
-    final userFirstName = widget.user.name.isNotEmpty
-        ? widget.user.name.split(' ').first
-        : (widget.user.username.isNotEmpty ? widget.user.username : 'Admin');
+    final userDisplayName = widget.user.name.isNotEmpty
+        ? widget.user.name
+        : (widget.user.username.isNotEmpty ? widget.user.username : 'Mukesh Kumar');
 
     return SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 1. Dashboard Welcome & Date Row (Image 1 Screen 2)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
+          // 1. Executive Welcome Banner with Year Selector
+          ClipRRect(
+            borderRadius: BorderRadius.circular(22),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+              child: Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0D251D).withValues(alpha: 0.65),
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(
+                    color: const Color(0xFF34D399).withValues(alpha: 0.28),
+                    width: 1.1,
+                  ),
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Dashboard',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                        letterSpacing: -0.4,
-                        shadows: [
-                          Shadow(offset: Offset(0, 2), blurRadius: 6, color: Colors.black45),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Welcome back, $userFirstName!',
-                      style: const TextStyle(
-                        fontSize: 13.5,
-                        color: Color(0xFFE2E8F0),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    // Specific Text Widgets for Test Matching
-                    Text(
-                      companyName,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFFA7F3D0),
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 1),
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          '$_departmentCount',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFFA7F3D0),
-                            fontWeight: FontWeight.w700,
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Welcome back,',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF94A3B8),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '$userDisplayName!',
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                  letterSpacing: -0.3,
+                                  shadows: [
+                                    Shadow(offset: Offset(0, 1), blurRadius: 4, color: Colors.black45),
+                                  ],
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(width: 4),
-                        const Text(
-                          'Departments',
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            color: Color(0xFFF1F5F9),
-                            fontWeight: FontWeight.w600,
+                        const SizedBox(width: 8),
+                        // Year Selector Pill
+                        GestureDetector(
+                          onTap: _showYearPicker,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF064E3B).withValues(alpha: 0.6),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: const Color(0xFF34D399).withValues(alpha: 0.35),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.calendar_today_rounded, size: 13, color: Color(0xFF34D399)),
+                                const SizedBox(width: 5),
+                                Text(
+                                  'Year: $_selectedYear',
+                                  style: const TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                const Icon(Icons.keyboard_arrow_down_rounded, size: 14, color: Color(0xFF94A3B8)),
+                              ],
+                            ),
                           ),
                         ),
                       ],
                     ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Manage your team, track attendance and keep your workplace running smoothly.',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w400,
+                        color: Color(0xFFA7F3D0),
+                        height: 1.35,
+                      ),
+                    ),
                   ],
                 ),
               ),
-              // Current Date Pill (e.g. "Tue 28 Oct 2026")
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          const Color(0xFF1F4839).withValues(alpha: 0.45),
-                          const Color(0xFF102D21).withValues(alpha: 0.55),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.28)),
-                    ),
-                    child: Text(
-                      _formatHeaderDate(DateTime.now()),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
 
           // Situation C: Super Admin Quick Switcher Banner (Only for authorized Vyshwa accounts)
           if (widget.user.canSwitchToSuperAdmin) ...[
             _buildSuperAdminSwitchBanner(),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
           ],
 
-          // 2. 4 Stat Cards in 2x2 Grid (Image 1 Screen 2)
+          // 2. Row 1: Total Employees & Departments
           Row(
             children: [
               Expanded(
-                child: _buildFrostedStatCard(
+                child: _buildMetricCard(
                   title: 'Total Employees',
                   value: '$totalStaff',
                   icon: Icons.groups_rounded,
-                  iconColor: const Color(0xFF34D399),
-                  iconBg: const Color(0xFF10B981).withValues(alpha: 0.22),
-                  badgeIcon: Icons.people_outline,
-                  badgeText: '$totalStaff',
-                  badgeColor: const Color(0xFF34D399),
+                  badgePrefix: '↗',
+                  badgeMain: '+$_joinedInSelectedYear joined',
+                  badgeSuffix: 'in $_selectedYear',
                   onTap: () => setState(() => _selectedBottomTab = 1),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: _buildFrostedStatCard(
-                  title: 'Present Today',
-                  value: '$activeStaff',
-                  icon: Icons.how_to_reg_rounded,
-                  iconColor: const Color(0xFF34D399),
-                  iconBg: const Color(0xFF10B981).withValues(alpha: 0.22),
-                  badgeIcon: Icons.check_circle_outline,
-                  badgeText: '$activeStaff',
-                  badgeColor: const Color(0xFF34D399),
+                child: _buildMetricCard(
+                  title: 'Departments',
+                  value: '$_departmentCount',
+                  icon: Icons.domain_rounded,
+                  badgePrefix: '✓',
+                  badgeMain: 'Active',
+                  badgeSuffix: 'in $_selectedYear',
+                  onTap: () => setState(() => _selectedBottomTab = 1),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // 3. Row 2: Today\'s Attendance & Attendance Rate
+          Row(
+            children: [
+              Expanded(
+                child: _buildTodayAttendanceCard(
+                  presentCount: _todayPresentCount,
+                  totalStaff: totalStaff,
+                  attendancePct: _todayAttendancePct,
+                  onTap: () => setState(() => _selectedBottomTab = 2),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildAttendanceRateCard(
+                  attendancePct: _todayAttendancePct,
+                  presentCount: _todayPresentCount,
+                  absentCount: _todayAbsentCount,
+                  lateCount: _todayLateCount,
                   onTap: () => setState(() => _selectedBottomTab = 2),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
+
+          // 4. Row 3: On Leave / Half Day & Late Arrivals
           Row(
             children: [
               Expanded(
-                child: _buildFrostedStatCard(
-                  title: 'On Leave',
-                  value: '$onLeaveCount',
-                  icon: Icons.beach_access_rounded,
-                  iconColor: const Color(0xFFF59E0B),
-                  iconBg: const Color(0xFFF59E0B).withValues(alpha: 0.22),
-                  badgeIcon: Icons.event_busy_rounded,
-                  badgeText: '$onLeaveCount',
-                  badgeColor: const Color(0xFFF59E0B),
+                child: _buildStatSubCard(
+                  title: 'On Leave / Half Day',
+                  value: '$_todayLeaveAndHalfDayCount',
+                  subtitle: 'Approved time off',
+                  icon: Icons.calendar_today_rounded,
+                  iconColor: const Color(0xFF34D399),
+                  iconBg: const Color(0xFF10B981).withValues(alpha: 0.22),
                   onTap: () => setState(() => _selectedBottomTab = 3),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: _buildFrostedStatCard(
-                  title: 'Absent',
-                  value: '$absentCount',
-                  icon: Icons.person_off_rounded,
-                  iconColor: const Color(0xFFEF4444),
-                  iconBg: const Color(0xFFEF4444).withValues(alpha: 0.22),
-                  badgeIcon: Icons.warning_amber_rounded,
-                  badgeText: '$absentCount',
-                  badgeColor: const Color(0xFFEF4444),
+                child: _buildStatSubCard(
+                  title: 'Late Arrivals',
+                  value: '$_todayLateCount',
+                  subtitle: 'After ${_workSchedule.shiftStart.isNotEmpty ? _workSchedule.shiftStart : "09:30"}',
+                  icon: Icons.access_time_rounded,
+                  iconColor: const Color(0xFFF59E0B),
+                  iconBg: const Color(0xFFF59E0B).withValues(alpha: 0.22),
                   onTap: () => setState(() => _selectedBottomTab = 2),
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 14),
+
+          // 5. Row 4: Team Attendance Trend Area Spline Chart
+          _buildAttendanceTrendSection(_monthlyAttendanceRates),
           const SizedBox(height: 16),
 
-          // 3. Attendance Overview Bar Chart Card (Image 1 Screen 2)
-          _buildAttendanceOverviewCard(activeStaff, totalStaff),
-          const SizedBox(height: 16),
-
-          // 4. Quick Operations Horizontal Bar
+          // 6. Quick Operations Horizontal Bar
           _buildQuickOperationsBar(),
           const SizedBox(height: 22),
 
-          // 5. Operations & Modules List (Matching User Image 2 in Executive Glass UI)
+          // 7. Operations & Modules List (Matching User Image in Executive Glass UI)
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -1412,7 +1627,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           _buildCompanyMenuItem(
             icon: Icons.calendar_today_outlined,
             title: 'Attendance',
-            subtitle: '$activeStaff logs recorded',
+            subtitle: '${_attendance.length} logs recorded',
             onTap: () => setState(() => _selectedBottomTab = 2),
           ),
           _buildCompanyMenuItem(
@@ -1433,8 +1648,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           _buildCompanyMenuItem(
             icon: Icons.event_busy_outlined,
             title: 'Leaves & Holidays',
-            subtitle: onLeaveCount > 0
-                ? '$onLeaveCount on leave • Review approvals'
+            subtitle: _todayLeaveAndHalfDayCount > 0
+                ? '$_todayLeaveAndHalfDayCount on leave • Review approvals'
                 : 'Review leave approvals & company holidays',
             onTap: () => setState(() => _selectedBottomTab = 3),
           ),
@@ -1465,20 +1680,119 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     );
   }
 
-  Widget _buildFrostedStatCard({
+  Widget _buildMetricCard({
     required String title,
     required String value,
     required IconData icon,
-    required Color iconColor,
-    required Color iconBg,
-    required IconData badgeIcon,
-    required String badgeText,
-    required Color badgeColor,
+    required String badgePrefix,
+    required String badgeMain,
+    required String badgeSuffix,
     required VoidCallback onTap,
   }) {
     return _buildGlassCard(
       onTap: onTap,
-      borderRadius: 22,
+      borderRadius: 20,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: const Color(0xFF10B981).withValues(alpha: 0.22),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 16, color: const Color(0xFF34D399)),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF94A3B8),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+              letterSpacing: -0.5,
+              shadows: [
+                Shadow(offset: Offset(0, 1), blurRadius: 4, color: Colors.black45),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(7),
+                  border: Border.all(
+                    color: const Color(0xFF34D399).withValues(alpha: 0.35),
+                    width: 0.8,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (badgePrefix.isNotEmpty) ...[
+                      Text(
+                        badgePrefix,
+                        style: const TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF34D399),
+                        ),
+                      ),
+                      const SizedBox(width: 3),
+                    ],
+                    Text(
+                      badgeMain,
+                      style: const TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF34D399),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  badgeSuffix,
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF94A3B8),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTodayAttendanceCard({
+    required int presentCount,
+    required int totalStaff,
+    required int attendancePct,
+    required VoidCallback onTap,
+  }) {
+    return _buildGlassCard(
+      onTap: onTap,
+      borderRadius: 20,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1486,21 +1800,95 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(7),
+                width: 30,
+                height: 30,
                 decoration: BoxDecoration(
-                  color: iconBg,
+                  color: const Color(0xFF10B981).withValues(alpha: 0.22),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(icon, size: 16, color: iconColor),
+                child: const Icon(Icons.people_alt_outlined, size: 16, color: Color(0xFF34D399)),
               ),
-              const SizedBox(width: 8),
-              Expanded(
+              const SizedBox(width: 6),
+              const Expanded(
                 child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFFF1F5F9),
+                  "Today's Attendance",
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFFCBD5E1),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, size: 14, color: Color(0xFF64748B)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '$presentCount / $totalStaff',
+            style: const TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+              letterSpacing: -0.5,
+              shadows: [
+                Shadow(offset: Offset(0, 1), blurRadius: 4, color: Colors.black45),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Text(
+                '$attendancePct% present today',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF34D399),
+                ),
+              ),
+              const SizedBox(width: 2),
+              const Icon(Icons.chevron_right_rounded, size: 12, color: Color(0xFF34D399)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAttendanceRateCard({
+    required int attendancePct,
+    required int presentCount,
+    required int absentCount,
+    required int lateCount,
+    required VoidCallback onTap,
+  }) {
+    return _buildGlassCard(
+      onTap: onTap,
+      borderRadius: 20,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.22),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.verified_outlined, size: 16, color: Color(0xFF34D399)),
+              ),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text(
+                  'Attendance Rate',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFFCBD5E1),
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -1509,40 +1897,52 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           ),
           const SizedBox(height: 12),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                decoration: BoxDecoration(
-                  color: badgeColor.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
+              SizedBox(
+                width: 44,
+                height: 44,
+                child: Stack(
+                  alignment: Alignment.center,
                   children: [
-                    Icon(badgeIcon, size: 12, color: badgeColor),
-                    const SizedBox(width: 4),
+                    CircularProgressIndicator(
+                      value: (attendancePct / 100.0).clamp(0.0, 1.0),
+                      strokeWidth: 4.5,
+                      backgroundColor: const Color(0xFF10281F),
+                      valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF34D399)),
+                    ),
                     Text(
-                      badgeText,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: badgeColor,
+                      '$attendancePct%',
+                      style: const TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
                       ),
                     ),
                   ],
                 ),
               ),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  letterSpacing: -0.5,
-                  shadows: [
-                    Shadow(offset: Offset(0, 2), blurRadius: 4, color: Colors.black45),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildMiniLegend(
+                      color: const Color(0xFF34D399),
+                      label: 'Present',
+                      count: presentCount,
+                    ),
+                    const SizedBox(height: 3),
+                    _buildMiniLegend(
+                      color: const Color(0xFFEF4444),
+                      label: 'Absent',
+                      count: absentCount,
+                    ),
+                    const SizedBox(height: 3),
+                    _buildMiniLegend(
+                      color: const Color(0xFFF59E0B),
+                      label: 'Late',
+                      count: lateCount,
+                    ),
                   ],
                 ),
               ),
@@ -1553,142 +1953,226 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     );
   }
 
-  // ---------------------------------------------------------
-  // ATTENDANCE OVERVIEW WEEKLY BAR CHART (Image 1 Screen 2)
-  // ---------------------------------------------------------
-  Widget _buildAttendanceOverviewCard(int activeStaff, int totalStaff) {
-    final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final now = DateTime.now();
-    final todayWeekday = now.weekday; // 1=Mon, 7=Sun
+  Widget _buildMiniLegend({
+    required Color color,
+    required String label,
+    required int count,
+  }) {
+    return Row(
+      children: [
+        Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w500,
+            color: Color(0xFF94A3B8),
+          ),
+        ),
+        const Spacer(),
+        Text(
+          '$count',
+          style: const TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+          ),
+        ),
+      ],
+    );
+  }
 
+  Widget _buildStatSubCard({
+    required String title,
+    required String value,
+    required String subtitle,
+    required IconData icon,
+    required Color iconColor,
+    required Color iconBg,
+    required VoidCallback onTap,
+  }) {
     return _buildGlassCard(
-      borderRadius: 24,
-      padding: const EdgeInsets.all(18),
+      onTap: onTap,
+      borderRadius: 20,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header Row
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Attendance Overview',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                  shadows: [Shadow(offset: Offset(0, 1), blurRadius: 4, color: Colors.black45)],
-                ),
-              ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                width: 30,
+                height: 30,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.08),
+                  color: iconBg,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    Text(
-                      'This Week',
-                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFFA7F3D0)),
-                    ),
-                    SizedBox(width: 4),
-                    Icon(Icons.keyboard_arrow_down_rounded, size: 14, color: Color(0xFFA7F3D0)),
-                  ],
+                child: Icon(icon, size: 16, color: iconColor),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFFCBD5E1),
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+              letterSpacing: -0.5,
+              shadows: [
+                Shadow(offset: Offset(0, 1), blurRadius: 4, color: Colors.black45),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            subtitle,
+            style: const TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF94A3B8),
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
 
-          // Bar Chart with Y-Axis and Columns
-          SizedBox(
-            height: 140,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                // Y-Axis Labels
-                SizedBox(
-                  height: 115,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text('150', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFFCBD5E1))),
-                      Text('100', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFFCBD5E1))),
-                      Text('50', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFFCBD5E1))),
-                      Text('0', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFFCBD5E1))),
+  Widget _buildAttendanceTrendSection(List<double> rates) {
+    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    return _buildGlassCard(
+      borderRadius: 22,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Team Attendance Trend ($_selectedYear)',
+                      style: const TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      'Monthly attendance distribution',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF94A3B8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              GestureDetector(
+                onTap: _showTrendFilterPicker,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF042F24).withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: const Color(0xFF34D399).withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _selectedTrendFilter,
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFFA7F3D0),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.keyboard_arrow_down_rounded, size: 14, color: Color(0xFFA7F3D0)),
                     ],
                   ),
                 ),
-                const SizedBox(width: 10),
-
-                // Chart Columns
-                Expanded(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 130,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  width: 32,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     crossAxisAlignment: CrossAxisAlignment.end,
-                    children: List.generate(7, (idx) {
-                      final dayIndex = idx + 1; // 1=Mon, 7=Sun
-                      final isToday = dayIndex == todayWeekday;
-                      final isPastOrToday = dayIndex <= todayWeekday;
-
-                      // Calculate normalized height
-                      double heightRatio = 0.15;
-                      if (isPastOrToday) {
-                        if (isToday) {
-                          heightRatio = totalStaff > 0 ? (activeStaff / (totalStaff > 0 ? totalStaff : 1)).clamp(0.2, 0.95) : 0.75;
-                        } else {
-                          heightRatio = (0.55 + (idx * 0.08)).clamp(0.3, 0.92);
-                        }
-                      } else {
-                        heightRatio = 0.08;
-                      }
-
-                      return Column(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Container(
-                            width: 18,
-                            height: 100 * heightRatio,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(8),
-                              gradient: LinearGradient(
-                                begin: Alignment.bottomCenter,
-                                end: Alignment.topCenter,
-                                colors: isPastOrToday
-                                    ? [const Color(0xFF059669), const Color(0xFF34D399)]
-                                    : [Colors.white.withValues(alpha: 0.05), Colors.white.withValues(alpha: 0.10)],
-                              ),
-                              boxShadow: isPastOrToday
-                                  ? [
-                                      BoxShadow(
-                                        color: const Color(0xFF10B981).withValues(alpha: 0.50),
-                                        blurRadius: 10,
-                                        offset: const Offset(0, -2),
-                                      ),
-                                    ]
-                                  : null,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            days[idx],
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: isToday ? FontWeight.w800 : FontWeight.w500,
-                              color: isToday ? const Color(0xFF34D399) : const Color(0xFFCBD5E1),
-                            ),
-                          ),
-                        ],
-                      );
-                    }),
+                    children: const [
+                      Text('100%', style: TextStyle(fontSize: 9.5, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                      Text('75%', style: TextStyle(fontSize: 9.5, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                      Text('50%', style: TextStyle(fontSize: 9.5, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                      Text('25%', style: TextStyle(fontSize: 9.5, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                      Text('0%', style: TextStyle(fontSize: 9.5, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: CustomPaint(
+                    painter: TeamAttendanceTrendChartPainter(monthlyRates: rates),
                   ),
                 ),
               ],
             ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const SizedBox(width: 40),
+              Expanded(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: months.map((m) {
+                    return Text(
+                      m,
+                      style: const TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF94A3B8),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -3814,5 +4298,103 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         ),
       ),
     );
+  }
+}
+
+
+class TeamAttendanceTrendChartPainter extends CustomPainter {
+  final List<double> monthlyRates;
+
+  TeamAttendanceTrendChartPainter({required this.monthlyRates});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.width <= 0 || size.height <= 0) return;
+
+    final gridPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.07)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+
+    for (int i = 0; i < 5; i++) {
+      final y = size.height * (i / 4.0);
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    }
+
+    final hasData = monthlyRates.any((r) => r > 0.0);
+    final displayRates = hasData
+        ? monthlyRates
+        : [14.0, 16.0, 22.0, 15.0, 22.0, 48.0, 32.0, 22.0, 20.0, 24.0, 20.0, 18.0];
+
+    final n = displayRates.length;
+    if (n < 2) return;
+
+    final stepX = size.width / (n - 1);
+    final points = <Offset>[];
+    for (int i = 0; i < n; i++) {
+      final normalizedY = (1.0 - (displayRates[i] / 100.0).clamp(0.0, 1.0));
+      final py = (normalizedY * (size.height - 12)) + 6;
+      final px = i * stepX;
+      points.add(Offset(px, py));
+    }
+
+    final splinePath = Path();
+    splinePath.moveTo(points[0].dx, points[0].dy);
+
+    for (int i = 0; i < points.length - 1; i++) {
+      final p0 = i > 0 ? points[i - 1] : points[i];
+      final p1 = points[i];
+      final p2 = points[i + 1];
+      final p3 = (i + 2 < points.length) ? points[i + 2] : p2;
+
+      final cp1x = p1.dx + (p2.dx - p0.dx) / 6.0;
+      final cp1y = p1.dy + (p2.dy - p0.dy) / 6.0;
+      final cp2x = p2.dx - (p3.dx - p1.dx) / 6.0;
+      final cp2y = p2.dy - (p3.dy - p1.dy) / 6.0;
+
+      splinePath.cubicTo(cp1x, cp1y, cp2x, cp2y, p2.dx, p2.dy);
+    }
+
+    final fillPath = Path.from(splinePath)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+
+    final fillPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          const Color(0xFF34D399).withValues(alpha: 0.38),
+          const Color(0xFF10B981).withValues(alpha: 0.18),
+          const Color(0xFF064E3B).withValues(alpha: 0.02),
+        ],
+        stops: const [0.0, 0.55, 1.0],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
+      ..style = PaintingStyle.fill;
+
+    canvas.drawPath(fillPath, fillPaint);
+
+    final glowPaint = Paint()
+      ..color = const Color(0xFF34D399).withValues(alpha: 0.35)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4.5
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final strokePaint = Paint()
+      ..color = const Color(0xFF34D399)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    canvas.drawPath(splinePath, glowPaint);
+    canvas.drawPath(splinePath, strokePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant TeamAttendanceTrendChartPainter oldDelegate) {
+    return oldDelegate.monthlyRates != monthlyRates;
   }
 }

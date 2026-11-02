@@ -31,6 +31,9 @@ class WorkScheduleModel {
     this.hourlyOvertimePct = 75.0,
   });
 
+  String get shiftStart => checkInTime;
+  String get shiftEnd => checkOutTime;
+
   factory WorkScheduleModel.fromJson(Map<String, dynamic> json) {
     List<int> offDays = [0, 6];
     if (json['weeklyOffDays'] is List) {

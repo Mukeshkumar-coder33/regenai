@@ -17,6 +17,8 @@ class UserModel {
   final bool mustChangePassword;
   final String token;
   final String? authSource;
+  final String? joiningDate;
+  final String? createdAt;
 
   const UserModel({
     required this.id,
@@ -34,6 +36,8 @@ class UserModel {
     this.mustChangePassword = false,
     required this.token,
     this.authSource,
+    this.joiningDate,
+    this.createdAt,
   });
 
   /// Factory constructor to parse backend JSON response
@@ -55,6 +59,8 @@ class UserModel {
       mustChangePassword: json['mustChangePassword'] == true,
       token: tkn,
       authSource: json['authSource']?.toString(),
+      joiningDate: json['joiningDate']?.toString(),
+      createdAt: json['createdAt']?.toString(),
     );
   }
 
@@ -76,6 +82,8 @@ class UserModel {
       'mustChangePassword': mustChangePassword,
       'token': token,
       'authSource': authSource,
+      'joiningDate': joiningDate,
+      'createdAt': createdAt,
     };
   }
 
@@ -95,6 +103,8 @@ class UserModel {
     bool? mustChangePassword,
     String? token,
     String? authSource,
+    String? joiningDate,
+    String? createdAt,
   }) {
     return UserModel(
       id: id ?? this.id,
@@ -112,6 +122,8 @@ class UserModel {
       mustChangePassword: mustChangePassword ?? this.mustChangePassword,
       token: token ?? this.token,
       authSource: authSource ?? this.authSource,
+      joiningDate: joiningDate ?? this.joiningDate,
+      createdAt: createdAt ?? this.createdAt,
     );
   }
 

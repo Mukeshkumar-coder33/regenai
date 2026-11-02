@@ -39,6 +39,11 @@ class LeaveModel {
   bool get isPending => status.toLowerCase() == 'pending';
   bool get isRejected => status.toLowerCase() == 'rejected';
 
+  bool coversDate(String targetDate) {
+    if (startDate.isEmpty || endDate.isEmpty || targetDate.isEmpty) return false;
+    return startDate.compareTo(targetDate) <= 0 && endDate.compareTo(targetDate) >= 0;
+  }
+
   String get displayType {
     if (type.isEmpty) return 'Leave';
     return '${type[0].toUpperCase()}${type.substring(1)} Leave';

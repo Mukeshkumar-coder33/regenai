@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/widgets/brand_logo.dart';
@@ -1183,11 +1184,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     // Bottom Sign Out Button
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                          child: InkWell(
+                      child: _buildSafeGlassBlur(
+                        borderRadius: 16,
+                        sigma: 6.0,
+                        child: InkWell(
                             onTap: () {
                               Navigator.of(context).pop();
                               _confirmLogout();
@@ -1221,7 +1221,6 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                           ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               ),
@@ -1426,7 +1425,30 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   }
 
   // ---------------------------------------------------------
-  // REUSABLE FROSTED GLASS CONTAINER (Exact Match to User Image 1)
+  // SAFE FROSTED GLASS BLUR (Fixes Shader compilation error & copy program limits)
+  // ---------------------------------------------------------
+  Widget _buildSafeGlassBlur({
+    required Widget child,
+    required double borderRadius,
+    double sigma = 6.0,
+  }) {
+    if (kIsWeb) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(borderRadius),
+        child: child,
+      );
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(borderRadius),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+        child: child,
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------
+  // REUSABLE FROSTED GLASS CONTAINER (Exact Match to User Image)
   // ---------------------------------------------------------
   Widget _buildGlassCard({
     required Widget child,
@@ -1436,31 +1458,44 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     Border? border,
     VoidCallback? onTap,
   }) {
-    Widget card = ClipRRect(
-      borderRadius: BorderRadius.circular(borderRadius),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-        child: Container(
-          padding: padding ?? const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: const Color(0xFF0A2218).withValues(alpha: 0.72),
-            borderRadius: BorderRadius.circular(borderRadius),
-            border: border ??
-                Border.all(
-                  color: const Color(0xFF34D399).withValues(alpha: 0.25),
-                  width: 1.0,
-                ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.28),
-                blurRadius: 10,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: child,
+    Widget cardDecoration = Container(
+      padding: padding ?? const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            const Color(0xFF235C45).withValues(alpha: 0.68),
+            const Color(0xFF163E2E).withValues(alpha: 0.74),
+            const Color(0xFF0E2A1F).withValues(alpha: 0.80),
+          ],
         ),
+        borderRadius: BorderRadius.circular(borderRadius),
+        border: border ??
+            Border.all(
+              color: const Color(0xFF34D399).withValues(alpha: 0.28),
+              width: 1.0,
+            ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.22),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+          BoxShadow(
+            color: const Color(0xFF34D399).withValues(alpha: 0.08),
+            blurRadius: 12,
+            spreadRadius: -2,
+          ),
+        ],
       ),
+      child: child,
+    );
+
+    Widget card = _buildSafeGlassBlur(
+      borderRadius: borderRadius,
+      sigma: 6.0,
+      child: cardDecoration,
     );
 
     if (margin != null) {
@@ -1493,11 +1528,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           // Left: Hamburger Menu Button (Opens Drawer)
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-              child: InkWell(
+          _buildSafeGlassBlur(
+            borderRadius: 12,
+            sigma: 6.0,
+            child: InkWell(
                 onTap: () {
                   if (widget.onOpenDrawer != null) {
                     widget.onOpenDrawer!();
@@ -1524,7 +1558,6 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 ),
               ),
             ),
-          ),
 
           // Center: Logo + "ReGen" Brand + Subtitle (Image 1 Header)
           Row(
@@ -1565,11 +1598,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           Row(
             children: [
               // Notification Bell (Image 3)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                  child: InkWell(
+              _buildSafeGlassBlur(
+                borderRadius: 12,
+                sigma: 6.0,
+                child: InkWell(
                     onTap: _showNotificationsSheet,
                     borderRadius: BorderRadius.circular(12),
                     child: Container(
@@ -1614,7 +1646,6 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     ),
                   ),
                 ),
-              ),
               const SizedBox(width: 10),
 
               // Avatar (Tap to switch to Profile tab)
@@ -1689,20 +1720,34 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // 1. Executive Welcome Banner with Dynamic Starting Year Selector
-          ClipRRect(
-            borderRadius: BorderRadius.circular(22),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-              child: Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0D251D).withValues(alpha: 0.65),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: const Color(0xFF34D399).withValues(alpha: 0.28),
-                    width: 1.1,
-                  ),
+          _buildSafeGlassBlur(
+            borderRadius: 22,
+            sigma: 6.0,
+            child: Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF235C45).withValues(alpha: 0.68),
+                    const Color(0xFF163E2E).withValues(alpha: 0.74),
+                    const Color(0xFF0E2A1F).withValues(alpha: 0.80),
+                  ],
                 ),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(
+                  color: const Color(0xFF34D399).withValues(alpha: 0.28),
+                  width: 1.1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.22),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1788,7 +1833,6 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 ),
               ),
             ),
-          ),
           const SizedBox(height: 14),
 
           // 2. Row 1: Total Employees & Departments (Filtered by selectedYear)
@@ -3278,11 +3322,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     final isSelected = index == selectedIndex;
     return GestureDetector(
       onTap: () => onSelected(index),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
+      child: _buildSafeGlassBlur(
+        borderRadius: 12,
+        sigma: 6.0,
+        child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
             decoration: BoxDecoration(
               color: isSelected ? const Color(0xFF10B981) : const Color(0xFF0C1410).withValues(alpha: 0.65),
@@ -3310,7 +3353,6 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             ),
           ),
         ),
-      ),
     );
   }
 
@@ -3991,11 +4033,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Segmented Tabs: [Company] [My Profile] [Settings]
-          ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-              child: Container(
+          _buildSafeGlassBlur(
+            borderRadius: 14,
+            sigma: 6.0,
+            child: Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
                   color: const Color(0xFF0D241C).withValues(alpha: 0.55),
@@ -4011,7 +4052,6 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 ),
               ),
             ),
-          ),
           const SizedBox(height: 16),
 
           // Sub-Tab Content
@@ -4649,28 +4689,35 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           ),
           const SizedBox(height: 6),
         ],
-        ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-            child: Container(
-              height: maxLines == 1 ? 46 : null,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0A2218).withValues(alpha: 0.70),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: const Color(0xFF34D399).withValues(alpha: 0.22),
-                  width: 1.0,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.25),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
+        _buildSafeGlassBlur(
+          borderRadius: 14,
+          sigma: 6.0,
+          child: Container(
+            height: maxLines == 1 ? 46 : null,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  const Color(0xFF235C45).withValues(alpha: 0.68),
+                  const Color(0xFF163E2E).withValues(alpha: 0.74),
+                  const Color(0xFF0E2A1F).withValues(alpha: 0.80),
                 ],
               ),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: const Color(0xFF34D399).withValues(alpha: 0.28),
+                width: 1.0,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.22),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
               child: Row(
                 children: [
                   if (prefixIcon != null) ...[
@@ -4722,7 +4769,6 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -4955,21 +5001,28 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(14),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                        child: Container(
-                          height: 46,
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF0A2218).withValues(alpha: 0.70),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: const Color(0xFF34D399).withValues(alpha: 0.22),
-                              width: 1.0,
-                            ),
+                    _buildSafeGlassBlur(
+                      borderRadius: 14,
+                      sigma: 6.0,
+                      child: Container(
+                        height: 46,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              const Color(0xFF235C45).withValues(alpha: 0.68),
+                              const Color(0xFF163E2E).withValues(alpha: 0.74),
+                              const Color(0xFF0E2A1F).withValues(alpha: 0.80),
+                            ],
                           ),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: const Color(0xFF34D399).withValues(alpha: 0.28),
+                            width: 1.0,
+                          ),
+                        ),
                           child: DropdownButtonHideUnderline(
                             child: DropdownButton<String>(
                               value: roleVal,
@@ -4991,7 +5044,6 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                           ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               ],

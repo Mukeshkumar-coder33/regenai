@@ -666,7 +666,7 @@ export default function CompanyModule({ userProfile }) {
 
             {/* Filter & Search Bar - No Create Project Button */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-secondary/40 p-3 sm:p-4 rounded-2xl border border-border">
-              <div className="relative flex-1 max-w-md flex items-center h-[46px] px-3.5 rounded-[14px] bg-[#0A2218]/80 backdrop-blur-md border border-[#34D399]/30 shadow-md shadow-black/25">
+              <div className="relative flex-1 max-w-md flex items-center h-[46px] px-3.5 rounded-[14px] bg-gradient-to-br from-[#235C45]/70 via-[#163E2E]/75 to-[#0E2A1F]/80 backdrop-blur-md border border-[#34D399]/28 shadow-md shadow-black/25">
                 <Search className="w-4 h-4 text-[#CBD5E1] shrink-0 mr-2.5" />
                 <input
                   type="text"

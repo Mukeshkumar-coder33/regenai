@@ -399,12 +399,20 @@ class _TasksViewState extends State<TasksView> {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
-        color: const Color(0xFF0A2218).withValues(alpha: 0.70),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            const Color(0xFF235C45).withValues(alpha: 0.68),
+            const Color(0xFF163E2E).withValues(alpha: 0.74),
+            const Color(0xFF0E2A1F).withValues(alpha: 0.80),
+          ],
+        ),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.22)),
+        border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.28)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.25),
+            color: Colors.black.withValues(alpha: 0.22),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),

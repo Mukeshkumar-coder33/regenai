@@ -816,5 +816,80 @@ void main() {
       expect(find.text('Sign Out'), findsOneWidget);
       expect(find.byIcon(Icons.logout_rounded), findsOneWidget);
     });
+
+    testWidgets('Tapping + Add Employee navigates to dedicated AddEmployeeView with website fields',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanyDashboardView(
+            user: const UserModel(
+              id: 'owner_test',
+              userId: 'Vyshwa',
+              username: 'Vyshwa',
+              name: 'Vyshwa',
+              role: 'owner',
+              company: 'krish Tech Computer',
+              token: 'tok_owner',
+            ),
+            dashboardService: MockDashboardService(),
+            authService: MockAuthService(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Navigate to Employees Tab
+      await tester.tap(find.text('Employees'));
+      await tester.pumpAndSettle();
+
+      // Tap + Add Employee
+      await tester.tap(find.text('Add Employee'));
+      await tester.pumpAndSettle();
+
+      // Verified: Separate Page AddEmployeeView with website fields
+      expect(find.text('Add New Employee'), findsOneWidget);
+      expect(find.text('Aadhaar Number (12 Digits) *'), findsOneWidget);
+      expect(find.text('Staff ID / Principal ID *'), findsOneWidget);
+      expect(find.text('Username *'), findsOneWidget);
+      expect(find.text('First Name *'), findsOneWidget);
+      expect(find.text('Register Employee'), findsOneWidget);
+    });
+
+    testWidgets('Tapping filter icon opens employee filter sheet with website role counts',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanyDashboardView(
+            user: const UserModel(
+              id: 'owner_test',
+              userId: 'Vyshwa',
+              username: 'Vyshwa',
+              name: 'Vyshwa',
+              role: 'owner',
+              company: 'krish Tech Computer',
+              token: 'tok_owner',
+            ),
+            dashboardService: MockDashboardService(),
+            authService: MockAuthService(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Navigate to Employees Tab
+      await tester.tap(find.text('Employees'));
+      await tester.pumpAndSettle();
+
+      // Tap the filter icon on the search bar
+      await tester.tap(find.byIcon(Icons.filter_list_rounded));
+      await tester.pumpAndSettle();
+
+      // Verified: Filter sheet opened
+      expect(find.text('Filter Employees'), findsOneWidget);
+      expect(find.text('ROLE (FROM WEBSITE)'), findsOneWidget);
+      expect(find.text('Apply Filters'), findsOneWidget);
+    });
   });
 }

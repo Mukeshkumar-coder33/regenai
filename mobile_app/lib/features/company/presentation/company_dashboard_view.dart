@@ -13,6 +13,7 @@ import '../../dashboard/data/leave_model.dart';
 import '../../tasks/data/task_model.dart';
 import '../../tasks/presentation/tasks_view.dart';
 import '../data/company_model.dart';
+import 'add_employee_view.dart';
 
 /// True Frosted Glassmorphism Company Workspace matching User Reference Mockups:
 /// - Photorealistic Corporate Dark Office Background with daylight, desks, indoor plants & bokeh blur
@@ -66,6 +67,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   int _selectedBottomTab = 0; // 0=Home, 1=Employees, 2=Attendance, 3=Leave, 4=Profile
   int _selectedProfileSubTab = 0; // 0=Company, 1=My Profile, 2=Settings
   int _selectedEmployeeFilter = 0; // 0=All, 1=Active, 2=On Leave, 3=Inactive
+  String _selectedEmployeeRoleFilter = 'all'; // 'all', 'owner', 'admin', 'staff', 'intern', 'freelancer'
+  String _selectedEmployeeDeptFilter = 'all';
   int _selectedLeaveFilter = 0; // 0=All, 1=Pending, 2=Approved, 3=Rejected
   int _selectedNotificationFilter = 0; // 0=All, 1=Unread, 2=System, 3=Leave, 4=Attendance
 
@@ -3162,16 +3165,20 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   // ---------------------------------------------------------
   Widget _buildEmployeesTab() {
     List<UserModel> filtered = _users;
+
+    // Search text filter
     if (_employeeSearchQuery.isNotEmpty) {
       final q = _employeeSearchQuery.toLowerCase();
       filtered = filtered.where((u) {
         return u.name.toLowerCase().contains(q) ||
             u.username.toLowerCase().contains(q) ||
             (u.department != null && u.department!.toLowerCase().contains(q)) ||
-            (u.designation != null && u.designation!.toLowerCase().contains(q));
+            (u.designation != null && u.designation!.toLowerCase().contains(q)) ||
+            u.role.toLowerCase().contains(q);
       }).toList();
     }
 
+    // Status filter segment: 0=All, 1=Active, 2=On Leave, 3=Inactive
     if (_selectedEmployeeFilter == 1) {
       filtered = filtered.where((u) => _getEmployeeTodayAttendance(u) != null).toList();
     } else if (_selectedEmployeeFilter == 2) {
@@ -3180,6 +3187,27 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     } else if (_selectedEmployeeFilter == 3) {
       filtered = filtered.where((u) => _getEmployeeTodayAttendance(u) == null).toList();
     }
+
+    // Role filter matching website UsersModule.jsx
+    if (_selectedEmployeeRoleFilter != 'all') {
+      filtered = filtered.where((u) {
+        final r = u.role.toLowerCase().trim();
+        if (_selectedEmployeeRoleFilter == 'owner') {
+          return r == 'owner' || r == 'param';
+        }
+        return r == _selectedEmployeeRoleFilter;
+      }).toList();
+    }
+
+    // Department filter matching website
+    if (_selectedEmployeeDeptFilter != 'all') {
+      filtered = filtered.where((u) {
+        final dept = (u.department ?? '').trim().toLowerCase();
+        return dept == _selectedEmployeeDeptFilter.toLowerCase();
+      }).toList();
+    }
+
+    final hasActiveRoleOrDept = _selectedEmployeeRoleFilter != 'all' || _selectedEmployeeDeptFilter != 'all';
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18),
@@ -3272,14 +3300,87 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                       child: Icon(Icons.close_rounded, size: 18, color: Color(0xFFBACCC3)),
                     ),
                   ),
-                const Padding(
-                  padding: EdgeInsets.only(left: 4, right: 2),
-                  child: Icon(Icons.filter_list_rounded, size: 20, color: Color(0xFFCBD5E1)),
+                GestureDetector(
+                  onTap: _showEmployeeFilterSheet,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 4, right: 2),
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Icon(
+                          Icons.filter_list_rounded,
+                          size: 20,
+                          color: hasActiveRoleOrDept ? const Color(0xFF10B981) : const Color(0xFFCBD5E1),
+                        ),
+                        if (hasActiveRoleOrDept)
+                          Positioned(
+                            top: -2,
+                            right: -2,
+                            child: Container(
+                              width: 7,
+                              height: 7,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF10B981),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 12),
+
+          // Active Role / Dept Filter Badges (from Website Filter)
+          if (hasActiveRoleOrDept) ...[
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  if (_selectedEmployeeRoleFilter != 'all')
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: _buildActiveFilterBadge(
+                        'Role: ${_selectedEmployeeRoleFilter.toUpperCase()}',
+                        () => setState(() => _selectedEmployeeRoleFilter = 'all'),
+                      ),
+                    ),
+                  if (_selectedEmployeeDeptFilter != 'all')
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: _buildActiveFilterBadge(
+                        'Dept: $_selectedEmployeeDeptFilter',
+                        () => setState(() => _selectedEmployeeDeptFilter = 'all'),
+                      ),
+                    ),
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedEmployeeRoleFilter = 'all';
+                        _selectedEmployeeDeptFilter = 'all';
+                      });
+                    },
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      child: Text(
+                        'Clear filters',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF34D399),
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
 
           // Filter Segment Chips: [All] [Active] [On Leave] [Inactive]
           Row(
@@ -3309,6 +3410,38 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     );
   }
 
+  Widget _buildActiveFilterBadge(String label, VoidCallback onClear) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF10B981).withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: const Color(0xFF34D399).withValues(alpha: 0.35),
+          width: 1.0,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF6EE7B7),
+            ),
+          ),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: onClear,
+            child: const Icon(Icons.close_rounded, size: 14, color: Color(0xFF6EE7B7)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSegmentChip(String label, int index, int selectedIndex, Function(int) onSelected) {
     final isSelected = index == selectedIndex;
     return GestureDetector(
@@ -3321,17 +3454,17 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             alignment: Alignment.center,
             padding: const EdgeInsets.symmetric(vertical: 8),
             decoration: BoxDecoration(
-              color: isSelected ? const Color(0xFF22C55E) : const Color(0xFF0C241B).withValues(alpha: 0.65),
+              color: isSelected ? const Color(0xFF10B981) : const Color(0xFF0C241B).withValues(alpha: 0.65),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: isSelected ? const Color(0xFF22C55E) : const Color(0xFF34D399).withValues(alpha: 0.18),
+                color: isSelected ? const Color(0xFF10B981) : const Color(0xFF34D399).withValues(alpha: 0.18),
                 width: 1.0,
               ),
               boxShadow: isSelected
                   ? [
                       BoxShadow(
-                        color: const Color(0xFF22C55E).withValues(alpha: 0.40),
-                        blurRadius: 8,
+                        color: const Color(0xFF10B981).withValues(alpha: 0.35),
+                        blurRadius: 6,
                         offset: const Offset(0, 2),
                       ),
                     ]
@@ -3344,7 +3477,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               style: TextStyle(
                 fontSize: 12.5,
                 fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                color: isSelected ? const Color(0xFF042017) : const Color(0xFFE2E8F0),
+                color: isSelected ? Colors.white : const Color(0xFFE2E8F0),
               ),
             ),
           ),
@@ -3550,6 +3683,386 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  void _showEmployeeFilterSheet() {
+    String tempRole = _selectedEmployeeRoleFilter;
+    String tempDept = _selectedEmployeeDeptFilter;
+    int tempStatus = _selectedEmployeeFilter;
+
+    // Calculate role counts matching website UsersModule.jsx
+    final roleCounts = <String, int>{'all': _users.length};
+    for (final u in _users) {
+      final rk = (u.role.toLowerCase() == 'param') ? 'owner' : u.role.toLowerCase();
+      roleCounts[rk] = (roleCounts[rk] ?? 0) + 1;
+    }
+
+    final roleOptions = [
+      {'value': 'all', 'label': 'All'},
+      {'value': 'owner', 'label': 'Owner'},
+      {'value': 'admin', 'label': 'Admin'},
+      {'value': 'staff', 'label': 'Staff'},
+      {'value': 'intern', 'label': 'Intern'},
+      {'value': 'freelancer', 'label': 'Freelancer'},
+    ].where((opt) => opt['value'] == 'all' || (roleCounts[opt['value']] ?? 0) > 0).toList();
+
+    // Unique departments from users
+    final depts = _users
+        .map((u) => (u.department ?? '').trim())
+        .where((d) => d.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          return ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+              child: Container(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.85,
+                ),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF072118).withValues(alpha: 0.95),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                  border: Border.all(
+                    color: const Color(0xFF34D399).withValues(alpha: 0.25),
+                    width: 1.0,
+                  ),
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Handle
+                      Center(
+                        child: Container(
+                          width: 40,
+                          height: 4,
+                          margin: const EdgeInsets.only(bottom: 14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF34D399).withValues(alpha: 0.35),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+
+                      // Header
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: const [
+                              Text(
+                                'Filter Employees',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                  letterSpacing: -0.2,
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                'Role, department, and status filters',
+                                style: TextStyle(fontSize: 12, color: Color(0xFFBACCC3)),
+                              ),
+                            ],
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, color: Color(0xFFBACCC3), size: 20),
+                            onPressed: () => Navigator.pop(ctx),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // 1. ROLE FILTER SECTION (Website UsersModule.jsx)
+                      _buildFilterSectionTitle('ROLE (FROM WEBSITE)'),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: roleOptions.map((opt) {
+                          final val = opt['value']!;
+                          final isSelected = tempRole == val;
+                          final count = roleCounts[val] ?? 0;
+                          return GestureDetector(
+                            onTap: () => setSheetState(() => tempRole = val),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? const Color(0xFF10B981)
+                                    : const Color(0xFF0C241B).withValues(alpha: 0.70),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? const Color(0xFF34D399)
+                                      : const Color(0xFF34D399).withValues(alpha: 0.20),
+                                  width: 1.0,
+                                ),
+                                boxShadow: isSelected
+                                    ? [
+                                        BoxShadow(
+                                          color: Colors.black.withValues(alpha: 0.25),
+                                          blurRadius: 4,
+                                          offset: const Offset(0, 1),
+                                        ),
+                                      ]
+                                    : null,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    opt['label']!,
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                      color: isSelected ? Colors.white : const Color(0xFFE2E8F0),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: isSelected
+                                          ? Colors.white.withValues(alpha: 0.22)
+                                          : const Color(0xFF10B981).withValues(alpha: 0.20),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      '$count',
+                                      style: TextStyle(
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: isSelected ? Colors.white : const Color(0xFF6EE7B7),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 18),
+
+                      // 2. DEPARTMENT FILTER SECTION
+                      if (depts.isNotEmpty) ...[
+                        _buildFilterSectionTitle('DEPARTMENT'),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            GestureDetector(
+                              onTap: () => setSheetState(() => tempDept = 'all'),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                                decoration: BoxDecoration(
+                                  color: tempDept == 'all'
+                                      ? const Color(0xFF10B981)
+                                      : const Color(0xFF0C241B).withValues(alpha: 0.70),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: tempDept == 'all'
+                                        ? const Color(0xFF34D399)
+                                        : const Color(0xFF34D399).withValues(alpha: 0.20),
+                                  ),
+                                ),
+                                child: Text(
+                                  'All Departments',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: tempDept == 'all' ? FontWeight.w800 : FontWeight.w600,
+                                    color: tempDept == 'all' ? Colors.white : const Color(0xFFE2E8F0),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            ...depts.map((d) {
+                              final isSelected = tempDept.toLowerCase() == d.toLowerCase();
+                              return GestureDetector(
+                                onTap: () => setSheetState(() => tempDept = d),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? const Color(0xFF10B981)
+                                        : const Color(0xFF0C241B).withValues(alpha: 0.70),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? const Color(0xFF34D399)
+                                          : const Color(0xFF34D399).withValues(alpha: 0.20),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    d,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                      color: isSelected ? Colors.white : const Color(0xFFE2E8F0),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }),
+                          ],
+                        ),
+                        const SizedBox(height: 18),
+                      ],
+
+                      // 3. STATUS FILTER SECTION
+                      _buildFilterSectionTitle('STATUS'),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          {'label': 'All', 'idx': 0},
+                          {'label': 'Active', 'idx': 1},
+                          {'label': 'On Leave', 'idx': 2},
+                          {'label': 'Inactive', 'idx': 3},
+                        ].map((item) {
+                          final idx = item['idx'] as int;
+                          final isSelected = tempStatus == idx;
+                          return GestureDetector(
+                            onTap: () => setSheetState(() => tempStatus = idx),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? const Color(0xFF10B981)
+                                    : const Color(0xFF0C241B).withValues(alpha: 0.70),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? const Color(0xFF34D399)
+                                      : const Color(0xFF34D399).withValues(alpha: 0.20),
+                                ),
+                              ),
+                              child: Text(
+                                item['label'] as String,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                  color: isSelected ? Colors.white : const Color(0xFFE2E8F0),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 24),
+
+                      // ACTIONS: Reset & Apply Button
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () {
+                                setSheetState(() {
+                                  tempRole = 'all';
+                                  tempDept = 'all';
+                                  tempStatus = 0;
+                                });
+                              },
+                              style: OutlinedButton.styleFrom(
+                                side: BorderSide(
+                                  color: const Color(0xFF34D399).withValues(alpha: 0.35),
+                                  width: 1.0,
+                                ),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                              ),
+                              child: const Text(
+                                'Reset',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFFBACCC3),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            flex: 2,
+                            child: InkWell(
+                              onTap: () {
+                                setState(() {
+                                  _selectedEmployeeRoleFilter = tempRole;
+                                  _selectedEmployeeDeptFilter = tempDept;
+                                  _selectedEmployeeFilter = tempStatus;
+                                });
+                                Navigator.pop(ctx);
+                              },
+                              borderRadius: BorderRadius.circular(10),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF10B981),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: const Color(0xFF34D399).withValues(alpha: 0.30),
+                                    width: 1.0,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.25),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                alignment: Alignment.center,
+                                child: const Text(
+                                  'Apply Filters',
+                                  style: TextStyle(
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                    letterSpacing: 0.2,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildFilterSectionTitle(String title) {
+    return Text(
+      title,
+      style: const TextStyle(
+        fontSize: 10.5,
+        fontWeight: FontWeight.w800,
+        color: Color(0xFF6EE7B7),
+        letterSpacing: 1.0,
       ),
     );
   }
@@ -4996,169 +5509,19 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     );
   }
 
-  void _showAddEmployeeDialog() {
-    final nameCtrl = TextEditingController();
-    final userCtrl = TextEditingController();
-    final passCtrl = TextEditingController();
-    final deptCtrl = TextEditingController(text: 'Engineering');
-    String roleVal = 'staff';
-    bool isSubmitting = false;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDlgState) => AlertDialog(
-          backgroundColor: const Color(0xFF072118),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(22),
-            side: BorderSide(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
-          ),
-          title: Row(
-            children: const [
-              Icon(Icons.person_add_rounded, color: Color(0xFF22C55E), size: 22),
-              SizedBox(width: 10),
-              Text('Add Employee', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildCompanyTypingBox(
-                  controller: nameCtrl,
-                  labelText: 'Full Name',
-                  hintText: 'Enter employee full name',
-                  prefixIcon: Icons.badge_outlined,
-                ),
-                const SizedBox(height: 12),
-                _buildCompanyTypingBox(
-                  controller: userCtrl,
-                  labelText: 'User ID / Username',
-                  hintText: 'e.g. MK101 or mukesh',
-                  prefixIcon: Icons.person_outline_rounded,
-                ),
-                const SizedBox(height: 12),
-                _buildCompanyTypingBox(
-                  controller: passCtrl,
-                  labelText: 'Initial Password',
-                  hintText: 'Enter password',
-                  prefixIcon: Icons.lock_outline_rounded,
-                  obscureText: true,
-                ),
-                const SizedBox(height: 12),
-                _buildCompanyTypingBox(
-                  controller: deptCtrl,
-                  labelText: 'Department',
-                  hintText: 'e.g. Engineering',
-                  prefixIcon: Icons.business_outlined,
-                ),
-                const SizedBox(height: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Role',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFFCBD5E1),
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(14),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                        child: Container(
-                          height: 46,
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF0A2218).withValues(alpha: 0.70),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: const Color(0xFF34D399).withValues(alpha: 0.22),
-                              width: 1.0,
-                            ),
-                          ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              value: roleVal,
-                              isExpanded: true,
-                              dropdownColor: const Color(0xFF0A2218),
-                              icon: const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFFCBD5E1)),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              items: const [
-                                DropdownMenuItem(value: 'staff', child: Text('Employee / Staff')),
-                                DropdownMenuItem(value: 'admin', child: Text('Company Admin')),
-                                DropdownMenuItem(value: 'intern', child: Text('Intern')),
-                              ],
-                              onChanged: (v) => setDlgState(() => roleVal = v ?? 'staff'),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel', style: TextStyle(color: Color(0xFF88A89A))),
-            ),
-            ElevatedButton(
-              onPressed: isSubmitting
-                  ? null
-                  : () async {
-                      if (nameCtrl.text.trim().isEmpty || userCtrl.text.trim().isEmpty || passCtrl.text.trim().isEmpty) {
-                        return;
-                      }
-                      final nav = Navigator.of(ctx);
-                      final messenger = ScaffoldMessenger.of(context);
-                      setDlgState(() => isSubmitting = true);
-                      try {
-                        await _dashboardService.createUser({
-                          'userId': userCtrl.text.trim(),
-                          'name': nameCtrl.text.trim(),
-                          'password': passCtrl.text.trim(),
-                          'role': roleVal,
-                          'company': _company?.id,
-                          'department': deptCtrl.text.trim(),
-                          'aadhaar': '234567890123',
-                        });
-                        nav.pop();
-                        messenger.showSnackBar(
-                          const SnackBar(backgroundColor: Color(0xFF10B981), content: Text('Employee registered successfully!')),
-                        );
-                        _loadCompanyData();
-                      } catch (e) {
-                        setDlgState(() => isSubmitting = false);
-                        messenger.showSnackBar(
-                          SnackBar(backgroundColor: Colors.red, content: Text('Registration error: $e')),
-                        );
-                      }
-                    },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF22C55E),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              ),
-              child: isSubmitting
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('Add Employee', style: TextStyle(fontWeight: FontWeight.w700)),
-            ),
-          ],
+  Future<void> _showAddEmployeeDialog() async {
+    final updated = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => AddEmployeeView(
+          company: _company,
+          currentUser: widget.user,
+          dashboardService: _dashboardService,
         ),
       ),
     );
+    if (updated == true) {
+      _loadCompanyData();
+    }
   }
 
   void _showOfficeLocationDialog() {

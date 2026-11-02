@@ -271,7 +271,7 @@ class _TasksViewState extends State<TasksView> {
 
   @override
   Widget build(BuildContext context) {
-    const primaryGreen = Color(0xFF1B5E3F);
+    const primaryGreen = Color(0xFF10B981);
     const backgroundMint = Color(0xFFE8F5ED);
 
     return Scaffold(
@@ -1184,7 +1184,7 @@ class _TasksViewState extends State<TasksView> {
                     }
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1B5E3F),
+                    backgroundColor: const Color(0xFF10B981),
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -1408,7 +1408,7 @@ class _TasksViewState extends State<TasksView> {
                 }
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1B5E3F),
+                backgroundColor: const Color(0xFF10B981),
                 foregroundColor: Colors.white,
               ),
               child: const Text('Create'),

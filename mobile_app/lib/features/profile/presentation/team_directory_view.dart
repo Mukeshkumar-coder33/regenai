@@ -381,6 +381,11 @@ class _TeamDirectoryViewState extends State<TeamDirectoryView> {
                   onPressed: () => Navigator.pop(context),
                   icon: const Icon(Icons.close_rounded, size: 18),
                   label: const Text('Close'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF10B981),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
                 ),
               ),
               SizedBox(height: MediaQuery.of(context).padding.bottom + 8),

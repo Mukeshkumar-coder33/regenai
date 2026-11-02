@@ -80,8 +80,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   List<LeaveModel> _leaves = [];
   WorkScheduleModel _workSchedule = const WorkScheduleModel();
 
-  int _selectedYear = 2026;
-  String _selectedTrendFilter = 'Month';
+  int _selectedYear = DateTime.now().year;
+  String _selectedTrendFilter = 'Week'; // 'Week', 'Month', 'Year'
+  int _selectedWeekDayIndex = (DateTime.now().weekday - 1).clamp(0, 6); // 0=Mon, 6=Sun
 
   DateTime _selectedCalendarDate = DateTime.now();
   DateTime _currentCalendarMonth = DateTime.now();
@@ -244,45 +245,85 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     return _tasks.where((t) => t.status.toLowerCase() != 'completed').length;
   }
 
-  // 1. Team members joined in selected year (MongoDB dynamic)
-  int get _joinedInSelectedYear {
-    final yearStr = _selectedYear.toString();
-    return _users.where((u) {
-      if (u.joiningDate != null && u.joiningDate!.isNotEmpty) {
-        return u.joiningDate!.startsWith(yearStr);
-      }
-      if (u.createdAt != null && u.createdAt!.isNotEmpty) {
-        return u.createdAt!.startsWith(yearStr);
-      }
-      return false;
-    }).length;
+  int _getEmployeeYear(UserModel emp) {
+    if (emp.joiningDate != null && emp.joiningDate!.isNotEmpty) {
+      final dt = DateTime.tryParse(emp.joiningDate!);
+      if (dt != null) return dt.year;
+    }
+    if (emp.createdAt != null && emp.createdAt!.isNotEmpty) {
+      final dt = DateTime.tryParse(emp.createdAt!);
+      if (dt != null) return dt.year;
+    }
+    return DateTime.now().year;
   }
 
-  // 2. Today's attendance logs from MongoDB
+  // Company starting year (e.g. 2024)
+  int get _companyStartingYear {
+    if (_company != null) {
+      return _company!.startingYear;
+    }
+    int oldest = DateTime.now().year;
+    for (final u in _users) {
+      final yr = _getEmployeeYear(u);
+      if (yr < oldest && yr >= 2000) oldest = yr;
+    }
+    return oldest <= DateTime.now().year ? oldest : 2024;
+  }
+
+  List<int> get _availableYears {
+    final cur = DateTime.now().year;
+    final start = _companyStartingYear <= cur ? _companyStartingYear : cur;
+    final list = <int>[];
+    for (int y = cur; y >= start; y--) {
+      list.add(y);
+    }
+    return list.isNotEmpty ? list : [cur];
+  }
+
+  bool get _isCurrentYear => _selectedYear == DateTime.now().year;
+
+  // Active employees in selectedYear (joined on or before selectedYear)
+  List<UserModel> get _employeesInSelectedYear {
+    final list = _users.where((u) => _getEmployeeYear(u) <= _selectedYear).toList();
+    return list.isNotEmpty ? list : _users;
+  }
+
+  int get _totalStaffInYear => _employeesInSelectedYear.length;
+
+  // Joined strictly in selectedYear
+  int get _joinedInSelectedYear {
+    return _users.where((u) => _getEmployeeYear(u) == _selectedYear).length;
+  }
+
+  int get _departmentCountInYear {
+    final depts = _employeesInSelectedYear
+        .map((u) => u.department)
+        .where((d) => d != null && d.isNotEmpty)
+        .toSet();
+    if (depts.isNotEmpty) return depts.length;
+    return _departmentCount;
+  }
+
+  // Today's attendance logs from MongoDB
   List<AttendanceModel> get _todayAttendanceLogs {
     final now = DateTime.now();
     final todayStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
     return _attendance.where((a) => a.date == todayStr).toList();
   }
 
-  // 3. Today's present count (present or late)
   int get _todayPresentCount {
     final logs = _todayAttendanceLogs;
-    if (logs.isEmpty) {
-      return 0;
-    }
+    if (logs.isEmpty) return 0;
     return logs.where((a) {
       final st = a.status.toLowerCase();
       return st == 'present' || st == 'late';
     }).length;
   }
 
-  // 4. Today's late count
   int get _todayLateCount {
     return _todayAttendanceLogs.where((a) => a.status.toLowerCase() == 'late').length;
   }
 
-  // 5. Today's leave & half-day count
   int get _todayLeaveAndHalfDayCount {
     final now = DateTime.now();
     final todayStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
@@ -291,43 +332,179 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     return leavesToday + halfDaysToday;
   }
 
-  // 6. Today's absent count
   int get _todayAbsentCount {
-    final total = _users.length;
+    final total = _totalStaffInYear;
     final present = _todayPresentCount;
     final onLeave = _todayLeaveAndHalfDayCount;
     return (total - present - onLeave).clamp(0, total);
   }
 
-  // 7. Today's attendance rate percentage (0 - 100)
   int get _todayAttendancePct {
-    final total = _users.length;
+    final total = _totalStaffInYear;
     if (total == 0) return 0;
     return ((_todayPresentCount / total) * 100).round();
   }
 
-  // 8. Monthly attendance rates for the 12 months in _selectedYear
-  List<double> get _monthlyAttendanceRates {
-    final rates = <double>[];
-    final yearStr = _selectedYear.toString();
-    final totalStaff = _users.isNotEmpty ? _users.length : 1;
+  // Annual calculations for past year
+  List<AttendanceModel> get _yearAttendanceLogs {
+    final prefix = '$_selectedYear-';
+    return _attendance.where((a) => a.date.startsWith(prefix)).toList();
+  }
 
-    for (int month = 1; month <= 12; month++) {
-      final monthPrefix = '$yearStr-${month.toString().padLeft(2, '0')}';
-      final monthLogs = _attendance.where((a) {
-        if (!a.date.startsWith(monthPrefix)) return false;
+  int get _yearAttendedCount {
+    return _yearAttendanceLogs.where((a) {
+      final st = a.status.toLowerCase();
+      return st == 'present' || st == 'late' || st == 'half_day';
+    }).length;
+  }
+
+  int get _yearLateCount {
+    return _yearAttendanceLogs.where((a) => a.status.toLowerCase() == 'late').length;
+  }
+
+  int get _yearLeaveCount {
+    return _leaves.where((l) => l.isApproved && l.startDate.startsWith('$_selectedYear-')).length;
+  }
+
+  int get _yearAbsentCount {
+    final total = _totalStaffInYear * 200;
+    return (total - _yearAttendedCount).clamp(0, total);
+  }
+
+  int get _yearAttendanceRate {
+    final totalPossible = _totalStaffInYear * 200;
+    if (totalPossible <= 0) return 0;
+    return ((_yearAttendedCount / totalPossible) * 100).round().clamp(0, 100);
+  }
+
+  // 1. Week Trend Data: 7 days (Mon-Sun)
+  List<Map<String, dynamic>> get _weekTrendDays {
+    final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final now = DateTime.now();
+    final dayOfWeek = (now.weekday - 1); // 0=Mon, 6=Sun
+    final monday = DateTime(now.year, now.month, now.day - dayOfWeek);
+    final totalStaff = _totalStaffInYear > 0 ? _totalStaffInYear : 1;
+
+    final result = <Map<String, dynamic>>[];
+    for (int i = 0; i < 7; i++) {
+      final date = monday.add(Duration(days: i));
+      final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+      final dayLogs = _attendance.where((a) => a.date == dateStr).toList();
+      final presentCount = dayLogs.where((a) {
+        final st = a.status.toLowerCase();
+        return st == 'present' || st == 'late';
+      }).length;
+      final lateCount = dayLogs.where((a) => a.status.toLowerCase() == 'late').length;
+      final leaveCount = _leaves.where((l) => l.isApproved && l.coversDate(dateStr)).length;
+      final absentCount = (totalStaff - presentCount - leaveCount).clamp(0, totalStaff);
+      final rate = ((presentCount / totalStaff) * 100.0).clamp(0.0, 100.0);
+
+      result.add({
+        'dayName': days[i],
+        'date': date,
+        'dateStr': dateStr,
+        'present': presentCount,
+        'late': lateCount,
+        'absent': absentCount,
+        'leave': leaveCount,
+        'rate': rate,
+        'logs': dayLogs,
+      });
+    }
+    return result;
+  }
+
+  // 2. Month Trend Data: 4 weeks
+  List<Map<String, dynamic>> get _monthTrendWeeks {
+    final now = DateTime.now();
+    final targetMonth = _isCurrentYear ? now.month : 12;
+    final daysInMonth = DateTime(_selectedYear, targetMonth + 1, 0).day;
+    final totalStaff = _totalStaffInYear > 0 ? _totalStaffInYear : 1;
+
+    final weeks = [
+      {'name': 'Week 1', 'start': 1, 'end': 7},
+      {'name': 'Week 2', 'start': 8, 'end': 14},
+      {'name': 'Week 3', 'start': 15, 'end': 21},
+      {'name': 'Week 4', 'start': 22, 'end': daysInMonth},
+    ];
+
+    final result = <Map<String, dynamic>>[];
+    final mStr = targetMonth.toString().padLeft(2, '0');
+
+    for (final w in weeks) {
+      final start = w['start'] as int;
+      final end = w['end'] as int;
+      final weekLogs = _attendance.where((a) {
+        if (!a.date.startsWith('$_selectedYear-$mStr-')) return false;
+        final parts = a.date.split('-');
+        if (parts.length != 3) return false;
+        final dayPart = int.tryParse(parts[2]) ?? 0;
+        return dayPart >= start && dayPart <= end;
+      }).toList();
+
+      final attended = weekLogs.where((a) {
+        final st = a.status.toLowerCase();
+        return st == 'present' || st == 'late' || st == 'half_day';
+      }).length;
+
+      final dateSet = weekLogs.map((a) => a.date).toSet();
+      final workingDays = dateSet.isNotEmpty ? dateSet.length : 5;
+      final possible = totalStaff * workingDays;
+      final rate = possible > 0 ? ((attended / possible) * 100.0).clamp(0.0, 100.0) : 0.0;
+
+      result.add({
+        'name': w['name'],
+        'rate': rate,
+      });
+    }
+    return result;
+  }
+
+  // 3. Year Trend Data: 12 months
+  List<Map<String, dynamic>> get _yearTrendMonths {
+    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final totalStaff = _totalStaffInYear > 0 ? _totalStaffInYear : 1;
+    final result = <Map<String, dynamic>>[];
+
+    for (int m = 1; m <= 12; m++) {
+      final mPrefix = '$_selectedYear-${m.toString().padLeft(2, '0')}';
+      final mLogs = _attendance.where((a) {
+        if (!a.date.startsWith(mPrefix)) return false;
         final st = a.status.toLowerCase();
         return st == 'present' || st == 'late' || st == 'half_day';
       }).toList();
 
-      if (monthLogs.isEmpty) {
-        rates.add(0.0);
-      } else {
-        final rate = ((monthLogs.length / (totalStaff * 20)) * 100).clamp(0.0, 100.0);
-        rates.add(rate > 0 ? rate : 10.0);
-      }
+      final attended = mLogs.length;
+      final possible = totalStaff * 20;
+      final rate = attended > 0 ? ((attended / possible) * 100.0).clamp(0.0, 100.0) : 0.0;
+
+      result.add({
+        'name': months[m - 1],
+        'rate': rate,
+      });
     }
-    return rates;
+    return result;
+  }
+
+  List<double> get _currentTrendRates {
+    if (_selectedTrendFilter == 'Week') {
+      return _weekTrendDays.map((d) => d['rate'] as double).toList();
+    } else if (_selectedTrendFilter == 'Month') {
+      return _monthTrendWeeks.map((w) => w['rate'] as double).toList();
+    } else {
+      return _yearTrendMonths.map((m) => m['rate'] as double).toList();
+    }
+  }
+
+  List<String> get _currentTrendLabels {
+    if (_selectedTrendFilter == 'Week') {
+      return _weekTrendDays.map((d) => d['dayName'] as String).toList();
+    } else if (_selectedTrendFilter == 'Month') {
+      return _monthTrendWeeks.map((w) => w['name'] as String).toList();
+    } else {
+      return _yearTrendMonths.map((m) => m['name'] as String).toList();
+    }
   }
 
   void _showYearPicker() {
@@ -336,7 +513,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       backgroundColor: const Color(0xFF031A14),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) {
-        final years = [2026, 2025, 2024, 2023];
+        final years = _availableYears;
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -376,50 +553,20 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     );
   }
 
-  void _showTrendFilterPicker() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF031A14),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-      builder: (ctx) {
-        final filters = ['Month', 'Quarter', 'Year'];
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'Select Trend View',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
-                ),
-                const SizedBox(height: 12),
-                ...filters.map((f) {
-                  final isSelected = f == _selectedTrendFilter;
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(
-                      f,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                        color: isSelected ? const Color(0xFF34D399) : Colors.white,
-                      ),
-                    ),
-                    trailing: isSelected ? const Icon(Icons.check_rounded, color: Color(0xFF34D399)) : null,
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      setState(() => _selectedTrendFilter = f);
-                    },
-                  );
-                }),
-              ],
-            ),
-          ),
-        );
-      },
-    );
+  AttendanceModel? _getEmployeeAttendanceOnDate(UserModel emp, String dateStr) {
+    final uid = (emp.userId.isNotEmpty ? emp.userId : emp.id).toLowerCase();
+    final uname = emp.username.toLowerCase();
+    for (final att in _attendance) {
+      if (att.date != dateStr) continue;
+      final aUid = att.userId.toLowerCase();
+      if (aUid == uid || aUid == uname) return att;
+    }
+    return null;
+  }
+
+  String _getMonthName(int month) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return months[(month - 1).clamp(0, 11)];
   }
 
   AttendanceModel? _getEmployeeTodayAttendance(UserModel emp) {
@@ -700,6 +847,14 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                       ),
                     ),
 
+                    if (widget.user.canSwitchToSuperAdmin) ...[
+                      const SizedBox(height: 8),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: _buildSuperAdminSwitchBanner(),
+                      ),
+                    ],
+
                     const SizedBox(height: 6),
 
                     // Section Label
@@ -809,19 +964,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                               });
                             },
                           ),
-                          if (widget.user.canSwitchToSuperAdmin) ...[
-                            const SizedBox(height: 8),
-                            _buildCompanyMenuItem(
-                              icon: Icons.admin_panel_settings_outlined,
-                              title: 'Super Admin Console',
-                              subtitle: 'Switch to Global Platform Management',
-                              highlightColor: const Color(0xFF6366F1),
-                              onTap: () {
-                                Navigator.of(context).pop();
-                                _handleSwitchToSuperAdmin();
-                              },
-                            ),
-                          ],
+                          const SizedBox(height: 14),
+                          _buildQuickOperationsBar(),
                         ],
                       ),
                     ),
@@ -1368,7 +1512,6 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   // TAB 0: HOME / DASHBOARD (Exact Match to User Attached Screen)
   // ---------------------------------------------------------
   Widget _buildHomeTab() {
-    final totalStaff = _users.length;
     final userDisplayName = widget.user.name.isNotEmpty
         ? widget.user.name
         : (widget.user.username.isNotEmpty ? widget.user.username : 'Mukesh Kumar');
@@ -1379,7 +1522,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 1. Executive Welcome Banner with Year Selector
+          // 1. Executive Welcome Banner with Dynamic Starting Year Selector
           ClipRRect(
             borderRadius: BorderRadius.circular(22),
             child: BackdropFilter(
@@ -1431,7 +1574,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        // Year Selector Pill
+                        // Year Selector Pill (Starts from company starting year e.g. 2024)
                         GestureDetector(
                           onTap: _showYearPicker,
                           child: Container(
@@ -1481,19 +1624,13 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           ),
           const SizedBox(height: 14),
 
-          // Situation C: Super Admin Quick Switcher Banner (Only for authorized Vyshwa accounts)
-          if (widget.user.canSwitchToSuperAdmin) ...[
-            _buildSuperAdminSwitchBanner(),
-            const SizedBox(height: 14),
-          ],
-
-          // 2. Row 1: Total Employees & Departments
+          // 2. Row 1: Total Employees & Departments (Filtered by selectedYear)
           Row(
             children: [
               Expanded(
                 child: _buildMetricCard(
                   title: 'Total Employees',
-                  value: '$totalStaff',
+                  value: '$_totalStaffInYear',
                   icon: Icons.groups_rounded,
                   badgePrefix: '↗',
                   badgeMain: '+$_joinedInSelectedYear joined',
@@ -1505,7 +1642,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               Expanded(
                 child: _buildMetricCard(
                   title: 'Departments',
-                  value: '$_departmentCount',
+                  value: '$_departmentCountInYear',
                   icon: Icons.domain_rounded,
                   badgePrefix: '✓',
                   badgeMain: 'Active',
@@ -1517,24 +1654,28 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           ),
           const SizedBox(height: 12),
 
-          // 3. Row 2: Today\'s Attendance & Attendance Rate
+          // 3. Row 2: Today\'s Attendance & Attendance Rate (Dynamic for selectedYear)
           Row(
             children: [
               Expanded(
                 child: _buildTodayAttendanceCard(
-                  presentCount: _todayPresentCount,
-                  totalStaff: totalStaff,
-                  attendancePct: _todayAttendancePct,
+                  title: _isCurrentYear ? "Today's Attendance" : "Annual Attendance",
+                  ratioValue: _isCurrentYear
+                      ? '$_todayPresentCount / $_totalStaffInYear'
+                      : '$_yearAttendedCount logs',
+                  subtitle: _isCurrentYear
+                      ? '$_todayAttendancePct% present today'
+                      : '$_yearAttendanceRate% annual average',
                   onTap: () => setState(() => _selectedBottomTab = 2),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: _buildAttendanceRateCard(
-                  attendancePct: _todayAttendancePct,
-                  presentCount: _todayPresentCount,
-                  absentCount: _todayAbsentCount,
-                  lateCount: _todayLateCount,
+                  attendancePct: _isCurrentYear ? _todayAttendancePct : _yearAttendanceRate,
+                  presentCount: _isCurrentYear ? _todayPresentCount : _yearAttendedCount,
+                  absentCount: _isCurrentYear ? _todayAbsentCount : _yearAbsentCount,
+                  lateCount: _isCurrentYear ? _todayLateCount : _yearLateCount,
                   onTap: () => setState(() => _selectedBottomTab = 2),
                 ),
               ),
@@ -1542,14 +1683,14 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           ),
           const SizedBox(height: 12),
 
-          // 4. Row 3: On Leave / Half Day & Late Arrivals
+          // 4. Row 3: On Leave / Half Day & Late Arrivals (Dynamic for selectedYear)
           Row(
             children: [
               Expanded(
                 child: _buildStatSubCard(
                   title: 'On Leave / Half Day',
-                  value: '$_todayLeaveAndHalfDayCount',
-                  subtitle: 'Approved time off',
+                  value: _isCurrentYear ? '$_todayLeaveAndHalfDayCount' : '$_yearLeaveCount',
+                  subtitle: _isCurrentYear ? 'Approved time off' : 'Approved in $_selectedYear',
                   icon: Icons.calendar_today_rounded,
                   iconColor: const Color(0xFF34D399),
                   iconBg: const Color(0xFF10B981).withValues(alpha: 0.22),
@@ -1560,8 +1701,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               Expanded(
                 child: _buildStatSubCard(
                   title: 'Late Arrivals',
-                  value: '$_todayLateCount',
-                  subtitle: 'After ${_workSchedule.shiftStart.isNotEmpty ? _workSchedule.shiftStart : "09:30"}',
+                  value: _isCurrentYear ? '$_todayLateCount' : '$_yearLateCount',
+                  subtitle: _isCurrentYear
+                      ? 'After ${_workSchedule.shiftStart.isNotEmpty ? _workSchedule.shiftStart : "09:30"}'
+                      : 'Recorded in $_selectedYear',
                   icon: Icons.access_time_rounded,
                   iconColor: const Color(0xFFF59E0B),
                   iconBg: const Color(0xFFF59E0B).withValues(alpha: 0.22),
@@ -1572,109 +1715,17 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           ),
           const SizedBox(height: 14),
 
-          // 5. Row 4: Team Attendance Trend Area Spline Chart
-          _buildAttendanceTrendSection(_monthlyAttendanceRates),
-          const SizedBox(height: 16),
+          // 5. Row 4: Team Attendance Trend Area Spline Chart (Week / Month / Year)
+          _buildAttendanceTrendSection(),
+          const SizedBox(height: 14),
 
-          // 6. Quick Operations Horizontal Bar
-          _buildQuickOperationsBar(),
-          const SizedBox(height: 22),
-
-          // 7. Operations & Modules List (Matching User Image in Executive Glass UI)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Company Operations',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  letterSpacing: -0.3,
-                  shadows: [
-                    Shadow(offset: Offset(0, 1), blurRadius: 4, color: Colors.black45),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF10B981).withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: const Color(0xFF10B981).withValues(alpha: 0.28),
-                  ),
-                ),
-                child: const Text(
-                  '7 Modules',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF34D399),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-
-          _buildCompanyMenuItem(
-            icon: Icons.assignment_ind_outlined,
-            title: 'Employee Management',
-            subtitle: '$totalStaff registered team members',
-            onTap: () => setState(() => _selectedBottomTab = 1),
-          ),
-          _buildCompanyMenuItem(
-            icon: Icons.calendar_today_outlined,
-            title: 'Attendance',
-            subtitle: '${_attendance.length} logs recorded',
-            onTap: () => setState(() => _selectedBottomTab = 2),
-          ),
-          _buildCompanyMenuItem(
-            icon: Icons.assignment_outlined,
-            title: 'Tasks',
-            subtitle: '$_activeTasksCount open tasks in progress',
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => TasksView(
-                    user: widget.user,
-                    onBack: () => Navigator.of(context).pop(),
-                  ),
-                ),
-              );
-            },
-          ),
-          _buildCompanyMenuItem(
-            icon: Icons.event_busy_outlined,
-            title: 'Leaves & Holidays',
-            subtitle: _todayLeaveAndHalfDayCount > 0
-                ? '$_todayLeaveAndHalfDayCount on leave • Review approvals'
-                : 'Review leave approvals & company holidays',
-            onTap: () => setState(() => _selectedBottomTab = 3),
-          ),
-          _buildCompanyMenuItem(
-            icon: Icons.payments_outlined,
-            title: 'Payroll',
-            subtitle: 'Automated payroll processing & slips',
-            onTap: _showPayrollSheet,
-          ),
-          _buildCompanyMenuItem(
-            icon: Icons.bar_chart_rounded,
-            title: 'Reports',
-            subtitle: 'Workforce analytics & monthly summary',
-            onTap: _showAttendanceReportSheet,
-          ),
-          _buildCompanyMenuItem(
-            icon: Icons.settings_outlined,
-            title: 'Settings',
-            subtitle: 'Company profile & working hours configuration',
-            onTap: () => setState(() {
-              _selectedBottomTab = 4;
-              _selectedProfileSubTab = 2;
-            }),
-          ),
-          const SizedBox(height: 32),
+          // 6. When Week view is selected: Show 7-Day Day Selector & Day Employee Details
+          if (_selectedTrendFilter == 'Week') ...[
+            _buildWeekDayEmployeeDetailsCard(),
+            const SizedBox(height: 24),
+          ] else ...[
+            const SizedBox(height: 24),
+          ],
         ],
       ),
     );
@@ -1785,9 +1836,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   }
 
   Widget _buildTodayAttendanceCard({
-    required int presentCount,
-    required int totalStaff,
-    required int attendancePct,
+    required String title,
+    required String ratioValue,
+    required String subtitle,
     required VoidCallback onTap,
   }) {
     return _buildGlassCard(
@@ -1809,9 +1860,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 child: const Icon(Icons.people_alt_outlined, size: 16, color: Color(0xFF34D399)),
               ),
               const SizedBox(width: 6),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  "Today's Attendance",
+                  title,
                   style: TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w600,
@@ -1825,7 +1876,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           ),
           const SizedBox(height: 12),
           Text(
-            '$presentCount / $totalStaff',
+            ratioValue,
             style: const TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.w800,
@@ -1840,7 +1891,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           Row(
             children: [
               Text(
-                '$attendancePct% present today',
+                subtitle,
                 style: const TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
@@ -2056,8 +2107,16 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     );
   }
 
-  Widget _buildAttendanceTrendSection(List<double> rates) {
-    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  Widget _buildAttendanceTrendSection() {
+    final rates = _currentTrendRates;
+    final labels = _currentTrendLabels;
+
+    String subtitleText = 'Monthly attendance distribution for $_selectedYear';
+    if (_selectedTrendFilter == 'Week') {
+      subtitleText = 'Day-by-day analysis (Mon - Sun)';
+    } else if (_selectedTrendFilter == 'Month') {
+      subtitleText = 'Weekly breakdown for $_selectedYear';
+    }
 
     return _buildGlassCard(
       borderRadius: 22,
@@ -2083,9 +2142,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                       ),
                     ),
                     const SizedBox(height: 2),
-                    const Text(
-                      'Monthly attendance distribution',
-                      style: TextStyle(
+                    Text(
+                      subtitleText,
+                      style: const TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w500,
                         color: Color(0xFF94A3B8),
@@ -2094,32 +2153,23 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   ],
                 ),
               ),
-              GestureDetector(
-                onTap: _showTrendFilterPicker,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF042F24).withValues(alpha: 0.7),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: const Color(0xFF34D399).withValues(alpha: 0.3),
-                    ),
+              // Segment Filter Buttons: Week | Month | Year
+              Container(
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF042F24).withValues(alpha: 0.8),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: const Color(0xFF34D399).withValues(alpha: 0.25),
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _selectedTrendFilter,
-                        style: const TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFFA7F3D0),
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      const Icon(Icons.keyboard_arrow_down_rounded, size: 14, color: Color(0xFFA7F3D0)),
-                    ],
-                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildTrendSegmentButton('Week'),
+                    _buildTrendSegmentButton('Month'),
+                    _buildTrendSegmentButton('Year'),
+                  ],
                 ),
               ),
             ],
@@ -2147,7 +2197,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: CustomPaint(
-                    painter: TeamAttendanceTrendChartPainter(monthlyRates: rates),
+                    painter: TeamAttendanceTrendChartPainter(
+                      trendRates: rates,
+                      selectedIndex: _selectedTrendFilter == 'Week' ? _selectedWeekDayIndex : null,
+                    ),
                   ),
                 ),
               ],
@@ -2160,13 +2213,15 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               Expanded(
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: months.map((m) {
+                  children: labels.map((l) {
+                    final isHighlighted = _selectedTrendFilter == 'Week' &&
+                        labels.indexOf(l) == _selectedWeekDayIndex;
                     return Text(
-                      m,
-                      style: const TextStyle(
+                      l,
+                      style: TextStyle(
                         fontSize: 9.5,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF94A3B8),
+                        fontWeight: isHighlighted ? FontWeight.w800 : FontWeight.w600,
+                        color: isHighlighted ? const Color(0xFF34D399) : const Color(0xFF94A3B8),
                       ),
                     );
                   }).toList(),
@@ -2179,9 +2234,299 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     );
   }
 
-  // ---------------------------------------------------------
-  // QUICK OPERATIONS BAR
-  // ---------------------------------------------------------
+  Widget _buildTrendSegmentButton(String filter) {
+    final isSelected = _selectedTrendFilter == filter;
+    return InkWell(
+      onTap: () => setState(() => _selectedTrendFilter = filter),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF10B981) : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          filter,
+          style: TextStyle(
+            fontSize: 10.5,
+            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+            color: isSelected ? Colors.white : const Color(0xFF94A3B8),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 7-Day Day Selector and Day-by-day Employee Present/Absent Details Card
+  Widget _buildWeekDayEmployeeDetailsCard() {
+    final dayList = _weekTrendDays;
+    final day = dayList[_selectedWeekDayIndex.clamp(0, 6)];
+    final dateStr = day['dateStr'] as String;
+    final dateObj = day['date'] as DateTime;
+    final present = day['present'] as int;
+    final absent = day['absent'] as int;
+    final late = day['late'] as int;
+    final leave = day['leave'] as int;
+    final employees = _employeesInSelectedYear;
+
+    return _buildGlassCard(
+      borderRadius: 20,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Row of 7 Days Buttons (Mon - Sun)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(7, (i) {
+              final d = dayList[i];
+              final isSelected = i == _selectedWeekDayIndex;
+              final dObj = d['date'] as DateTime;
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: InkWell(
+                    onTap: () => setState(() => _selectedWeekDayIndex = i),
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 7),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? const Color(0xFF10B981)
+                            : const Color(0xFF042F24).withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: isSelected
+                              ? const Color(0xFF34D399)
+                              : Colors.white.withValues(alpha: 0.1),
+                          width: isSelected ? 1.5 : 0.8,
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          Text(
+                            d['dayName'] as String,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                              color: isSelected ? Colors.white : const Color(0xFF94A3B8),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${dObj.day}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: isSelected ? Colors.white : const Color(0xFFE2E8F0),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+          const SizedBox(height: 14),
+
+          // Day Header & Summary Pills
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${day["dayName"]}, ${dateObj.day} ${_getMonthName(dateObj.month)} ${dateObj.year}',
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  const Text(
+                    'Employee Attendance Details',
+                    style: TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8)),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.3)),
+                ),
+                child: Text(
+                  '${(day["rate"] as double).round()}% Attended',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF34D399),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Summary Badges Row (Present, Absent, Late, Leave)
+          Row(
+            children: [
+              _buildStatusCountBadge('Present', present, const Color(0xFF34D399)),
+              const SizedBox(width: 6),
+              _buildStatusCountBadge('Absent', absent, const Color(0xFFEF4444)),
+              const SizedBox(width: 6),
+              _buildStatusCountBadge('Late', late, const Color(0xFFF59E0B)),
+              const SizedBox(width: 6),
+              _buildStatusCountBadge('Leave', leave, const Color(0xFF60A5FA)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Divider(color: Colors.white12, height: 1),
+          const SizedBox(height: 8),
+
+          // Detailed List of Employees on this day
+          if (employees.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                'No employees active in this year.',
+                style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11.5),
+              ),
+            )
+          else
+            ...employees.map((emp) {
+              final att = _getEmployeeAttendanceOnDate(emp, dateStr);
+              final isOnLeave = _leaves.any((l) =>
+                  l.isApproved &&
+                  l.coversDate(dateStr) &&
+                  (l.userId == emp.userId || l.userId == emp.id || l.userId == emp.username));
+
+              String statusLabel = 'Absent';
+              Color statusColor = const Color(0xFFEF4444);
+              String timingInfo = 'No check-in record';
+
+              if (att != null) {
+                final st = att.status.toLowerCase();
+                if (st == 'present') {
+                  statusLabel = 'Present';
+                  statusColor = const Color(0xFF34D399);
+                  timingInfo = 'In: \${att.checkIn ?? "--"} • Out: \${att.checkOut ?? "--"}';
+                } else if (st == 'late') {
+                  statusLabel = 'Late';
+                  statusColor = const Color(0xFFF59E0B);
+                  timingInfo = 'In: \${att.checkIn ?? "--"} (Late arrival)';
+                } else if (st == 'half_day') {
+                  statusLabel = 'Half Day';
+                  statusColor = const Color(0xFF60A5FA);
+                  timingInfo = 'Half Day shift';
+                }
+              } else if (isOnLeave) {
+                statusLabel = 'On Leave';
+                statusColor = const Color(0xFF60A5FA);
+                timingInfo = 'Approved time off';
+              }
+
+              final empName = emp.name.isNotEmpty ? emp.name : emp.username;
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: const Color(0xFF10B981).withValues(alpha: 0.18),
+                        border: Border.all(color: statusColor.withValues(alpha: 0.4)),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        empName.isNotEmpty ? empName[0].toUpperCase() : 'E',
+                        style: TextStyle(fontWeight: FontWeight.w700, color: statusColor, fontSize: 12),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            empName,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            timingInfo,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: Color(0xFF94A3B8),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: statusColor.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: statusColor.withValues(alpha: 0.3)),
+                      ),
+                      child: Text(
+                        statusLabel,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: statusColor,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusCountBadge(String label, int count, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withValues(alpha: 0.28)),
+        ),
+        child: Column(
+          children: [
+            Text(
+              '$count',
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: color),
+            ),
+            const SizedBox(height: 1),
+            Text(
+              label,
+              style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: color),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildQuickOperationsBar() {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -3866,11 +4211,14 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         children: [
           Row(
             children: const [
-              Icon(Icons.shield_outlined, color: Color(0xFFA7F3D0), size: 20),
+              Icon(Icons.shield_outlined, color: Color(0xFFA7F3D0), size: 18),
               SizedBox(width: 8),
-              Text(
-                'Super Admin Console Available',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white),
+              Expanded(
+                child: Text(
+                  'Super Admin Console Available',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
           ),
@@ -4303,9 +4651,13 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
 
 
 class TeamAttendanceTrendChartPainter extends CustomPainter {
-  final List<double> monthlyRates;
+  final List<double> trendRates;
+  final int? selectedIndex;
 
-  TeamAttendanceTrendChartPainter({required this.monthlyRates});
+  TeamAttendanceTrendChartPainter({
+    required this.trendRates,
+    this.selectedIndex,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -4321,19 +4673,19 @@ class TeamAttendanceTrendChartPainter extends CustomPainter {
       canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
     }
 
-    final hasData = monthlyRates.any((r) => r > 0.0);
-    final displayRates = hasData
-        ? monthlyRates
-        : [14.0, 16.0, 22.0, 15.0, 22.0, 48.0, 32.0, 22.0, 20.0, 24.0, 20.0, 18.0];
-
-    final n = displayRates.length;
+    final n = trendRates.length;
     if (n < 2) return;
+
+    final hasData = trendRates.any((r) => r > 0.0);
+    final displayRates = hasData
+        ? trendRates
+        : List.generate(n, (i) => 15.0 + ((i % 3) * 10.0));
 
     final stepX = size.width / (n - 1);
     final points = <Offset>[];
     for (int i = 0; i < n; i++) {
       final normalizedY = (1.0 - (displayRates[i] / 100.0).clamp(0.0, 1.0));
-      final py = (normalizedY * (size.height - 12)) + 6;
+      final py = (normalizedY * (size.height - 14)) + 7;
       final px = i * stepX;
       points.add(Offset(px, py));
     }
@@ -4391,10 +4743,29 @@ class TeamAttendanceTrendChartPainter extends CustomPainter {
 
     canvas.drawPath(splinePath, glowPaint);
     canvas.drawPath(splinePath, strokePaint);
+
+    // Selected point highlight
+    if (selectedIndex != null && selectedIndex! >= 0 && selectedIndex! < points.length) {
+      final p = points[selectedIndex!];
+      final outerDot = Paint()
+        ..color = const Color(0xFF34D399).withValues(alpha: 0.35)
+        ..style = PaintingStyle.fill;
+      final innerDot = Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.fill;
+      final borderDot = Paint()
+        ..color = const Color(0xFF34D399)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0;
+
+      canvas.drawCircle(p, 8.0, outerDot);
+      canvas.drawCircle(p, 4.0, innerDot);
+      canvas.drawCircle(p, 4.0, borderDot);
+    }
   }
 
   @override
   bool shouldRepaint(covariant TeamAttendanceTrendChartPainter oldDelegate) {
-    return oldDelegate.monthlyRates != monthlyRates;
+    return oldDelegate.trendRates != trendRates || oldDelegate.selectedIndex != selectedIndex;
   }
 }

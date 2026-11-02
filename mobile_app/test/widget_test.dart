@@ -290,10 +290,14 @@ void main() {
       expect(find.text('2'), findsWidgets); // 2 users
       expect(find.text('Employees'), findsOneWidget);
       expect(find.text('Departments'), findsOneWidget);
-      expect(find.text('Employee Management'), findsOneWidget);
 
-      // Verify NO Super Admin switcher
+      // Verify NO Super Admin switcher on dashboard
       expect(find.text('Super Admin Console Available'), findsNothing);
+
+      // Open drawer to verify company operations
+      await tester.tap(find.byIcon(Icons.menu_rounded));
+      await tester.pumpAndSettle();
+      expect(find.text('Employee Management'), findsOneWidget);
     });
 
     testWidgets('Situation C: Vyshwa Company Dashboard displays SuperAdmin switch banner',
@@ -311,6 +315,13 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('krish Tech Computer'), findsOneWidget);
+
+      // Verify switch banner is removed from dashboard surface
+      expect(find.text('Super Admin Console Available'), findsNothing);
+
+      // Open drawer to verify Super Admin switch banner
+      await tester.tap(find.byIcon(Icons.menu_rounded));
+      await tester.pumpAndSettle();
       expect(find.text('Super Admin Console Available'), findsOneWidget);
       expect(find.text('Switch to Super Admin Console'), findsOneWidget);
     });

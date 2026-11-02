@@ -19,6 +19,9 @@ class CompanyModel {
   final double? latitude;
   final double? longitude;
   final int? radius;
+  final String? createdAt;
+  final int? establishmentYear;
+  final String? founded;
 
   const CompanyModel({
     required this.id,
@@ -38,7 +41,23 @@ class CompanyModel {
     this.latitude,
     this.longitude,
     this.radius,
+    this.createdAt,
+    this.establishmentYear,
+    this.founded,
   });
+
+  int get startingYear {
+    if (establishmentYear != null && establishmentYear! > 0) return establishmentYear!;
+    if (founded != null && founded!.isNotEmpty) {
+      final f = int.tryParse(founded!);
+      if (f != null && f > 0) return f;
+    }
+    if (createdAt != null && createdAt!.isNotEmpty) {
+      final dt = DateTime.tryParse(createdAt!);
+      if (dt != null) return dt.year;
+    }
+    return 2024;
+  }
 
   factory CompanyModel.fromJson(Map<String, dynamic> json) {
     Map<String, dynamic>? officeLoc;
@@ -70,6 +89,11 @@ class CompanyModel {
       radius: officeLoc != null && officeLoc['radius'] != null
           ? int.tryParse(officeLoc['radius'].toString())
           : null,
+      createdAt: json['createdAt']?.toString(),
+      establishmentYear: json['establishmentYear'] != null
+          ? int.tryParse(json['establishmentYear'].toString())
+          : null,
+      founded: (json['founded'] ?? json['establishmentDate'])?.toString(),
     );
   }
 

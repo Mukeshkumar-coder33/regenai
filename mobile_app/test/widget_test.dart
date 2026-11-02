@@ -714,5 +714,41 @@ void main() {
       // Trend Section
       expect(find.textContaining('Team Attendance Trend'), findsOneWidget);
     });
+
+    testWidgets('CompanyDashboardView renders active squircle bottom nav tile and unified dark glass typing box in Employees tab',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanyDashboardView(
+            user: const UserModel(
+              id: 'owner_test',
+              userId: 'Vyshwa',
+              username: 'Vyshwa',
+              name: 'Vyshwa',
+              role: 'owner',
+              company: 'krish Tech Computer',
+              token: 'tok_owner',
+            ),
+            dashboardService: MockDashboardService(),
+            authService: MockAuthService(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Active squircle bottom nav tile
+      expect(find.text('Home'), findsWidgets);
+      expect(find.byIcon(Icons.home_rounded), findsOneWidget);
+
+      // Switch to Employees tab (index 1)
+      await tester.tap(find.text('Employees'));
+      await tester.pumpAndSettle();
+
+      // Unified typing box in Employees tab
+      expect(find.text('Search employees...'), findsOneWidget);
+      expect(find.byIcon(Icons.search_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.filter_list_rounded), findsOneWidget);
+    });
   });
 }

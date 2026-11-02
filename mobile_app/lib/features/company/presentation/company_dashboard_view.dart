@@ -3202,74 +3202,32 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           ),
           const SizedBox(height: 14),
 
-          // Search Bar & Filter Button
-          Row(
-            children: [
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                    child: Container(
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0C1410).withValues(alpha: 0.65),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.18)),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.search_rounded, size: 18, color: Color(0xFFBACCC3)),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: TextField(
-                              controller: _employeeSearchController,
-                              onChanged: (val) => setState(() => _employeeSearchQuery = val),
-                              style: const TextStyle(color: Colors.white, fontSize: 13),
-                              decoration: const InputDecoration(
-                                hintText: 'Search employees...',
-                                hintStyle: TextStyle(color: Color(0xFF88A89A), fontSize: 13),
-                                border: InputBorder.none,
-                                isDense: true,
-                              ),
-                            ),
-                          ),
-                          if (_employeeSearchQuery.isNotEmpty)
-                            GestureDetector(
-                              onTap: () {
-                                _employeeSearchController.clear();
-                                setState(() => _employeeSearchQuery = '');
-                              },
-                              child: const Icon(Icons.close_rounded, size: 16, color: Color(0xFFBACCC3)),
-                            ),
-                        ],
-                      ),
+          // Search Bar & Filter Button (Exact Match to User Image 2)
+          _buildCompanyTypingBox(
+            controller: _employeeSearchController,
+            hintText: 'Search employees...',
+            prefixIcon: Icons.search_rounded,
+            onChanged: (val) => setState(() => _employeeSearchQuery = val),
+            suffixWidget: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_employeeSearchQuery.isNotEmpty)
+                  GestureDetector(
+                    onTap: () {
+                      _employeeSearchController.clear();
+                      setState(() => _employeeSearchQuery = '');
+                    },
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 4),
+                      child: Icon(Icons.close_rounded, size: 18, color: Color(0xFFBACCC3)),
                     ),
                   ),
+                const Padding(
+                  padding: EdgeInsets.only(left: 4, right: 2),
+                  child: Icon(Icons.filter_list_rounded, size: 20, color: Color(0xFFCBD5E1)),
                 ),
-              ),
-              const SizedBox(width: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                  child: Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0C1410).withValues(alpha: 0.65),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.18)),
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.tune_rounded, size: 18, color: Color(0xFFA7F3D0)),
-                      onPressed: () {},
-                    ),
-                  ),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
           const SizedBox(height: 12),
 
@@ -4610,6 +4568,104 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   }
 
   // ---------------------------------------------------------
+  // COMPANY TYPING BOX (Exact Match to User Attached Image 2)
+  // ---------------------------------------------------------
+  Widget _buildCompanyTypingBox({
+    required TextEditingController controller,
+    required String hintText,
+    String? labelText,
+    IconData? prefixIcon,
+    Widget? suffixWidget,
+    ValueChanged<String>? onChanged,
+    bool obscureText = false,
+    TextInputType? keyboardType,
+    int maxLines = 1,
+    VoidCallback? onTap,
+    bool readOnly = false,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (labelText != null && labelText.isNotEmpty) ...[
+          Text(
+            labelText,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFFCBD5E1),
+              letterSpacing: 0.2,
+            ),
+          ),
+          const SizedBox(height: 6),
+        ],
+        ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: Container(
+              height: maxLines == 1 ? 46 : null,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0A2218).withValues(alpha: 0.70),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: const Color(0xFF34D399).withValues(alpha: 0.22),
+                  width: 1.0,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.25),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  if (prefixIcon != null) ...[
+                    Icon(prefixIcon, size: 19, color: const Color(0xFFCBD5E1)),
+                    const SizedBox(width: 10),
+                  ],
+                  Expanded(
+                    child: TextField(
+                      controller: controller,
+                      onChanged: onChanged,
+                      obscureText: obscureText,
+                      keyboardType: keyboardType,
+                      maxLines: maxLines,
+                      readOnly: readOnly,
+                      onTap: onTap,
+                      cursorColor: const Color(0xFF34D399),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: hintText,
+                        hintStyle: const TextStyle(
+                          color: Color(0xFF94A3B8),
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(vertical: maxLines == 1 ? 12 : 8),
+                      ),
+                    ),
+                  ),
+                  ?suffixWidget,
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------
   // 5-TAB FLOATING FROSTED GLASS BOTTOM DOCK (Image 1)
   // ---------------------------------------------------------
   Widget _buildCompanyBottomNav() {
@@ -4620,7 +4676,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
@@ -4665,53 +4721,63 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       borderRadius: BorderRadius.circular(16),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: isSelected
-            ? const EdgeInsets.symmetric(horizontal: 12, vertical: 6)
-            : const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        width: 58,
+        height: 52,
+        alignment: Alignment.center,
         decoration: isSelected
             ? BoxDecoration(
-                color: const Color(0xFF10B981),
+                gradient: const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color(0xFF0F4733),
+                    Color(0xFF062319),
+                  ],
+                ),
                 borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: const Color(0xFF34D399).withValues(alpha: 0.50),
+                  width: 1.2,
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF10B981).withValues(alpha: 0.45),
-                    blurRadius: 10,
+                    color: const Color(0xFF10B981).withValues(alpha: 0.40),
+                    blurRadius: 12,
                     offset: const Offset(0, 2),
                   ),
-                ],
-              )
-            : null,
-        child: isSelected
-            ? Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(activeIcon, color: Colors.white, size: 17),
-                  const SizedBox(width: 5),
-                  Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                    ),
+                  BoxShadow(
+                    color: const Color(0xFF34D399).withValues(alpha: 0.20),
+                    blurRadius: 6,
+                    offset: const Offset(0, -1),
                   ),
                 ],
               )
-            : Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon, color: const Color(0xFFCBD5E1), size: 19),
-                  const SizedBox(height: 2),
-                  Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFFCBD5E1),
-                    ),
-                  ),
-                ],
+            : const BoxDecoration(
+                color: Colors.transparent,
               ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isSelected ? activeIcon : icon,
+              color: isSelected ? const Color(0xFFA7F3D0) : const Color(0xFF94A3B8),
+              size: isSelected ? 21 : 20,
+            ),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                color: isSelected ? Colors.white : const Color(0xFF94A3B8),
+                letterSpacing: 0.2,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -4789,39 +4855,86 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(
+                _buildCompanyTypingBox(
                   controller: nameCtrl,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(labelText: 'Full Name', labelStyle: TextStyle(color: Color(0xFFBACCC3))),
-                ),
-                TextField(
-                  controller: userCtrl,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(labelText: 'User ID / Username', labelStyle: TextStyle(color: Color(0xFFBACCC3))),
-                ),
-                TextField(
-                  controller: passCtrl,
-                  obscureText: true,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(labelText: 'Initial Password', labelStyle: TextStyle(color: Color(0xFFBACCC3))),
-                ),
-                TextField(
-                  controller: deptCtrl,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(labelText: 'Department', labelStyle: TextStyle(color: Color(0xFFBACCC3))),
+                  labelText: 'Full Name',
+                  hintText: 'Enter employee full name',
+                  prefixIcon: Icons.badge_outlined,
                 ),
                 const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: roleVal,
-                  dropdownColor: const Color(0xFF072118),
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(labelText: 'Role', labelStyle: TextStyle(color: Color(0xFFBACCC3))),
-                  items: const [
-                    DropdownMenuItem(value: 'staff', child: Text('Employee / Staff')),
-                    DropdownMenuItem(value: 'admin', child: Text('Company Admin')),
-                    DropdownMenuItem(value: 'intern', child: Text('Intern')),
+                _buildCompanyTypingBox(
+                  controller: userCtrl,
+                  labelText: 'User ID / Username',
+                  hintText: 'e.g. MK101 or mukesh',
+                  prefixIcon: Icons.person_outline_rounded,
+                ),
+                const SizedBox(height: 12),
+                _buildCompanyTypingBox(
+                  controller: passCtrl,
+                  labelText: 'Initial Password',
+                  hintText: 'Enter password',
+                  prefixIcon: Icons.lock_outline_rounded,
+                  obscureText: true,
+                ),
+                const SizedBox(height: 12),
+                _buildCompanyTypingBox(
+                  controller: deptCtrl,
+                  labelText: 'Department',
+                  hintText: 'e.g. Engineering',
+                  prefixIcon: Icons.business_outlined,
+                ),
+                const SizedBox(height: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Role',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFFCBD5E1),
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                        child: Container(
+                          height: 46,
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0A2218).withValues(alpha: 0.70),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: const Color(0xFF34D399).withValues(alpha: 0.22),
+                              width: 1.0,
+                            ),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: roleVal,
+                              isExpanded: true,
+                              dropdownColor: const Color(0xFF0A2218),
+                              icon: const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFFCBD5E1)),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              items: const [
+                                DropdownMenuItem(value: 'staff', child: Text('Employee / Staff')),
+                                DropdownMenuItem(value: 'admin', child: Text('Company Admin')),
+                                DropdownMenuItem(value: 'intern', child: Text('Intern')),
+                              ],
+                              onChanged: (v) => setDlgState(() => roleVal = v ?? 'staff'),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
-                  onChanged: (v) => setDlgState(() => roleVal = v ?? 'staff'),
                 ),
               ],
             ),
@@ -4900,15 +5013,20 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 style: TextStyle(fontSize: 12, color: Color(0xFFBACCC3)),
               ),
               const SizedBox(height: 14),
-              TextField(
+              _buildCompanyTypingBox(
                 controller: latCtrl,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(labelText: 'Latitude', labelStyle: TextStyle(color: Color(0xFFBACCC3))),
+                labelText: 'Latitude',
+                hintText: 'e.g. 11.016800',
+                prefixIcon: Icons.location_on_outlined,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
               ),
-              TextField(
+              const SizedBox(height: 12),
+              _buildCompanyTypingBox(
                 controller: lngCtrl,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(labelText: 'Longitude', labelStyle: TextStyle(color: Color(0xFFBACCC3))),
+                labelText: 'Longitude',
+                hintText: 'e.g. 76.955800',
+                prefixIcon: Icons.my_location_outlined,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
               ),
               const SizedBox(height: 12),
               OutlinedButton.icon(
@@ -4993,20 +5111,26 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
+            _buildCompanyTypingBox(
               controller: startCtrl,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(labelText: 'Shift Start (HH:mm)', labelStyle: TextStyle(color: Color(0xFFBACCC3))),
+              labelText: 'Shift Start (HH:mm)',
+              hintText: '09:00',
+              prefixIcon: Icons.schedule_rounded,
             ),
-            TextField(
+            const SizedBox(height: 12),
+            _buildCompanyTypingBox(
               controller: endCtrl,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(labelText: 'Shift End (HH:mm)', labelStyle: TextStyle(color: Color(0xFFBACCC3))),
+              labelText: 'Shift End (HH:mm)',
+              hintText: '18:00',
+              prefixIcon: Icons.update_rounded,
             ),
-            TextField(
+            const SizedBox(height: 12),
+            _buildCompanyTypingBox(
               controller: graceCtrl,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(labelText: 'Grace Minutes', labelStyle: TextStyle(color: Color(0xFFBACCC3))),
+              labelText: 'Grace Minutes',
+              hintText: '15',
+              prefixIcon: Icons.timer_outlined,
+              keyboardType: TextInputType.number,
             ),
           ],
         ),

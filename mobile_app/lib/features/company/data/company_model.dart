@@ -51,12 +51,21 @@ class CompanyModel {
     if (founded != null && founded!.isNotEmpty) {
       final f = int.tryParse(founded!);
       if (f != null && f > 0) return f;
+      final dt = DateTime.tryParse(founded!);
+      if (dt != null && dt.year >= 1970 && dt.year <= DateTime.now().year) return dt.year;
     }
     if (createdAt != null && createdAt!.isNotEmpty) {
       final dt = DateTime.tryParse(createdAt!);
-      if (dt != null) return dt.year;
+      if (dt != null && dt.year >= 1970 && dt.year <= DateTime.now().year) return dt.year;
     }
-    return 2024;
+    if (id.length == 24) {
+      try {
+        final sec = int.parse(id.substring(0, 8), radix: 16);
+        final dt = DateTime.fromMillisecondsSinceEpoch(sec * 1000);
+        if (dt.year >= 2000 && dt.year <= DateTime.now().year) return dt.year;
+      } catch (_) {}
+    }
+    return DateTime.now().year;
   }
 
   factory CompanyModel.fromJson(Map<String, dynamic> json) {
@@ -89,11 +98,11 @@ class CompanyModel {
       radius: officeLoc != null && officeLoc['radius'] != null
           ? int.tryParse(officeLoc['radius'].toString())
           : null,
-      createdAt: json['createdAt']?.toString(),
+      createdAt: (json['createdAt'] ?? json['created_at'])?.toString(),
       establishmentYear: json['establishmentYear'] != null
           ? int.tryParse(json['establishmentYear'].toString())
           : null,
-      founded: (json['founded'] ?? json['establishmentDate'])?.toString(),
+      founded: (json['founded'] ?? json['establishmentDate'] ?? json['startingDate'] ?? json['startDate'])?.toString(),
     );
   }
 

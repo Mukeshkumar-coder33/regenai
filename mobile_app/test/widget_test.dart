@@ -657,5 +657,62 @@ void main() {
       expect(find.text('Summary'), findsOneWidget);
       expect(find.text('Total Registered Employees'), findsNothing);
     });
+
+    test('CompanyModel startingYear is derived dynamically without hardcoded 2024', () {
+      // 1. From ObjectId hex timestamp (e.g. krish Tech Computer 6adb0f108482fee4b61bc12b -> Oct 2026)
+      const comp2026 = CompanyModel(
+        id: '6adb0f108482fee4b61bc12b',
+        name: 'krish Tech Computer',
+      );
+      expect(comp2026.startingYear, 2026);
+
+      // 2. From createdAt string
+      const comp2024 = CompanyModel(
+        id: 'c_custom',
+        name: 'Zevox Medice',
+        createdAt: '2024-06-19T10:00:00.000Z',
+      );
+      expect(comp2024.startingYear, 2024);
+
+      // 3. From establishmentYear
+      const comp2021 = CompanyModel(
+        id: 'c_est',
+        name: 'Old Enterprise',
+        establishmentYear: 2021,
+      );
+      expect(comp2021.startingYear, 2021);
+    });
+
+    testWidgets('CompanyDashboardView displays dynamic Attendance Rate with Present, Absent, Late labels and Trend',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanyDashboardView(
+            user: const UserModel(
+              id: 'owner_test',
+              userId: 'Vyshwa',
+              username: 'Vyshwa',
+              name: 'Vyshwa',
+              role: 'owner',
+              company: 'krish Tech Computer',
+              token: 'tok_owner',
+            ),
+            dashboardService: MockDashboardService(),
+            authService: MockAuthService(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Attendance Rate card and bright labels
+      expect(find.text('Attendance Rate'), findsOneWidget);
+      expect(find.text('Present'), findsWidgets);
+      expect(find.text('Absent'), findsWidgets);
+      expect(find.text('Late'), findsWidgets);
+
+      // Trend Section
+      expect(find.textContaining('Team Attendance Trend'), findsOneWidget);
+    });
   });
 }

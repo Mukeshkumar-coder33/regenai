@@ -774,8 +774,8 @@ export default function DashboardHome({ userProfile, onNavigate, selectedYear = 
           <div className="flex items-center shrink-0 w-full lg:w-auto">
             {/* Search input container */}
             <div ref={searchContainerRef} className="relative w-full sm:w-[420px] md:w-[460px] lg:w-[500px] xl:w-[540px]">
-              <div className="h-11 sm:h-12 flex items-center bg-gradient-to-br from-slate-500/40 via-slate-700/50 to-slate-800/65 backdrop-blur-md border border-slate-200/30 rounded-xl transition-all focus-within:border-slate-300 focus-within:ring-1 focus-within:ring-white/20 shadow-md shadow-black/25">
-                <Search className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-[#CBD5E1] shrink-0 ml-3.5 sm:ml-4" />
+              <div className="h-11 sm:h-12 flex items-center bg-[#F8FAF9] dark:bg-[#091E24] border border-[#D5E5D7] dark:border-[#203A42] rounded-xl transition-all focus-within:border-[#15966A] dark:focus-within:border-[#36BEB0] focus-within:ring-1 focus-within:ring-[#15966A]/25 dark:focus-within:ring-[#36BEB0]/25 shadow-2xs">
+                <Search className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-muted-foreground dark:text-[#688A84] shrink-0 ml-3.5 sm:ml-4" />
                 <input
                   type="text"
                   value={searchQuery}
@@ -806,7 +806,7 @@ export default function DashboardHome({ userProfile, onNavigate, selectedYear = 
                   }}
                   onFocus={() => setSearchOpen(true)}
                   placeholder="Search by employee name, ID, department..."
-                  className="w-full bg-transparent px-3 text-xs sm:text-sm text-white placeholder:text-[#94A3B8] outline-none font-semibold h-full"
+                  className="w-full bg-transparent px-3 text-xs sm:text-sm text-foreground dark:text-[#E8F0F4] placeholder:text-muted-foreground dark:placeholder:text-[#688A84] outline-none font-medium h-full"
                 />
                 {searchQuery && (
                   <button
@@ -816,13 +816,12 @@ export default function DashboardHome({ userProfile, onNavigate, selectedYear = 
                       setSearchOpen(false);
                       setActiveSearchIndex(-1);
                     }}
-                    className="mr-2 p-1 rounded-md text-[#BACCC3] hover:text-white transition-colors cursor-pointer"
+                    className="mr-3 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
                     title="Clear search"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 )}
-                <Filter className="w-4 h-4 text-[#CBD5E1] shrink-0 mr-3.5" />
               </div>
 
               {/* Search results dropdown */}

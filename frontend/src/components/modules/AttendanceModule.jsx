@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { User, Bell, Clock, Calendar, Download, History, Filter, Search, MapPin, LogIn, LogOut, CheckCircle, ListTodo, ChevronLeft, ChevronRight, Timer, CalendarClock, Briefcase, AlertCircle, FileText, Mail, Coffee, PauseCircle, PlayCircle, AlertTriangle, Square, X } from 'lucide-react';
+import { User, Bell, Clock, Calendar, Download, History, Filter, Search, MapPin, LogIn, LogOut, CheckCircle, ListTodo, ChevronLeft, ChevronRight, Timer, CalendarClock, Briefcase, AlertCircle, FileText, Mail, Coffee, PauseCircle, PlayCircle, AlertTriangle, Square } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn, safeRandomUUID, hasUserRole } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -1536,21 +1536,14 @@ export default function AttendanceModule({ userProfile }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-            <div className="relative flex items-center h-[46px] w-full md:w-[260px] px-3.5 rounded-[14px] bg-gradient-to-br from-slate-500/40 via-slate-700/50 to-slate-800/65 backdrop-blur-md border border-slate-200/30 shadow-md shadow-black/25">
-                <Search className="w-4 h-4 text-[#CBD5E1] shrink-0 mr-2.5" />
-                <input
-                  type="text"
+            <div className="relative flex-1 md:flex-none">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
                   placeholder="Search employees..."
-                  className="w-full bg-transparent border-0 outline-none text-white text-[13.5px] font-semibold placeholder:text-[#94A3B8] focus:ring-0"
+                  className="pl-9 w-full md:w-[230px]"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
-                {searchQuery && (
-                  <button onClick={() => setSearchQuery('')} className="p-1 text-[#BACCC3] hover:text-white shrink-0">
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-                <Filter className="w-4 h-4 text-[#CBD5E1] shrink-0 ml-1.5" />
             </div>
             {isAdmin && (
               <Button

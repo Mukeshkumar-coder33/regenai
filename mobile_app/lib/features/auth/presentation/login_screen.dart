@@ -1,5 +1,4 @@
 import 'dart:ui';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../../core/theme/celadon_colors.dart';
 import '../../dashboard/presentation/dashboard_screen.dart';
@@ -195,8 +194,44 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 22),
 
                       // 4. Luminous Frosted Glassmorphism Container Card (Lighter, Premium Ambient Depth)
-                      _buildGlassContainer(
-                        child: Form(
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(28),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 22,
+                              vertical: 24,
+                            ),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  const Color(0xFF1A4032).withValues(alpha: 0.45),
+                                  const Color(0xFF102D22).withValues(alpha: 0.52),
+                                  const Color(0xFF081C15).withValues(alpha: 0.62),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(28),
+                              border: Border.all(
+                                color: const Color(0xFF34D399).withValues(alpha: 0.32),
+                                width: 1.2,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.22),
+                                  blurRadius: 28,
+                                  offset: const Offset(0, 12),
+                                ),
+                                BoxShadow(
+                                  color: const Color(0xFF10B981).withValues(alpha: 0.10),
+                                  blurRadius: 24,
+                                  spreadRadius: -2,
+                                ),
+                              ],
+                            ),
+                            child: Form(
                               key: _formKey,
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -538,66 +573,16 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
                           ),
-                          const SizedBox(height: 16),
-                        ],
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 16),
+                    ],
                   ),
                 ),
               ),
-            ],
-          ),
-        );
-      }
-
-  Widget _buildGlassContainer({required Widget child}) {
-    final container = Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 22,
-        vertical: 24,
-      ),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            const Color(0xFF64748B).withValues(alpha: 0.38),
-            const Color(0xFF334155).withValues(alpha: 0.48),
-            const Color(0xFF1E293B).withValues(alpha: 0.65),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(
-          color: const Color(0xFFE2E8F0).withValues(alpha: 0.32),
-          width: 1.2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.22),
-            blurRadius: 28,
-            offset: const Offset(0, 12),
-          ),
-          BoxShadow(
-            color: const Color(0xFF10B981).withValues(alpha: 0.10),
-            blurRadius: 24,
-            spreadRadius: -2,
+            ),
           ),
         ],
-      ),
-      child: child,
-    );
-
-    if (kIsWeb) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(28),
-        child: container,
-      );
-    }
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(28),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-        child: container,
       ),
     );
   }

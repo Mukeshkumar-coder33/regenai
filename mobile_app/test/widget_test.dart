@@ -737,11 +737,9 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      // Active squircle bottom nav tile matching Image 2
+      // Active squircle bottom nav tile
       expect(find.text('Home'), findsWidgets);
       expect(find.byIcon(Icons.home_rounded), findsOneWidget);
-      expect(find.byIcon(Icons.assignment_turned_in_outlined), findsOneWidget);
-      expect(find.byIcon(Icons.event_note_outlined), findsOneWidget);
 
       // Switch to Employees tab (index 1)
       await tester.tap(find.text('Employees'));

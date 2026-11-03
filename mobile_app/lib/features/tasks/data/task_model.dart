@@ -17,6 +17,9 @@ class TaskModel {
   final String? dueTime;
   final String? startDate;
   final String? endDate;
+  final String? startedAt;
+  final String? completedAt;
+  final String? completionTime;
   final String? projectId;
   final String? projectName;
   final bool isProjectTask;
@@ -37,6 +40,9 @@ class TaskModel {
     this.dueTime,
     this.startDate,
     this.endDate,
+    this.startedAt,
+    this.completedAt,
+    this.completionTime,
     this.projectId,
     this.projectName,
     this.isProjectTask = false,
@@ -59,6 +65,9 @@ class TaskModel {
       dueTime: json['dueTime']?.toString(),
       startDate: json['startDate']?.toString(),
       endDate: json['endDate']?.toString(),
+      startedAt: (json['startedAt'] ?? json['startTime'])?.toString(),
+      completedAt: json['completedAt']?.toString(),
+      completionTime: json['completionTime']?.toString(),
       projectId: json['projectId']?.toString(),
       projectName: json['projectName']?.toString(),
       isProjectTask: json['isProjectTask'] == true || (json['projectId'] != null && json['projectId'].toString().isNotEmpty),
@@ -80,6 +89,9 @@ class TaskModel {
       if (dueTime != null) 'dueTime': dueTime,
       if (startDate != null) 'startDate': startDate,
       if (endDate != null) 'endDate': endDate,
+      if (startedAt != null) 'startedAt': startedAt,
+      if (completedAt != null) 'completedAt': completedAt,
+      if (completionTime != null) 'completionTime': completionTime,
       if (projectId != null) 'projectId': projectId,
       if (projectName != null) 'projectName': projectName,
       'isProjectTask': isProjectTask,
@@ -103,6 +115,9 @@ class TaskModel {
     String? dueTime,
     String? startDate,
     String? endDate,
+    String? startedAt,
+    String? completedAt,
+    String? completionTime,
     String? projectId,
     String? projectName,
     bool? isProjectTask,
@@ -123,6 +138,9 @@ class TaskModel {
       dueTime: dueTime ?? this.dueTime,
       startDate: startDate ?? this.startDate,
       endDate: endDate ?? this.endDate,
+      startedAt: startedAt ?? this.startedAt,
+      completedAt: completedAt ?? this.completedAt,
+      completionTime: completionTime ?? this.completionTime,
       projectId: projectId ?? this.projectId,
       projectName: projectName ?? this.projectName,
       isProjectTask: isProjectTask ?? this.isProjectTask,

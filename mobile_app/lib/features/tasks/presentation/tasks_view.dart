@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../../core/storage/session_storage.dart';
@@ -68,18 +69,19 @@ class _TasksViewState extends State<TasksView> {
   // General Tasks Filter: 0: All, 1: Pending (Active), 2: Completed (Done), 3: Incomplete
   int _selectedTaskFilter = 0;
 
-  // Projects Status Filter: 'all', 'active', 'planning', 'completed', 'on_hold'
-  String _selectedProjectStatusFilter = 'all';
-
   final TextEditingController _taskSearchController = TextEditingController();
   final TextEditingController _projectSearchController = TextEditingController();
+  final TextEditingController _projectTaskSearchController = TextEditingController();
 
   List<TaskModel> _tasks = [];
   List<ProjectModel> _projects = [];
   List<UserModel> _teamMembers = [];
 
-  // Expanded project IDs for accordion
-  final Set<String> _expandedProjectIds = {};
+  // Selected project for full details view
+  ProjectModel? _selectedProjectForDetail;
+  int _selectedProjectTaskFilter = 0; // 0: All, 1: Pending, 2: Completed, 3: Incomplete
+
+  Timer? _liveTicker;
 
   @override
   void initState() {
@@ -87,13 +89,110 @@ class _TasksViewState extends State<TasksView> {
     _taskService = widget.taskService ?? TaskService();
     _dashboardService = widget.dashboardService ?? DashboardService();
     _loadInitialData();
+
+    _liveTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted && _tasks.any((t) => t.isInProgress)) {
+        setState(() {});
+      }
+    });
   }
 
   @override
   void dispose() {
+    _liveTicker?.cancel();
     _taskSearchController.dispose();
     _projectSearchController.dispose();
+    _projectTaskSearchController.dispose();
     super.dispose();
+  }
+
+  String _formatRunningDuration(TaskModel task) {
+    DateTime? startTime;
+    if (task.startedAt != null && task.startedAt!.isNotEmpty) {
+      startTime = DateTime.tryParse(task.startedAt!);
+    }
+    if (startTime == null && task.startDate != null && task.startDate!.isNotEmpty) {
+      startTime = DateTime.tryParse(task.startDate!);
+    }
+    startTime ??= DateTime.now();
+    final diff = DateTime.now().difference(startTime);
+    if (diff.isNegative) return '00:00:01';
+    final h = diff.inHours.toString().padLeft(2, '0');
+    final m = (diff.inMinutes % 60).toString().padLeft(2, '0');
+    final s = (diff.inSeconds % 60).toString().padLeft(2, '0');
+    return '$h:$m:$s';
+  }
+
+  Future<void> _handleStartTask(TaskModel task) async {
+    final nowIso = DateTime.now().toIso8601String();
+    final optimistic = task.copyWith(status: 'in_progress', startedAt: nowIso, startDate: nowIso);
+    setState(() {
+      final idx = _tasks.indexWhere((t) => t.id == task.id);
+      if (idx != -1) _tasks[idx] = optimistic;
+    });
+    try {
+      final updated = await _taskService.updateTask(task.id, {
+        'status': 'in_progress',
+        'startDate': nowIso,
+        'startedAt': nowIso,
+      });
+      if (mounted) {
+        setState(() {
+          final idx = _tasks.indexWhere((t) => t.id == task.id);
+          if (idx != -1) _tasks[idx] = updated;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _handleCompleteTask(TaskModel task) async {
+    final now = DateTime.now();
+    final nowIso = now.toIso8601String();
+    final hour = now.hour > 12 ? now.hour - 12 : (now.hour == 0 ? 12 : now.hour);
+    final ampm = now.hour >= 12 ? 'PM' : 'AM';
+    final formattedTime = '${hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} $ampm';
+
+    final optimistic = task.copyWith(
+      status: 'done',
+      completedAt: nowIso,
+      completionTime: formattedTime,
+    );
+    setState(() {
+      final idx = _tasks.indexWhere((t) => t.id == task.id);
+      if (idx != -1) _tasks[idx] = optimistic;
+    });
+    try {
+      final updated = await _taskService.updateTask(task.id, {
+        'status': 'done',
+        'completedAt': nowIso,
+        'completionTime': formattedTime,
+      });
+      if (mounted) {
+        setState(() {
+          final idx = _tasks.indexWhere((t) => t.id == task.id);
+          if (idx != -1) _tasks[idx] = updated;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _handleIncompleteTask(TaskModel task) async {
+    final optimistic = task.copyWith(status: 'not_completed');
+    setState(() {
+      final idx = _tasks.indexWhere((t) => t.id == task.id);
+      if (idx != -1) _tasks[idx] = optimistic;
+    });
+    try {
+      final updated = await _taskService.updateTask(task.id, {
+        'status': 'not_completed',
+      });
+      if (mounted) {
+        setState(() {
+          final idx = _tasks.indexWhere((t) => t.id == task.id);
+          if (idx != -1) _tasks[idx] = updated;
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadInitialData() async {
@@ -216,10 +315,6 @@ class _TasksViewState extends State<TasksView> {
     final query = _projectSearchController.text.trim().toLowerCase();
 
     return _projects.where((proj) {
-      if (_selectedProjectStatusFilter != 'all' &&
-          proj.status.toLowerCase() != _selectedProjectStatusFilter.toLowerCase()) {
-        return false;
-      }
       if (query.isNotEmpty) {
         final nameMatch = proj.name.toLowerCase().contains(query);
         final descMatch = proj.description.toLowerCase().contains(query);
@@ -358,94 +453,115 @@ class _TasksViewState extends State<TasksView> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF031A14),
-      floatingActionButton: _canManage
-          ? Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(28),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF10B981).withValues(alpha: 0.45),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
+    return PopScope(
+      canPop: _selectedProjectForDetail == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && mounted) {
+          setState(() => _selectedProjectForDetail = null);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFF031A14),
+        floatingActionButton: _canManage
+            ? Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(28),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.45),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: FloatingActionButton.extended(
+                  heroTag: 'tasks_fab',
+                  onPressed: () {
+                    if (_activeMainSegment == 0) {
+                      _showCreateTaskSheet();
+                    } else if (_selectedProjectForDetail != null) {
+                      _showCreateTaskSheet(
+                        defaultProjectId: _selectedProjectForDetail?.id,
+                        defaultProjectName: _selectedProjectForDetail?.name,
+                      );
+                    } else {
+                      _showCreateProjectSheet();
+                    }
+                  },
+                  backgroundColor: const Color(0xFF10B981),
+                  icon: const Icon(Icons.add_rounded, color: Colors.white, size: 22),
+                  label: Text(
+                    _activeMainSegment == 0
+                        ? 'Add Task'
+                        : (_selectedProjectForDetail != null ? 'Add Project Task' : 'Create Project'),
+                    style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white, fontSize: 13.5),
+                  ),
+                ),
+              )
+            : null,
+        body: Stack(
+          children: [
+            // Background: Photographic Corporate Office with Blur
+            Positioned.fill(
+              child: ImageFiltered(
+                imageFilter: ImageFilter.blur(sigmaX: 7.0, sigmaY: 7.0),
+                child: Transform.scale(
+                  scale: 1.05,
+                  child: Image.asset(
+                    'assets/images/corporate_office_dark.jpg',
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => Container(color: const Color(0xFF031A14)),
+                  ),
+                ),
+              ),
+            ),
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      const Color(0xFF040A07).withValues(alpha: 0.40),
+                      const Color(0xFF020704).withValues(alpha: 0.90),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            SafeArea(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // 1. Pinned Top Header with Back Arrow
+                  _buildHeader(),
+
+                  // 2. Primary Segment Switcher: [General Task] vs [Projects]
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: _buildMainSegmentSwitcher(),
+                  ),
+
+                  // 3. Tab Body
+                  Expanded(
+                    child: _isLoading
+                        ? const Center(child: CircularProgressIndicator(color: Color(0xFF10B981)))
+                        : _errorMessage != null
+                            ? _buildErrorState()
+                            : RefreshIndicator(
+                                onRefresh: _loadInitialData,
+                                color: const Color(0xFF10B981),
+                                child: _activeMainSegment == 0
+                                    ? _buildGeneralTasksTab()
+                                    : _buildProjectsTab(),
+                              ),
                   ),
                 ],
               ),
-              child: FloatingActionButton.extended(
-                heroTag: 'tasks_fab',
-                onPressed: _activeMainSegment == 0 ? _showCreateTaskSheet : _showCreateProjectSheet,
-                backgroundColor: const Color(0xFF10B981),
-                icon: const Icon(Icons.add_rounded, color: Colors.white, size: 22),
-                label: Text(
-                  _activeMainSegment == 0 ? 'Add Task' : 'Create Project',
-                  style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white, fontSize: 13.5),
-                ),
-              ),
-            )
-          : null,
-      body: Stack(
-        children: [
-          // Background: Photographic Corporate Office with Blur
-          Positioned.fill(
-            child: ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: 7.0, sigmaY: 7.0),
-              child: Transform.scale(
-                scale: 1.05,
-                child: Image.asset(
-                  'assets/images/corporate_office_dark.jpg',
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => Container(color: const Color(0xFF031A14)),
-                ),
-              ),
             ),
-          ),
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    const Color(0xFF040A07).withValues(alpha: 0.40),
-                    const Color(0xFF020704).withValues(alpha: 0.90),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-          SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // 1. Pinned Top Header with Back Arrow
-                _buildHeader(),
-
-                // 2. Primary Segment Switcher: [General Task] vs [Projects]
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: _buildMainSegmentSwitcher(),
-                ),
-
-                // 3. Tab Body
-                Expanded(
-                  child: _isLoading
-                      ? const Center(child: CircularProgressIndicator(color: Color(0xFF10B981)))
-                      : _errorMessage != null
-                          ? _buildErrorState()
-                          : RefreshIndicator(
-                              onRefresh: _loadInitialData,
-                              color: const Color(0xFF10B981),
-                              child: _activeMainSegment == 0
-                                  ? _buildGeneralTasksTab()
-                                  : _buildProjectsTab(),
-                            ),
-                ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -458,7 +574,17 @@ class _TasksViewState extends State<TasksView> {
         children: [
           // Back Button / Menu
           InkWell(
-            onTap: widget.onBack ?? () => Navigator.of(context).pop(),
+            onTap: () {
+              if (_selectedProjectForDetail != null) {
+                setState(() => _selectedProjectForDetail = null);
+                return;
+              }
+              if (widget.onBack != null) {
+                widget.onBack!();
+              } else if (Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+              }
+            },
             borderRadius: BorderRadius.circular(12),
             child: Container(
               width: 38,
@@ -878,13 +1004,14 @@ class _TasksViewState extends State<TasksView> {
     final emp = _resolveEmployee(task.assignedTo);
     final isDone = task.isCompleted;
     final isIncomplete = task.isIncomplete;
+    final isRunning = task.isInProgress;
 
     // Status colors
     final statusColor = isDone
         ? const Color(0xFF10B981)
         : isIncomplete
             ? const Color(0xFFEF4444)
-            : const Color(0xFF06B6D4);
+            : (isRunning ? const Color(0xFF10B981) : const Color(0xFF06B6D4));
 
     final statusText = isDone
         ? 'Completed'
@@ -980,28 +1107,135 @@ class _TasksViewState extends State<TasksView> {
 
                   const Spacer(),
 
-                  // Quick Toggle Button
-                  if (!isIncomplete)
-                    InkWell(
-                      onTap: () => _toggleTaskCompletion(task),
-                      child: Container(
-                        width: 28,
-                        height: 28,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
+                  if (_canManage)
+                    // Read-only status indicator for Company Management (Company cannot complete/incomplete once assigned)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isDone
+                            ? const Color(0xFF10B981).withValues(alpha: 0.20)
+                            : (isRunning
+                                ? const Color(0xFF10B981).withValues(alpha: 0.15)
+                                : (isIncomplete
+                                    ? const Color(0xFFEF4444).withValues(alpha: 0.20)
+                                    : const Color(0xFFF59E0B).withValues(alpha: 0.18))),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
                           color: isDone
                               ? const Color(0xFF10B981)
-                              : Colors.transparent,
-                          border: Border.all(
-                            color: isDone ? const Color(0xFF10B981) : const Color(0xFF34D399),
-                            width: 1.5,
-                          ),
+                              : (isRunning
+                                  ? const Color(0xFF10B981)
+                                  : (isIncomplete ? const Color(0xFFEF4444) : const Color(0xFFF59E0B))),
+                          width: 1.0,
                         ),
-                        child: isDone
-                            ? const Icon(Icons.check, size: 16, color: Colors.white)
-                            : null,
                       ),
-                    ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isDone
+                                ? Icons.check_circle_rounded
+                                : (isRunning
+                                    ? Icons.timer_rounded
+                                    : (isIncomplete ? Icons.cancel_rounded : Icons.schedule_rounded)),
+                            size: 13,
+                            color: isDone
+                                ? const Color(0xFF34D399)
+                                : (isRunning
+                                    ? const Color(0xFF34D399)
+                                    : (isIncomplete ? const Color(0xFFEF4444) : const Color(0xFFF59E0B))),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            isDone
+                                ? 'Completed${task.completionTime != null ? ' ${task.completionTime}' : ''}'
+                                : (isRunning
+                                    ? 'Running ${_formatRunningDuration(task)}'
+                                    : (isIncomplete ? 'Incomplete' : 'Waiting to Start')),
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w800,
+                              color: isDone
+                                  ? const Color(0xFF34D399)
+                                  : (isRunning
+                                      ? const Color(0xFF34D399)
+                                      : (isIncomplete ? const Color(0xFFEF4444) : const Color(0xFFF59E0B))),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else if (!isIncomplete)
+                    // Quick Action Buttons for Employee
+                    if (task.isToDo)
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 14),
+                        label: const Text('Start', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF10B981),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          elevation: 0,
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: () => _handleStartTask(task),
+                      )
+                    else if (isRunning)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xFF10B981)),
+                            ),
+                            child: Text(
+                              _formatRunningDuration(task),
+                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF10B981)),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          InkWell(
+                            onTap: () => _handleCompleteTask(task),
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF10B981),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.check, size: 14, color: Colors.white),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          InkWell(
+                            onTap: () => _handleIncompleteTask(task),
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFEF4444),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.close, size: 14, color: Colors.white),
+                            ),
+                          ),
+                        ],
+                      )
+                    else if (isDone)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10B981).withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFF10B981)),
+                        ),
+                        child: Text(
+                          'Done${task.completionTime != null ? ' (${task.completionTime})' : ''}',
+                          style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFF34D399)),
+                        ),
+                      ),
                 ],
               ),
               const SizedBox(height: 10),
@@ -1467,22 +1701,61 @@ class _TasksViewState extends State<TasksView> {
                         ),
                         const SizedBox(height: 20),
 
-                        // Action Buttons: Mark Complete / Resume
-                        if (!isIncomplete)
+                        // Action Buttons: Company View vs Employee View
+                        if (_canManage)
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.05),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: Colors.white12),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  isDone
+                                      ? Icons.check_circle_rounded
+                                      : (task.isInProgress ? Icons.timer_rounded : Icons.lock_outline_rounded),
+                                  color: isDone ? const Color(0xFF10B981) : const Color(0xFFBACCC3),
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  isDone
+                                      ? 'Task Completed by Assignee'
+                                      : (task.isInProgress
+                                          ? 'Task in progress (running timer)'
+                                          : 'Awaiting Assignee to start task'),
+                                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFFBACCC3)),
+                                ),
+                              ],
+                            ),
+                          )
+                        else if (!isIncomplete)
                           SizedBox(
                             width: double.infinity,
                             height: 48,
                             child: ElevatedButton(
                               onPressed: () {
                                 Navigator.pop(ctx);
-                                _toggleTaskCompletion(task);
+                                if (task.isToDo) {
+                                  _handleStartTask(task);
+                                } else if (task.isInProgress) {
+                                  _handleCompleteTask(task);
+                                } else {
+                                  _toggleTaskCompletion(task);
+                                }
                               },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: isDone ? const Color(0xFF0284C7) : const Color(0xFF10B981),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                               ),
                               child: Text(
-                                isDone ? 'Reopen / Resume Task' : 'Mark as Completed',
+                                task.isToDo
+                                    ? 'Start Task'
+                                    : (isDone ? 'Reopen / Resume Task' : 'Mark as Completed'),
                                 style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Colors.white),
                               ),
                             ),
@@ -1515,7 +1788,7 @@ class _TasksViewState extends State<TasksView> {
   // ===========================================================================
   // ADD TASK (CREATE TASK SHEET WITH MULTI-MODAL VOICE DESCRIPTION)
   // ===========================================================================
-  void _showCreateTaskSheet() {
+  void _showCreateTaskSheet({String? defaultProjectId, String? defaultProjectName}) {
     final titleCtrl = TextEditingController();
     final descCtrl = TextEditingController();
     String priority = 'medium';
@@ -1874,6 +2147,9 @@ class _TasksViewState extends State<TasksView> {
                                   endDate: endDate,
                                   dueTime: dueTime,
                                   status: 'todo',
+                                  projectId: defaultProjectId,
+                                  projectName: defaultProjectName,
+                                  isProjectTask: defaultProjectId != null,
                                 );
 
                                 final messenger = ScaffoldMessenger.of(context);
@@ -2110,332 +2386,434 @@ class _TasksViewState extends State<TasksView> {
   }
 
   // ===========================================================================
-  // TAB 2: PROJECTS TAB
+  // TAB 2: PROJECTS TAB (Below Search Only Project Name Displays, Details on Tap)
   // ===========================================================================
   Widget _buildProjectsTab() {
+    if (_selectedProjectForDetail != null) {
+      return _buildProjectDetailView(_selectedProjectForDetail!);
+    }
+
     final projs = _filteredProjects;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
       children: [
-        // 1. Projects Metrics
-        _buildProjectMetricsRow(),
+        // 1. Unified Search Bar matching Company Employee typing box
+        _buildTypingBoxStyle(
+          controller: _projectSearchController,
+          hintText: 'Search projects by name...',
+          prefixIcon: Icons.search_rounded,
+          onChanged: (_) => setState(() {}),
+        ),
 
         const SizedBox(height: 14),
 
-        // 2. Project Search Bar
-        _buildProjectSearchBar(),
-
-        const SizedBox(height: 12),
-
-        // 3. Project Status Filters
-        _buildProjectStatusFilters(),
-
-        const SizedBox(height: 14),
-
-        // 4. Projects List
+        // 2. Below search: ONLY Project Names display!
         if (projs.isEmpty)
           _buildEmptyProjectsPlaceholder()
         else
-          ...projs.map((p) => _buildProjectCard(p)),
+          ...projs.map((p) => _buildCompactProjectNameCard(p)),
       ],
     );
   }
 
-  Widget _buildProjectMetricsRow() {
-    final total = _projects.length;
-    final active = _projects.where((p) => p.status.toLowerCase() == 'active').length;
-    final completed = _projects.where((p) => p.status.toLowerCase() == 'completed').length;
-    final totalProjectTasks = _tasks.where((t) => t.isProjectTask).length;
-
-    return Row(
-      children: [
-        Expanded(child: _buildMetricTile(title: 'Projects', count: total, icon: Icons.folder_rounded, color: const Color(0xFF10B981), onTap: () => setState(() => _selectedProjectStatusFilter = 'all'), isSelected: _selectedProjectStatusFilter == 'all')),
-        const SizedBox(width: 8),
-        Expanded(child: _buildMetricTile(title: 'Active', count: active, icon: Icons.play_arrow_rounded, color: const Color(0xFF06B6D4), onTap: () => setState(() => _selectedProjectStatusFilter = 'active'), isSelected: _selectedProjectStatusFilter == 'active')),
-        const SizedBox(width: 8),
-        Expanded(child: _buildMetricTile(title: 'Completed', count: completed, icon: Icons.check_circle_rounded, color: const Color(0xFF34D399), onTap: () => setState(() => _selectedProjectStatusFilter = 'completed'), isSelected: _selectedProjectStatusFilter == 'completed')),
-        const SizedBox(width: 8),
-        Expanded(child: _buildMetricTile(title: 'Tasks', count: totalProjectTasks, icon: Icons.checklist_rounded, color: const Color(0xFFA855F7), onTap: () {}, isSelected: false)),
-      ],
-    );
-  }
-
-  Widget _buildProjectSearchBar() {
-    return Container(
-      height: 46,
-      decoration: BoxDecoration(
-        color: const Color(0xFF092017).withValues(alpha: 0.60),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.30), width: 1.0),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Row(
-        children: [
-          const Icon(Icons.search_rounded, size: 19, color: Color(0xFF34D399)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              controller: _projectSearchController,
-              cursorColor: const Color(0xFF34D399),
-              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
-              decoration: const InputDecoration(
-                isDense: true,
-                filled: true,
-                fillColor: Colors.transparent,
-                hintText: 'Search projects by name, description, member...',
-                hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 12.5),
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(vertical: 12),
-              ),
-              onChanged: (_) => setState(() {}),
-            ),
-          ),
-          if (_projectSearchController.text.isNotEmpty)
-            GestureDetector(
-              onTap: () {
-                _projectSearchController.clear();
-                setState(() {});
-              },
-              child: const Icon(Icons.close_rounded, size: 17, color: Color(0xFFBACCC3)),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildProjectStatusFilters() {
-    final filters = ['all', 'active', 'planning', 'completed', 'on_hold'];
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: filters.map((statusKey) {
-          final isSelected = _selectedProjectStatusFilter == statusKey;
-          final label = statusKey == 'all'
-              ? 'All'
-              : statusKey == 'on_hold'
-                  ? 'On Hold'
-                  : statusKey[0].toUpperCase() + statusKey.substring(1);
-
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: InkWell(
-              onTap: () => setState(() => _selectedProjectStatusFilter = statusKey),
-              borderRadius: BorderRadius.circular(16),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: isSelected ? const Color(0xFF10B981) : const Color(0xFF042018).withValues(alpha: 0.50),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: isSelected ? const Color(0xFF34D399) : const Color(0xFF34D399).withValues(alpha: 0.25),
-                  ),
-                ),
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                    color: isSelected ? Colors.white : const Color(0xFFCBD5E1),
-                  ),
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  Widget _buildProjectCard(ProjectModel proj) {
-    final isExpanded = _expandedProjectIds.contains(proj.id);
-    final projectTasks = _tasks.where((t) => t.projectId == proj.id).toList();
-    final completedTasks = projectTasks.where((t) => t.isCompleted).length;
-    final totalTasks = projectTasks.length;
-    final progress = totalTasks > 0 ? (completedTasks / totalTasks) : 0.0;
-
+  /// Clean, compact project card showing ONLY the project name
+  Widget _buildCompactProjectNameCard(ProjectModel proj) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFF042018).withValues(alpha: 0.70),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.30), width: 1.1),
-        ),
-        child: Column(
-          children: [
-            InkWell(
-              onTap: () {
-                setState(() {
-                  if (isExpanded) {
-                    _expandedProjectIds.remove(proj.id);
-                  } else {
-                    _expandedProjectIds.add(proj.id);
-                  }
-                });
-              },
-              borderRadius: BorderRadius.circular(18),
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF10B981).withValues(alpha: 0.20),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: const Color(0xFF10B981)),
-                          ),
-                          child: Text(
-                            proj.displayStatus,
-                            style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFF34D399)),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        _buildPriorityBadge(proj.priority),
-                        const Spacer(),
-                        Icon(
-                          isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
-                          color: const Color(0xFF34D399),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(proj.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white)),
-                    if (proj.description.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(proj.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Color(0xFFBACCC3))),
-                    ],
-                    const SizedBox(height: 10),
-
-                    // Progress Bar
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('$completedTasks / $totalTasks Tasks Done', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF34D399))),
-                        Text('${(progress * 100).toInt()}%', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white)),
-                      ],
-                    ),
-                    const SizedBox(height: 5),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: progress,
-                        backgroundColor: Colors.white12,
-                        color: const Color(0xFF10B981),
-                        minHeight: 6,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-
-                    // Members & Dates
-                    Row(
-                      children: [
-                        const Icon(Icons.group_rounded, size: 14, color: Color(0xFF34D399)),
-                        const SizedBox(width: 5),
-                        Text('${proj.assignedEmployees.length} members', style: const TextStyle(fontSize: 11, color: Color(0xFFBACCC3))),
-                        const Spacer(),
-                        if (proj.dueDate != null) ...[
-                          const Icon(Icons.event_rounded, size: 13, color: Color(0xFFBACCC3)),
-                          const SizedBox(width: 4),
-                          Text('Due ${proj.dueDate}', style: const TextStyle(fontSize: 11, color: Color(0xFFBACCC3))),
-                        ],
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // Expanded Section: Project Tasks & Add Project Task
-            if (isExpanded) ...[
-              const Divider(color: Colors.white12, height: 1),
-              Container(
-                padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.only(bottom: 10),
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _selectedProjectForDetail = proj;
+            _projectTaskSearchController.clear();
+            _selectedProjectTaskFilter = 0;
+          });
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF042018).withValues(alpha: 0.70),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.28), width: 1.1),
+            boxShadow: [
+              BoxShadow(
                 color: Colors.black.withValues(alpha: 0.25),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('PROJECT TASKS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF34D399))),
-                        if (_canManage)
-                          GestureDetector(
-                            onTap: () => _showAddProjectTaskSheet(proj),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF10B981).withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: const Color(0xFF10B981)),
-                              ),
-                              child: Row(
-                                children: const [
-                                  Icon(Icons.add_rounded, size: 12, color: Color(0xFF34D399)),
-                                  SizedBox(width: 4),
-                                  Text('Add Task', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFF34D399))),
-                                ],
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-
-                    if (projectTasks.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 10),
-                        child: Text('No tasks linked to this project yet.', style: TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8))),
-                      )
-                    else
-                      ...projectTasks.map((pt) => _buildProjectTaskTile(pt)),
-                  ],
-                ),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
               ),
             ],
-          ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(9),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.folder_copy_rounded, color: Color(0xFF34D399), size: 20),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  proj.name,
+                  style: const TextStyle(
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: Color(0xFF34D399), size: 22),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildProjectTaskTile(TaskModel task) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: const Color(0xFF03140F),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.white10),
-        ),
-        child: Row(
+  /// Full Project Details View with Members, Metrics, Search Box, Text Box, and Project Tasks
+  Widget _buildProjectDetailView(ProjectModel proj) {
+    final allProjectTasks = _tasks.where((t) => t.projectId == proj.id).toList();
+    final totalCount = allProjectTasks.length;
+    final pendingCount = allProjectTasks.where((t) => t.isPending).length;
+    final completedCount = allProjectTasks.where((t) => t.isCompleted).length;
+    final incompleteCount = allProjectTasks.where((t) => t.isIncomplete).length;
+
+    // Filter by query and segment tab
+    final query = _projectTaskSearchController.text.trim().toLowerCase();
+    final filteredTasks = allProjectTasks.where((t) {
+      if (_selectedProjectTaskFilter == 1 && !t.isPending) return false;
+      if (_selectedProjectTaskFilter == 2 && !t.isCompleted) return false;
+      if (_selectedProjectTaskFilter == 3 && !t.isIncomplete) return false;
+
+      if (query.isNotEmpty) {
+        final titleMatches = t.title.toLowerCase().contains(query);
+        final descMatches = t.description?.toLowerCase().contains(query) ?? false;
+        final assigneeMatches = _getAssigneeDisplayName(t.assignedTo).toLowerCase().contains(query);
+        return titleMatches || descMatches || assigneeMatches;
+      }
+      return true;
+    }).toList();
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
+      children: [
+        // 1. Back Header to return to Project List
+        Row(
           children: [
-            Icon(
-              task.isCompleted ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-              size: 16,
-              color: task.isCompleted ? const Color(0xFF10B981) : const Color(0xFFBACCC3),
+            InkWell(
+              onTap: () => setState(() => _selectedProjectForDetail = null),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.30)),
+                ),
+                child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                proj.name,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFF10B981).withValues(alpha: 0.20),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFF10B981)),
+              ),
+              child: Text(
+                proj.displayStatus,
+                style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFF34D399)),
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 14),
+
+        // 2. Project Details Card (Description, Dates)
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF042018).withValues(alpha: 0.70),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.25)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (proj.description.isNotEmpty) ...[
+                Text(
+                  proj.description,
+                  style: const TextStyle(fontSize: 12.5, color: Color(0xFFBACCC3)),
+                ),
+                const SizedBox(height: 10),
+              ],
+              Row(
+                children: [
+                  const Icon(Icons.calendar_today_rounded, size: 13, color: Color(0xFF34D399)),
+                  const SizedBox(width: 5),
+                  Text(
+                    proj.dueDate != null ? 'Due: ${proj.dueDate}' : 'Ongoing project',
+                    style: const TextStyle(fontSize: 11.5, color: Color(0xFFCBD5E1), fontWeight: FontWeight.w600),
+                  ),
+                  const Spacer(),
+                  _buildPriorityBadge(proj.priority),
+                ],
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 14),
+
+        // 3. Team Members Section
+        Text(
+          'Project Members (${proj.assignedEmployees.length})',
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.white),
+        ),
+        const SizedBox(height: 8),
+        if (proj.assignedEmployees.isEmpty)
+          const Text('No members assigned yet.', style: TextStyle(fontSize: 11.5, color: Color(0xFFBACCC3)))
+        else
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: proj.assignedEmployees.map((empMap) {
+                final empId = (empMap['userId'] ?? empMap['id'] ?? empMap['_id'] ?? '').toString();
+                final rawName = (empMap['name'] ?? empMap['username'] ?? '').toString();
+                final emp = _resolveEmployee(empId.isNotEmpty ? empId : rawName);
+                final name = rawName.isNotEmpty ? rawName : _getAssigneeDisplayName(empId);
+                return Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Row(
+                    children: [
+                      _buildEmployeeAvatarMini(emp, name),
+                      const SizedBox(width: 6),
+                      Text(name, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Colors.white)),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+
+        const SizedBox(height: 14),
+
+        // 4. Metrics Row (Matching General Task: Total Tasks, Pending, Completed, Incomplete)
+        Row(
+          children: [
+            Expanded(
+              child: _buildMetricTile(
+                title: 'Total Tasks',
+                count: totalCount,
+                icon: Icons.assignment_rounded,
+                color: const Color(0xFF10B981),
+                isSelected: _selectedProjectTaskFilter == 0,
+                onTap: () => setState(() => _selectedProjectTaskFilter = 0),
+              ),
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(
-                task.title,
-                style: TextStyle(
-                  fontSize: 12.5,
-                  color: Colors.white,
-                  decoration: task.isCompleted ? TextDecoration.lineThrough : null,
-                ),
+              child: _buildMetricTile(
+                title: 'Pending',
+                count: pendingCount,
+                icon: Icons.pending_actions_rounded,
+                color: const Color(0xFF06B6D4),
+                isSelected: _selectedProjectTaskFilter == 1,
+                onTap: () => setState(() => _selectedProjectTaskFilter = 1),
               ),
             ),
-            Text(
-              _getAssigneeDisplayName(task.assignedTo),
-              style: const TextStyle(fontSize: 10.5, color: Color(0xFF34D399)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildMetricTile(
+                title: 'Completed',
+                count: completedCount,
+                icon: Icons.check_circle_rounded,
+                color: const Color(0xFF34D399),
+                isSelected: _selectedProjectTaskFilter == 2,
+                onTap: () => setState(() => _selectedProjectTaskFilter = 2),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildMetricTile(
+                title: 'Incomplete',
+                count: incompleteCount,
+                icon: Icons.cancel_outlined,
+                color: const Color(0xFFEF4444),
+                isSelected: _selectedProjectTaskFilter == 3,
+                onTap: () => setState(() => _selectedProjectTaskFilter = 3),
+              ),
             ),
           ],
+        ),
+
+        const SizedBox(height: 14),
+
+        // 5. Search Box (Matching company employee search box style)
+        _buildTypingBoxStyle(
+          controller: _projectTaskSearchController,
+          hintText: 'Search tasks by title, desc, assignee...',
+          prefixIcon: Icons.search_rounded,
+          onChanged: (_) => setState(() {}),
+        ),
+
+        const SizedBox(height: 12),
+
+        // 6. Filter Tabs: [All] [Pending] [Completed] [Incomplete]
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              _buildProjectTaskFilterTab('All ($totalCount)', 0),
+              const SizedBox(width: 8),
+              _buildProjectTaskFilterTab('Pending ($pendingCount)', 1),
+              const SizedBox(width: 8),
+              _buildProjectTaskFilterTab('Completed ($completedCount)', 2),
+              const SizedBox(width: 8),
+              _buildProjectTaskFilterTab('Incomplete ($incompleteCount)', 3),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 14),
+
+        // 7. Project Tasks List
+        if (filteredTasks.isEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 20),
+            decoration: BoxDecoration(
+              color: const Color(0xFF042018).withValues(alpha: 0.50),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white12),
+            ),
+            child: Column(
+              children: [
+                const Icon(Icons.task_alt_rounded, size: 36, color: Color(0xFFBACCC3)),
+                const SizedBox(height: 8),
+                const Text('No tasks in this category for this project.', style: TextStyle(color: Color(0xFFBACCC3), fontSize: 13)),
+                if (_canManage) ...[
+                  const SizedBox(height: 12),
+                  ElevatedButton.icon(
+                    onPressed: () => _showCreateTaskSheet(defaultProjectId: proj.id, defaultProjectName: proj.name),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF10B981),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    icon: const Icon(Icons.add_rounded, color: Colors.white, size: 18),
+                    label: const Text('Add First Project Task', style: TextStyle(fontWeight: FontWeight.w700, color: Colors.white)),
+                  ),
+                ],
+              ],
+            ),
+          )
+        else ...[
+          ...filteredTasks.map((t) => _buildTaskCard(t)),
+          if (_canManage) ...[
+            const SizedBox(height: 10),
+            ElevatedButton.icon(
+              onPressed: () => _showCreateTaskSheet(defaultProjectId: proj.id, defaultProjectName: proj.name),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF10B981),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              icon: const Icon(Icons.add_rounded, color: Colors.white, size: 20),
+              label: const Text('Add Project Task', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Colors.white)),
+            ),
+          ],
+        ],
+      ],
+    );
+  }
+
+  Widget _buildProjectTaskFilterTab(String label, int index) {
+    final isSelected = _selectedProjectTaskFilter == index;
+    return InkWell(
+      onTap: () => setState(() => _selectedProjectTaskFilter = index),
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF10B981) : const Color(0xFF042018).withValues(alpha: 0.60),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF10B981) : const Color(0xFF34D399).withValues(alpha: 0.25),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+            color: isSelected ? Colors.white : const Color(0xFFCBD5E1),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Typing box styled identically to Company Employee Typing Box
+  Widget _buildTypingBoxStyle({
+    required TextEditingController controller,
+    required String hintText,
+    required ValueChanged<String> onChanged,
+    IconData prefixIcon = Icons.search_rounded,
+    VoidCallback? onClear,
+  }) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          height: 48,
+          decoration: BoxDecoration(
+            color: const Color(0xFF042018).withValues(alpha: 0.70),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.28), width: 1.0),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Row(
+            children: [
+              Icon(prefixIcon, color: const Color(0xFF34D399), size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w600),
+                  decoration: InputDecoration(
+                    hintText: hintText,
+                    hintStyle: const TextStyle(color: Color(0xFF88A89A), fontSize: 13),
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  onChanged: onChanged,
+                ),
+              ),
+              if (controller.text.isNotEmpty)
+                GestureDetector(
+                  onTap: onClear ?? () {
+                    controller.clear();
+                    onChanged('');
+                  },
+                  child: const Icon(Icons.close_rounded, size: 18, color: Color(0xFFBACCC3)),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -2646,179 +3024,6 @@ class _TasksViewState extends State<TasksView> {
                     ),
                   ),
                 ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  // Add Task linked directly to a Project
-  void _showAddProjectTaskSheet(ProjectModel project) {
-    final titleCtrl = TextEditingController();
-    final descCtrl = TextEditingController();
-    num durationVal = 1;
-    String durationUnit = 'days';
-    String startDate = DateTime.now().toIso8601String().split('T')[0];
-    final endRes = computeEndDateTime(startDate, durationVal, durationUnit);
-    String endDate = endRes['endDate']!;
-    String dueTime = endRes['dueTime']!;
-
-    // Assign to first member or all
-    String? selectedAssignee = project.assignedEmployees.isNotEmpty
-        ? project.assignedEmployees.first['userId']?.toString()
-        : null;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setModalState) {
-          final media = MediaQuery.of(ctx);
-
-          void recalculate() {
-            final res = computeEndDateTime(startDate, durationVal, durationUnit);
-            setModalState(() {
-              endDate = res['endDate']!;
-              dueTime = res['dueTime']!;
-            });
-          }
-
-          return Container(
-            constraints: BoxConstraints(maxHeight: media.size.height * 0.85),
-            padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
-            decoration: BoxDecoration(
-              color: const Color(0xFF042018),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-              border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.35)),
-            ),
-            child: SafeArea(
-              top: false,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text('Add Task to "${project.name}"', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white)),
-                    const SizedBox(height: 12),
-                    _buildInputLabel('Task Title *'),
-                    _buildDarkTextField(controller: titleCtrl, hintText: 'Project task name...'),
-                    const SizedBox(height: 12),
-
-                    _buildInputLabel('Assignee in Project'),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF03140F),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.3)),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: selectedAssignee,
-                          dropdownColor: const Color(0xFF042018),
-                          isExpanded: true,
-                          items: project.assignedEmployees.map((e) {
-                            final uid = (e['userId'] ?? '').toString();
-                            final name = (e['name'] ?? uid).toString();
-                            return DropdownMenuItem<String>(
-                              value: uid,
-                              child: Text(name, style: const TextStyle(color: Colors.white, fontSize: 13)),
-                            );
-                          }).toList(),
-                          onChanged: (val) => setModalState(() => selectedAssignee = val),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Duration & End Date
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildInputLabel('Duration ($durationUnit)'),
-                              TextFormField(
-                                initialValue: '$durationVal',
-                                keyboardType: TextInputType.number,
-                                style: const TextStyle(color: Colors.white, fontSize: 13),
-                                decoration: InputDecoration(
-                                  filled: true,
-                                  fillColor: const Color(0xFF03140F),
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                                ),
-                                onChanged: (val) {
-                                  durationVal = num.tryParse(val) ?? 1;
-                                  recalculate();
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildInputLabel('Auto End Date'),
-                              Container(
-                                padding: const EdgeInsets.all(11),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: const Color(0xFF10B981)),
-                                ),
-                                child: Text(endDate, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF34D399))),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-
-                    ElevatedButton(
-                      onPressed: () async {
-                        final title = titleCtrl.text.trim();
-                        if (title.isEmpty) return;
-
-                        final task = TaskModel(
-                          id: 'pt-${DateTime.now().millisecondsSinceEpoch}',
-                          title: title,
-                          description: descCtrl.text.trim(),
-                          assignedTo: selectedAssignee,
-                          projectId: project.id,
-                          projectName: project.name,
-                          isProjectTask: true,
-                          durationValue: durationVal,
-                          durationUnit: durationUnit,
-                          startDate: startDate,
-                          endDate: endDate,
-                          dueTime: dueTime,
-                        );
-
-                        final nav = Navigator.of(ctx);
-                        try {
-                          final created = await _taskService.createTask(task);
-                          if (mounted) {
-                            setState(() => _tasks.insert(0, created));
-                            nav.pop();
-                          }
-                        } catch (_) {}
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF10B981),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: const Text('Add Project Task', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
-                    ),
-                  ],
-                ),
               ),
             ),
           );

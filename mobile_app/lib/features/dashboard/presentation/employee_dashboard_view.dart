@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../../core/theme/celadon_colors.dart';
@@ -57,6 +58,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
   List<AttendanceModel> _myAttendance = [];
   List<LeaveModel> _myLeaves = [];
   AttendanceModel? _todayAttendance;
+  Timer? _taskTicker;
 
   @override
   void initState() {
@@ -65,6 +67,17 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
         ? widget.dashboardService as DashboardService
         : DashboardService();
     _loadDashboardData();
+    _taskTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted && _myTasks.any((t) => t.isInProgress)) {
+        setState(() {});
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _taskTicker?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadDashboardData() async {
@@ -172,15 +185,110 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
     return projs.isNotEmpty ? projs.length : (_myTasks.isNotEmpty ? 1 : 0);
   }
 
-  Future<void> _handleToggleTask(TaskModel task) async {
-    final updated = await _taskService.toggleTaskComplete(task.id, !task.isCompleted);
-    if (!mounted) return;
+  String _formatTaskElapsedTime(TaskModel task) {
+    DateTime? startTime;
+    if (task.startedAt != null && task.startedAt!.isNotEmpty) {
+      startTime = DateTime.tryParse(task.startedAt!);
+    }
+    if (startTime == null && task.startDate != null && task.startDate!.isNotEmpty) {
+      startTime = DateTime.tryParse(task.startDate!);
+    }
+    startTime ??= DateTime.now();
+    final diff = DateTime.now().difference(startTime);
+    if (diff.isNegative) return '00:00:01';
+    final h = diff.inHours.toString().padLeft(2, '0');
+    final m = (diff.inMinutes % 60).toString().padLeft(2, '0');
+    final s = (diff.inSeconds % 60).toString().padLeft(2, '0');
+    return '$h:$m:$s';
+  }
+
+  Future<void> _handleStartTask(TaskModel task) async {
+    final nowIso = DateTime.now().toIso8601String();
+    final optimistic = task.copyWith(status: 'in_progress', startedAt: nowIso, startDate: nowIso);
     setState(() {
       final idx = _myTasks.indexWhere((t) => t.id == task.id);
-      if (idx != -1) {
-        _myTasks[idx] = updated;
-      }
+      if (idx != -1) _myTasks[idx] = optimistic;
     });
+    try {
+      final updated = await _taskService.updateTask(task.id, {
+        'status': 'in_progress',
+        'startDate': nowIso,
+        'startedAt': nowIso,
+      });
+      if (mounted) {
+        setState(() {
+          final idx = _myTasks.indexWhere((t) => t.id == task.id);
+          if (idx != -1) _myTasks[idx] = updated;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _handleCompleteTask(TaskModel task) async {
+    final now = DateTime.now();
+    final nowIso = now.toIso8601String();
+    final hour = now.hour > 12 ? now.hour - 12 : (now.hour == 0 ? 12 : now.hour);
+    final ampm = now.hour >= 12 ? 'PM' : 'AM';
+    final formattedTime = '${hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} $ampm';
+
+    final optimistic = task.copyWith(
+      status: 'done',
+      completedAt: nowIso,
+      completionTime: formattedTime,
+    );
+    setState(() {
+      final idx = _myTasks.indexWhere((t) => t.id == task.id);
+      if (idx != -1) _myTasks[idx] = optimistic;
+    });
+    try {
+      final updated = await _taskService.updateTask(task.id, {
+        'status': 'done',
+        'completedAt': nowIso,
+        'completionTime': formattedTime,
+      });
+      if (mounted) {
+        setState(() {
+          final idx = _myTasks.indexWhere((t) => t.id == task.id);
+          if (idx != -1) _myTasks[idx] = updated;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _handleIncompleteTask(TaskModel task) async {
+    final optimistic = task.copyWith(status: 'not_completed');
+    setState(() {
+      final idx = _myTasks.indexWhere((t) => t.id == task.id);
+      if (idx != -1) _myTasks[idx] = optimistic;
+    });
+    try {
+      final updated = await _taskService.updateTask(task.id, {
+        'status': 'not_completed',
+      });
+      if (mounted) {
+        setState(() {
+          final idx = _myTasks.indexWhere((t) => t.id == task.id);
+          if (idx != -1) _myTasks[idx] = updated;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _handleToggleTask(TaskModel task) async {
+    if (task.isToDo) {
+      await _handleStartTask(task);
+    } else if (task.isInProgress) {
+      await _handleCompleteTask(task);
+    } else {
+      final updated = await _taskService.toggleTaskComplete(task.id, !task.isCompleted);
+      if (!mounted) return;
+      setState(() {
+        final idx = _myTasks.indexWhere((t) => t.id == task.id);
+        if (idx != -1) {
+          _myTasks[idx] = updated;
+        }
+      });
+    }
   }
 
   void _handleAttendanceTap() {
@@ -831,7 +939,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
     );
   }
 
-  /// Interactive Task Card with Direct Checkbox
+  /// Interactive Task Card with Start Task, Live Running Timer, Complete & Incomplete Actions
   Widget _buildInteractiveTaskCard(TaskModel task) {
     Color priorityColor = const Color(0xFF3B82F6);
     Color priorityBg = const Color(0xFFEFF6FF);
@@ -844,95 +952,217 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
     }
 
     final isDone = task.isCompleted;
+    final isRunning = task.isInProgress;
+    final isIncomplete = task.isIncomplete;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: const [
-          BoxShadow(color: Color(0x04000000), blurRadius: 8, offset: Offset(0, 2)),
+        border: Border.all(
+          color: isRunning
+              ? const Color(0xFF10B981).withValues(alpha: 0.6)
+              : const Color(0xFFE2E8F0),
+          width: isRunning ? 1.5 : 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: isRunning
+                ? const Color(0xFF10B981).withValues(alpha: 0.10)
+                : const Color(0x04000000),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
         ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Completion checkbox
-          InkWell(
-            onTap: () => _handleToggleTask(task),
-            borderRadius: BorderRadius.circular(8),
-            child: Container(
-              width: 22,
-              height: 22,
-              decoration: BoxDecoration(
-                color: isDone ? const Color(0xFF10B981) : Colors.transparent,
-                borderRadius: BorderRadius.circular(7),
-                border: Border.all(
-                  color: isDone ? const Color(0xFF10B981) : const Color(0xFFCBD5E1),
-                  width: 1.8,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // State Indicator / Checkmark
+              InkWell(
+                onTap: () => _handleToggleTask(task),
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: isDone
+                        ? const Color(0xFF10B981)
+                        : (isRunning
+                            ? const Color(0xFF10B981).withValues(alpha: 0.15)
+                            : (isIncomplete ? const Color(0xFFEF4444).withValues(alpha: 0.15) : Colors.transparent)),
+                    borderRadius: BorderRadius.circular(7),
+                    border: Border.all(
+                      color: isDone
+                          ? const Color(0xFF10B981)
+                          : (isRunning
+                              ? const Color(0xFF10B981)
+                              : (isIncomplete ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1))),
+                      width: 1.8,
+                    ),
+                  ),
+                  child: isDone
+                      ? const Icon(Icons.check, size: 16, color: Colors.white)
+                      : (isRunning
+                          ? const Icon(Icons.timer_outlined, size: 14, color: Color(0xFF10B981))
+                          : (isIncomplete ? const Icon(Icons.close, size: 14, color: Color(0xFFEF4444)) : null)),
                 ),
               ),
-              child: isDone ? const Icon(Icons.check, size: 15, color: Colors.white) : null,
-            ),
-          ),
-          const SizedBox(width: 12),
+              const SizedBox(width: 12),
 
-          // Title & Due Info
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  task.title,
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w700,
-                    color: isDone ? const Color(0xFF94A3B8) : const Color(0xFF1E293B),
-                    decoration: isDone ? TextDecoration.lineThrough : null,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Row(
+              // Title & Due Info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (task.projectName != null && task.projectName!.isNotEmpty) ...[
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          task.projectName!,
-                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                    ],
                     Text(
-                      task.dueDate != null && task.dueDate!.isNotEmpty
-                          ? 'Due: ${task.dueDate!.split('T').first}'
-                          : (task.description?.isNotEmpty == true ? task.description! : 'In Progress'),
-                      style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                      task.title,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: isDone ? const Color(0xFF94A3B8) : const Color(0xFF1E293B),
+                        decoration: isDone ? TextDecoration.lineThrough : null,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        if (task.projectName != null && task.projectName!.isNotEmpty) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              task.projectName!,
+                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                        ],
+                        Text(
+                          task.dueDate != null && task.dueDate!.isNotEmpty
+                              ? 'Due: ${task.dueDate!.split('T').first}'
+                              : (task.description?.isNotEmpty == true ? task.description! : 'In Progress'),
+                          style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
+              ),
+
+              // Priority Chip
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: priorityBg,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  task.displayPriority,
+                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: priorityColor),
+                ),
+              ),
+            ],
           ),
 
-          // Priority Chip
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: priorityBg,
-              borderRadius: BorderRadius.circular(8),
+          // Lifecycle Actions Row
+          const SizedBox(height: 10),
+          if (task.isToDo) ...[
+            Align(
+              alignment: Alignment.centerRight,
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 16),
+                label: const Text('Start Task', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Colors.white)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF10B981),
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                ),
+                onPressed: () => _handleStartTask(task),
+              ),
             ),
-            child: Text(
-              task.displayPriority,
-              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: priorityColor),
+          ] else if (isRunning) ...[
+            Row(
+              children: [
+                // Live running timer pill (ticking live every second)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.timer_rounded, size: 14, color: Color(0xFF10B981)),
+                      const SizedBox(width: 5),
+                      Text(
+                        _formatTaskElapsedTime(task),
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF10B981)),
+                      ),
+                    ],
+                  ),
+                ),
+                const Spacer(),
+                // Complete button
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.check_rounded, color: Colors.white, size: 15),
+                  label: const Text('Complete', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Colors.white)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF10B981),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                  onPressed: () => _handleCompleteTask(task),
+                ),
+                const SizedBox(width: 8),
+                // Incomplete button
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.close_rounded, color: Color(0xFFEF4444), size: 15),
+                  label: const Text('Incomplete', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Color(0xFFEF4444))),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Color(0xFFEF4444), width: 1.0),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  ),
+                  onPressed: () => _handleIncompleteTask(task),
+                ),
+              ],
             ),
-          ),
+          ] else if (isDone) ...[
+            Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, size: 14, color: Color(0xFF10B981)),
+                const SizedBox(width: 5),
+                Text(
+                  'Completed${task.completionTime != null ? ' at ${task.completionTime}' : ''}',
+                  style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF10B981)),
+                ),
+              ],
+            ),
+          ] else if (isIncomplete) ...[
+            Row(
+              children: [
+                const Icon(Icons.cancel_rounded, size: 14, color: Color(0xFFEF4444)),
+                const SizedBox(width: 5),
+                const Text(
+                  'Marked Incomplete',
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFFEF4444)),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

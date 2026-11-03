@@ -968,11 +968,18 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      key: _scaffoldKey,
-      backgroundColor: const Color(0xFF031A14),
-      drawer: _buildCompanyDrawer(),
-      body: Stack(
+    return PopScope(
+      canPop: _selectedBottomTab == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && mounted) {
+          setState(() => _selectedBottomTab = 0);
+        }
+      },
+      child: Scaffold(
+        key: _scaffoldKey,
+        backgroundColor: const Color(0xFF031A14),
+        drawer: _buildCompanyDrawer(),
+        body: Stack(
         fit: StackFit.expand,
         children: [
           // 1. Attached Corporate Dark Office Background with Light Photographic Bokeh Blur (sigma 5.5)
@@ -1040,8 +1047,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         ],
       ),
       bottomNavigationBar: _buildCompanyBottomNav(),
-    );
-  }
+    ),
+  );
+}
 
   // ---------------------------------------------------------
   // EXECUTIVE COMPANY DRAWER (Matches User Images 1 & 2)
@@ -1670,17 +1678,21 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Left: Hamburger Menu Button (Opens Drawer)
+          // Left: Hamburger Menu Button (or Back Arrow if on subtab)
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
               child: InkWell(
                 onTap: () {
-                  if (widget.onOpenDrawer != null) {
-                    widget.onOpenDrawer!();
+                  if (_selectedBottomTab != 0) {
+                    setState(() => _selectedBottomTab = 0);
+                  } else {
+                    if (widget.onOpenDrawer != null) {
+                      widget.onOpenDrawer!();
+                    }
+                    _scaffoldKey.currentState?.openDrawer();
                   }
-                  _scaffoldKey.currentState?.openDrawer();
                 },
                 borderRadius: BorderRadius.circular(12),
                 child: Container(
@@ -1698,7 +1710,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.28)),
                   ),
-                  child: const Icon(Icons.menu_rounded, color: Colors.white, size: 22),
+                  child: Icon(
+                    _selectedBottomTab != 0 ? Icons.arrow_back_rounded : Icons.menu_rounded,
+                    color: Colors.white,
+                    size: 21,
+                  ),
                 ),
               ),
             ),
@@ -1771,38 +1787,25 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                           const Icon(Icons.notifications_none_rounded, color: Colors.white, size: 21),
                           if (_unreadNotificationCount > 0)
                             Positioned(
-                              top: 5,
-                              right: 5,
+                              top: 4,
+                              right: 4,
                               child: Container(
-                                padding: const EdgeInsets.all(3),
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFF10B981),
-                                  shape: BoxShape.circle,
-                                ),
-                                constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
-                                alignment: Alignment.center,
-                                child: Text(
-                                  '$_unreadNotificationCount',
-                                  style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w800, color: Colors.white),
-                                ),
-                              ),
-                            )
-                          else
-                            Positioned(
-                              top: 8,
-                              right: 8,
-                              child: Container(
-                                width: 8,
-                                height: 8,
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF10B981),
-                                  shape: BoxShape.circle,
+                                  color: const Color(0xFFEF4444),
+                                  borderRadius: BorderRadius.circular(10),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: const Color(0xFF10B981).withValues(alpha: 0.7),
-                                      blurRadius: 6,
+                                      color: const Color(0xFFEF4444).withValues(alpha: 0.5),
+                                      blurRadius: 4,
                                     ),
                                   ],
+                                ),
+                                constraints: const BoxConstraints(minWidth: 15, minHeight: 15),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  _unreadNotificationCount > 99 ? '99+' : '$_unreadNotificationCount',
+                                  style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w800, color: Colors.white),
                                 ),
                               ),
                             ),
@@ -4006,7 +4009,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(
             alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8.5),
+            constraints: const BoxConstraints(minWidth: 48),
             decoration: BoxDecoration(
               color: isSelected ? const Color(0xFF10B981) : const Color(0xFF0C241B).withValues(alpha: 0.65),
               borderRadius: BorderRadius.circular(12),
@@ -6645,9 +6649,14 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                               }
                             },
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.delete_sweep_rounded, color: Color(0xFFEF4444), size: 20),
-                            tooltip: 'Clear all',
+                          TextButton.icon(
+                            style: TextButton.styleFrom(
+                              backgroundColor: const Color(0xFFEF4444).withValues(alpha: 0.15),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            icon: const Icon(Icons.delete_sweep_rounded, color: Color(0xFFEF4444), size: 16),
+                            label: const Text('Clear all', style: TextStyle(color: Color(0xFFEF4444), fontSize: 11.5, fontWeight: FontWeight.w700)),
                             onPressed: () async {
                               if (myId.isNotEmpty) {
                                 await _notificationService.clearAll(myId);
@@ -6663,9 +6672,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                       const SizedBox(height: 8),
 
                       const Text('Notifications', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
-                      const SizedBox(height: 2),
-                      const Text('Stay updated with company announcements and task schedules', style: TextStyle(fontSize: 12, color: Color(0xFFBACCC3))),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 4),
+                      const Text('Stay updated with company activity', style: TextStyle(fontSize: 12, color: Color(0xFFBACCC3))),
+                      const SizedBox(height: 14),
 
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
@@ -6728,26 +6737,32 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                         time: _formatNotifRelativeTime(notif.createdAt),
                                         isUnread: !notif.read,
                                         onTap: () async {
-                                          final nav = Navigator.of(context);
                                           final sheetNav = Navigator.of(ctx);
                                           if (!notif.read) {
-                                            await _notificationService.markAsRead(notif.id);
-                                            final updated = await _notificationService.getUserNotifications(myId);
+                                            notif.read = true;
                                             if (mounted) {
-                                              setState(() => _notifications = updated);
+                                              setState(() {});
                                               setSheetState(() {});
                                             }
+                                            _notificationService.markAsRead(notif.id).catchError((_) => false);
                                           }
-                                          if (notif.isTask) {
-                                            sheetNav.pop();
-                                            nav.push(
+                                          sheetNav.pop();
+
+                                          if (notif.isTask || notif.type.toLowerCase().contains('task') || notif.title.toLowerCase().contains('task')) {
+                                            Navigator.of(this.context).push(
                                               MaterialPageRoute(
-                                                builder: (_) => TasksView(
+                                                builder: (pCtx) => TasksView(
                                                   user: widget.user,
-                                                  onBack: () => nav.pop(),
+                                                  onBack: () => Navigator.of(pCtx).pop(),
                                                 ),
                                               ),
                                             );
+                                          } else if (notif.type.toLowerCase().contains('leave') || notif.title.toLowerCase().contains('leave')) {
+                                            setState(() => _selectedBottomTab = 3);
+                                          } else if (notif.isAttendance || notif.type.toLowerCase().contains('attendance')) {
+                                            setState(() => _selectedBottomTab = 2);
+                                          } else if (notif.type.toLowerCase().contains('employee') || notif.title.toLowerCase().contains('employee')) {
+                                            setState(() => _selectedBottomTab = 1);
                                           }
                                         },
                                       );
@@ -6764,11 +6779,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                     isUnread: true,
                                     onTap: () {
                                       Navigator.pop(ctx);
-                                      Navigator.of(context).push(
+                                      Navigator.of(this.context).push(
                                         MaterialPageRoute(
-                                          builder: (_) => TasksView(
+                                          builder: (pCtx) => TasksView(
                                             user: widget.user,
-                                            onBack: () => Navigator.of(context).pop(),
+                                            onBack: () => Navigator.of(pCtx).pop(),
                                           ),
                                         ),
                                       );
@@ -6783,6 +6798,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                         : 'Sneha Patel has requested 2 days leave.',
                                     time: '2 minutes ago',
                                     isUnread: true,
+                                    onTap: () {
+                                      Navigator.pop(ctx);
+                                      setState(() => _selectedBottomTab = 3);
+                                    },
                                   ),
                                   _buildNotificationCard(
                                     icon: Icons.group_add_outlined,
@@ -6793,6 +6812,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                         : 'Arjun Kumar has been added.',
                                     time: '1 hour ago',
                                     isUnread: false,
+                                    onTap: () {
+                                      Navigator.pop(ctx);
+                                      setState(() => _selectedBottomTab = 1);
+                                    },
                                   ),
                                   _buildNotificationCard(
                                     icon: Icons.notifications_active_outlined,
@@ -6801,6 +6824,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                     body: '${(_users.length - _attendance.length).clamp(0, 999)} employees are absent today.',
                                     time: '3 hours ago',
                                     isUnread: false,
+                                    onTap: () {
+                                      Navigator.pop(ctx);
+                                      setState(() => _selectedBottomTab = 2);
+                                    },
                                   ),
                                   _buildNotificationCard(
                                     icon: Icons.settings_suggest_outlined,
@@ -6809,6 +6836,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                     body: '5m GPS Geofence validation is active on device.',
                                     time: '1 day ago',
                                     isUnread: false,
+                                    onTap: () {
+                                      Navigator.pop(ctx);
+                                    },
                                   ),
                                 ],
                               ),
@@ -7786,61 +7816,61 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         final media = MediaQuery.of(ctx);
         final maxHeight = media.size.height * 0.78;
 
-        return Container(
+        return ConstrainedBox(
           constraints: BoxConstraints(maxHeight: maxHeight),
-          decoration: BoxDecoration(
-            color: const Color(0xFF042018),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-            border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.35), width: 1.0),
-          ),
-          child: SafeArea(
-            top: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Header (Pinned)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 16, 10),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF042018),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+              border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.35), width: 1.0),
+            ),
+            child: SafeArea(
+              top: false,
+              bottom: true,
+              child: SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      // Header
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
-                            'Filter Attendance Logs',
-                            style: TextStyle(
-                              fontSize: 16.5,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
-                            ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Filter Attendance Logs',
+                                style: TextStyle(
+                                  fontSize: 16.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'For ${_formatHeaderDate(_selectedCalendarDate)}',
+                                style: const TextStyle(fontSize: 11.5, color: Color(0xFFBACCC3)),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'For ${_formatHeaderDate(_selectedCalendarDate)}',
-                            style: const TextStyle(fontSize: 11.5, color: Color(0xFFBACCC3)),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, color: Color(0xFFBACCC3), size: 20),
+                            onPressed: () => Navigator.pop(ctx),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
                           ),
                         ],
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.close_rounded, color: Color(0xFFBACCC3), size: 20),
-                        onPressed: () => Navigator.pop(ctx),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(color: Colors.white12, height: 1),
-                // Options (Scrollable, never overflows on any device)
-                Flexible(
-                  child: SingleChildScrollView(
-                    physics: const ClampingScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: options.map((opt) {
+                      const SizedBox(height: 10),
+                      const Divider(color: Colors.white12, height: 1),
+                      const SizedBox(height: 8),
+
+                      // Options
+                      ...options.map((opt) {
                         final key = opt['key'] as String;
                         final isSelected = _selectedDayLogFilter == key;
                         final optColor = opt['color'] as Color;
@@ -7917,12 +7947,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                             ),
                           ),
                         );
-                      }).toList(),
-                    ),
+                      }),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 8),
-              ],
+              ),
             ),
           ),
         );

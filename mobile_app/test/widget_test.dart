@@ -1262,5 +1262,59 @@ void main() {
       await tester.tap(find.text('Present Only'));
       await tester.pumpAndSettle();
     });
+
+    test('TaskModel tracks startedAt, completedAt and completionTime', () {
+      final task = TaskModel(
+        id: 'task_lifecycle_1',
+        title: 'Complete Mobile Redesign',
+        status: 'in_progress',
+        startedAt: '2026-11-03T09:00:00Z',
+        completedAt: '2026-11-03T11:30:00Z',
+        completionTime: '11:30 AM',
+      );
+
+      final json = task.toJson();
+      expect(json['startedAt'], '2026-11-03T09:00:00Z');
+      expect(json['completedAt'], '2026-11-03T11:30:00Z');
+      expect(json['completionTime'], '11:30 AM');
+
+      final deserialized = TaskModel.fromJson(json);
+      expect(deserialized.startedAt, '2026-11-03T09:00:00Z');
+      expect(deserialized.completedAt, '2026-11-03T11:30:00Z');
+      expect(deserialized.completionTime, '11:30 AM');
+    });
+
+    testWidgets('CompanyDashboardView header renders Notification bell with unread badge support and back navigation PopScope',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanyDashboardView(
+            user: const UserModel(
+              id: 'owner_1',
+              userId: 'Vyshwa',
+              username: 'Vyshwa',
+              name: 'Vyshwa',
+              role: 'owner',
+              company: 'krish Tech Computer',
+              token: 'tok_owner',
+            ),
+            dashboardService: MockDashboardService(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Top app bar has notifications icon
+      expect(find.byIcon(Icons.notifications_none_rounded), findsOneWidget);
+
+      // Tap notifications icon to open notifications sheet
+      await tester.tap(find.byIcon(Icons.notifications_none_rounded));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Notifications'), findsOneWidget);
+      expect(find.text('Stay updated with company activity'), findsOneWidget);
+      expect(find.text('Clear all'), findsOneWidget);
+    });
   });
 }

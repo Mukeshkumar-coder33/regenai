@@ -17,9 +17,9 @@ class NotificationModel {
   final String actionStatus;
   final Map<String, dynamic> metadata;
   final String createdAt;
-  final bool read;
+  bool read;
 
-  const NotificationModel({
+  NotificationModel({
     required this.id,
     this.mongoId,
     this.companyId,

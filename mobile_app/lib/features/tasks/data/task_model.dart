@@ -133,6 +133,44 @@ class TaskModel {
       status.toLowerCase() == 'done' ||
       status.toLowerCase() == 'completed';
 
+  bool get isIncomplete =>
+      status.toLowerCase() == 'not_completed' ||
+      status.toLowerCase() == 'notcompleted' ||
+      isExpired;
+
+  bool get isPending => !isCompleted && !isIncomplete;
+
+  bool get isExpired {
+    if (isCompleted) return false;
+    if (status.toLowerCase() == 'not_completed' || status.toLowerCase() == 'notcompleted') return true;
+    final timeStr = dueTime;
+    final endStr = endDate ?? dueDate;
+    if (endStr != null && endStr.isNotEmpty) {
+      try {
+        final datePart = endStr.contains('T') ? endStr.split('T')[0] : endStr;
+        final parts = datePart.split('-');
+        if (parts.length == 3) {
+          int hh = 23;
+          int mm = 59;
+          if (timeStr != null && timeStr.contains(':')) {
+            final tParts = timeStr.split(':');
+            hh = int.tryParse(tParts[0]) ?? 23;
+            mm = int.tryParse(tParts[1]) ?? 59;
+          }
+          final deadline = DateTime(
+            int.parse(parts[0]),
+            int.parse(parts[1]),
+            int.parse(parts[2]),
+            hh,
+            mm,
+          );
+          return DateTime.now().isAfter(deadline);
+        }
+      } catch (_) {}
+    }
+    return false;
+  }
+
   bool get isInProgress => status.toLowerCase() == 'in_progress';
   bool get isPaused => status.toLowerCase() == 'paused';
   bool get isToDo => status.toLowerCase() == 'todo';

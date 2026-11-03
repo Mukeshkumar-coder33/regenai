@@ -11,6 +11,8 @@ import '../../auth/data/user_model.dart';
 import '../../calendar/data/leave_service.dart';
 import '../../dashboard/data/dashboard_service.dart';
 import '../../dashboard/data/leave_model.dart';
+import '../../notifications/data/notification_model.dart';
+import '../../notifications/data/notification_service.dart';
 import '../../tasks/data/task_model.dart';
 import '../../tasks/presentation/tasks_view.dart';
 import '../data/company_model.dart';
@@ -70,8 +72,12 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   int _selectedEmployeeFilter = 0; // 0=All, 1=Active, 2=On Leave, 3=Inactive
   String _selectedEmployeeRoleFilter = 'all'; // 'all', 'owner', 'admin', 'staff', 'intern', 'freelancer'
   String _selectedEmployeeDeptFilter = 'all';
+  final NotificationService _notificationService = NotificationService();
+  List<NotificationModel> _notifications = [];
+  int get _unreadNotificationCount => _notifications.where((n) => !n.read).length;
+
   int _selectedLeaveFilter = 0; // 0=All, 1=Pending, 2=Approved, 3=Rejected
-  int _selectedNotificationFilter = 0; // 0=All, 1=Unread, 2=System, 3=Leave, 4=Attendance
+  int _selectedNotificationFilter = 0; // 0=All, 1=Unread, 2=Tasks, 3=Leave, 4=Attendance, 5=System
 
   bool _isLoading = true;
   String? _errorMessage;
@@ -164,6 +170,14 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             }
           }
         });
+
+        // Load dynamic notifications from MongoDB
+        final myId = widget.user.userId.isNotEmpty ? widget.user.userId : widget.user.id;
+        if (myId.isNotEmpty) {
+          _notificationService.getUserNotifications(myId).then((notifs) {
+            if (mounted) setState(() => _notifications = notifs);
+          }).catchError((_) {});
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -1755,24 +1769,43 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                         alignment: Alignment.center,
                         children: [
                           const Icon(Icons.notifications_none_rounded, color: Colors.white, size: 21),
-                          Positioned(
-                            top: 8,
-                            right: 8,
-                            child: Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF10B981),
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: const Color(0xFF10B981).withValues(alpha: 0.7),
-                                    blurRadius: 6,
-                                  ),
-                                ],
+                          if (_unreadNotificationCount > 0)
+                            Positioned(
+                              top: 5,
+                              right: 5,
+                              child: Container(
+                                padding: const EdgeInsets.all(3),
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFF10B981),
+                                  shape: BoxShape.circle,
+                                ),
+                                constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  '$_unreadNotificationCount',
+                                  style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w800, color: Colors.white),
+                                ),
+                              ),
+                            )
+                          else
+                            Positioned(
+                              top: 8,
+                              right: 8,
+                              child: Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF10B981),
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFF10B981).withValues(alpha: 0.7),
+                                      blurRadius: 6,
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
                         ],
                       ),
                     ),
@@ -6514,9 +6547,16 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   }
 
   // ---------------------------------------------------------
-  // NOTIFICATIONS SHEET (Image 3)
+  // NOTIFICATIONS SHEET (Full Website Parity & Live Sync)
   // ---------------------------------------------------------
   void _showNotificationsSheet() {
+    final myId = widget.user.userId.isNotEmpty ? widget.user.userId : widget.user.id;
+    if (myId.isNotEmpty) {
+      _notificationService.getUserNotifications(myId).then((notifs) {
+        if (mounted) setState(() => _notifications = notifs);
+      }).catchError((_) {});
+    }
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -6524,11 +6564,19 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
       builder: (ctx) => StatefulBuilder(
         builder: (context, setSheetState) {
+          final filteredList = _notifications.where((n) {
+            if (_selectedNotificationFilter == 1 && n.read) return false;
+            if (_selectedNotificationFilter == 2 && !n.isTask) return false;
+            if (_selectedNotificationFilter == 3 && !n.type.contains('leave')) return false;
+            if (_selectedNotificationFilter == 4 && !n.type.contains('attendance')) return false;
+            if (_selectedNotificationFilter == 5 && !n.isSystem) return false;
+            return true;
+          }).toList();
+
           return SizedBox(
             height: MediaQuery.of(context).size.height * 0.88,
             child: Stack(
               children: [
-                // Background image with light photographic bokeh blur (sigma 5.5)
                 Positioned.fill(
                   child: ImageFiltered(
                     imageFilter: ImageFilter.blur(sigmaX: 5.5, sigmaY: 5.5),
@@ -6560,7 +6608,6 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Top Handle
                       Center(
                         child: Container(
                           width: 40,
@@ -6573,7 +6620,6 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                       ),
                       const SizedBox(height: 12),
 
-                      // Header with Back & Logo
                       Row(
                         children: [
                           IconButton(
@@ -6584,16 +6630,43 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                           const BrandLogo(size: 24, borderRadius: 6),
                           const SizedBox(width: 8),
                           const Text('ReGen', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white)),
+                          const Spacer(),
+                          IconButton(
+                            icon: const Icon(Icons.done_all_rounded, color: Color(0xFF34D399), size: 20),
+                            tooltip: 'Mark all as read',
+                            onPressed: () async {
+                              if (myId.isNotEmpty) {
+                                await _notificationService.markAllAsRead(myId);
+                                final updated = await _notificationService.getUserNotifications(myId);
+                                if (mounted) {
+                                  setState(() => _notifications = updated);
+                                  setSheetState(() {});
+                                }
+                              }
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_sweep_rounded, color: Color(0xFFEF4444), size: 20),
+                            tooltip: 'Clear all',
+                            onPressed: () async {
+                              if (myId.isNotEmpty) {
+                                await _notificationService.clearAll(myId);
+                                if (mounted) {
+                                  setState(() => _notifications = []);
+                                  setSheetState(() {});
+                                }
+                              }
+                            },
+                          ),
                         ],
                       ),
                       const SizedBox(height: 8),
 
                       const Text('Notifications', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
                       const SizedBox(height: 2),
-                      const Text('Stay updated', style: TextStyle(fontSize: 12.5, color: Color(0xFFBACCC3))),
+                      const Text('Stay updated with company announcements and task schedules', style: TextStyle(fontSize: 12, color: Color(0xFFBACCC3))),
                       const SizedBox(height: 12),
 
-                      // Filter Chips: [All] [Unread] [System] [Leave] [Attendance]
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: Row(
@@ -6602,54 +6675,143 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                             const SizedBox(width: 8),
                             _buildSegmentChip('Unread', 1, _selectedNotificationFilter, (idx) => setSheetState(() => _selectedNotificationFilter = idx)),
                             const SizedBox(width: 8),
-                            _buildSegmentChip('System', 2, _selectedNotificationFilter, (idx) => setSheetState(() => _selectedNotificationFilter = idx)),
+                            _buildSegmentChip('Tasks', 2, _selectedNotificationFilter, (idx) => setSheetState(() => _selectedNotificationFilter = idx)),
                             const SizedBox(width: 8),
                             _buildSegmentChip('Leave', 3, _selectedNotificationFilter, (idx) => setSheetState(() => _selectedNotificationFilter = idx)),
                             const SizedBox(width: 8),
                             _buildSegmentChip('Attendance', 4, _selectedNotificationFilter, (idx) => setSheetState(() => _selectedNotificationFilter = idx)),
+                            const SizedBox(width: 8),
+                            _buildSegmentChip('System', 5, _selectedNotificationFilter, (idx) => setSheetState(() => _selectedNotificationFilter = idx)),
                           ],
                         ),
                       ),
                       const SizedBox(height: 14),
 
-                      // Notifications Dynamic Cards (Image 3)
                       Expanded(
-                        child: ListView(
-                          children: [
-                            _buildNotificationCard(
-                              icon: Icons.description_outlined,
-                              title: 'Leave Request',
-                              body: _leaves.isNotEmpty
-                                  ? '${_leaves.first.userId} has requested leave.'
-                                  : 'Sneha Patel has requested 2 days leave.',
-                              time: '2 minutes ago',
-                              isUnread: true,
-                            ),
-                            _buildNotificationCard(
-                              icon: Icons.group_add_outlined,
-                              title: 'New Employee',
-                              body: _users.isNotEmpty
-                                  ? '${_users.first.name.isNotEmpty ? _users.first.name : _users.first.username} has been added.'
-                                  : 'Arjun Kumar has been added.',
-                              time: '1 hour ago',
-                              isUnread: true,
-                            ),
-                            _buildNotificationCard(
-                              icon: Icons.notifications_active_outlined,
-                              title: 'Attendance Alert',
-                              body: '${(_users.length - _attendance.length).clamp(0, 999)} employees are absent today.',
-                              time: '3 hours ago',
-                              isUnread: false,
-                            ),
-                            _buildNotificationCard(
-                              icon: Icons.settings_suggest_outlined,
-                              title: 'System Update',
-                              body: '5m GPS Geofence validation is active on device.',
-                              time: '1 day ago',
-                              isUnread: false,
-                            ),
-                          ],
-                        ),
+                        child: _notifications.isNotEmpty
+                            ? (filteredList.isEmpty
+                                ? const Center(
+                                    child: Text('No notifications in this category.', style: TextStyle(color: Color(0xFFBACCC3), fontSize: 13)),
+                                  )
+                                : ListView.builder(
+                                    itemCount: filteredList.length,
+                                    itemBuilder: (context, index) {
+                                      final notif = filteredList[index];
+                                      IconData iconData = Icons.notifications_active_outlined;
+                                      Color iconColor = const Color(0xFF34D399);
+
+                                      if (notif.isCall) {
+                                        iconData = Icons.phone_in_talk_rounded;
+                                        iconColor = const Color(0xFF06B6D4);
+                                      } else if (notif.isMeeting) {
+                                        iconData = Icons.groups_rounded;
+                                        iconColor = const Color(0xFFF59E0B);
+                                      } else if (notif.isTask) {
+                                        iconData = Icons.assignment_rounded;
+                                        iconColor = const Color(0xFF10B981);
+                                      } else if (notif.isAttendance) {
+                                        iconData = Icons.event_available_rounded;
+                                        iconColor = const Color(0xFFA855F7);
+                                      } else if (notif.isBirthday) {
+                                        iconData = Icons.cake_rounded;
+                                        iconColor = const Color(0xFFFFD700);
+                                      } else if (notif.isPayment) {
+                                        iconData = Icons.payments_rounded;
+                                        iconColor = const Color(0xFF10B981);
+                                      }
+
+                                      return _buildNotificationCard(
+                                        icon: iconData,
+                                        iconColor: iconColor,
+                                        title: notif.title,
+                                        body: notif.message,
+                                        time: _formatNotifRelativeTime(notif.createdAt),
+                                        isUnread: !notif.read,
+                                        onTap: () async {
+                                          final nav = Navigator.of(context);
+                                          final sheetNav = Navigator.of(ctx);
+                                          if (!notif.read) {
+                                            await _notificationService.markAsRead(notif.id);
+                                            final updated = await _notificationService.getUserNotifications(myId);
+                                            if (mounted) {
+                                              setState(() => _notifications = updated);
+                                              setSheetState(() {});
+                                            }
+                                          }
+                                          if (notif.isTask) {
+                                            sheetNav.pop();
+                                            nav.push(
+                                              MaterialPageRoute(
+                                                builder: (_) => TasksView(
+                                                  user: widget.user,
+                                                  onBack: () => nav.pop(),
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                        },
+                                      );
+                                    },
+                                  ))
+                            : ListView(
+                                children: [
+                                  _buildNotificationCard(
+                                    icon: Icons.assignment_rounded,
+                                    iconColor: const Color(0xFF10B981),
+                                    title: 'Tasks Active',
+                                    body: '$_activeTasksCount open tasks currently tracked in Company Workspace.',
+                                    time: 'Just now',
+                                    isUnread: true,
+                                    onTap: () {
+                                      Navigator.pop(ctx);
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => TasksView(
+                                            user: widget.user,
+                                            onBack: () => Navigator.of(context).pop(),
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                  _buildNotificationCard(
+                                    icon: Icons.description_outlined,
+                                    iconColor: const Color(0xFFF59E0B),
+                                    title: 'Leave Request',
+                                    body: _leaves.isNotEmpty
+                                        ? '${_leaves.first.userId} has requested leave.'
+                                        : 'Sneha Patel has requested 2 days leave.',
+                                    time: '2 minutes ago',
+                                    isUnread: true,
+                                  ),
+                                  _buildNotificationCard(
+                                    icon: Icons.group_add_outlined,
+                                    iconColor: const Color(0xFF06B6D4),
+                                    title: 'New Employee Added',
+                                    body: _users.isNotEmpty
+                                        ? '${_users.first.name.isNotEmpty ? _users.first.name : _users.first.username} is active in team.'
+                                        : 'Arjun Kumar has been added.',
+                                    time: '1 hour ago',
+                                    isUnread: false,
+                                  ),
+                                  _buildNotificationCard(
+                                    icon: Icons.notifications_active_outlined,
+                                    iconColor: const Color(0xFFEF4444),
+                                    title: 'Attendance Alert',
+                                    body: '${(_users.length - _attendance.length).clamp(0, 999)} employees are absent today.',
+                                    time: '3 hours ago',
+                                    isUnread: false,
+                                  ),
+                                  _buildNotificationCard(
+                                    icon: Icons.settings_suggest_outlined,
+                                    iconColor: const Color(0xFF8B5CF6),
+                                    title: 'System Update',
+                                    body: '5m GPS Geofence validation is active on device.',
+                                    time: '1 day ago',
+                                    isUnread: false,
+                                  ),
+                                ],
+                              ),
                       ),
                     ],
                   ),
@@ -6662,27 +6824,46 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     );
   }
 
+  String _formatNotifRelativeTime(String isoString) {
+    if (isoString.isEmpty) return 'Just now';
+    try {
+      final d = DateTime.parse(isoString);
+      final diff = DateTime.now().difference(d);
+      if (diff.inMinutes < 1) return 'Just now';
+      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+      if (diff.inHours < 24) return '${diff.inHours}h ago';
+      return '${d.day}/${d.month}/${d.year}';
+    } catch (_) {
+      return 'Recently';
+    }
+  }
+
   Widget _buildNotificationCard({
     required IconData icon,
+    Color? iconColor,
     required String title,
     required String body,
     required String time,
     required bool isUnread,
+    VoidCallback? onTap,
   }) {
+    final accentColor = iconColor ?? const Color(0xFF34D399);
     return _buildGlassCard(
       borderRadius: 18,
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
+      onTap: onTap,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: const Color(0xFF10B981).withValues(alpha: 0.22),
-              shape: BoxShape.circle,
+              color: accentColor.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: accentColor.withValues(alpha: 0.40)),
             ),
-            child: Icon(icon, color: const Color(0xFF34D399), size: 18),
+            child: Icon(icon, color: accentColor, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -6692,33 +6873,47 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(title, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white)),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
                     if (isUnread)
                       Container(
-                        width: 7,
-                        height: 7,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF10B981),
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF10B981),
                           shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(color: const Color(0xFF10B981).withValues(alpha: 0.7), blurRadius: 4),
-                          ],
                         ),
                       ),
                   ],
                 ),
                 const SizedBox(height: 3),
-                Text(body, style: const TextStyle(fontSize: 12, color: Color(0xFFCBD5E1))),
-                const SizedBox(height: 4),
-                Text(time, style: const TextStyle(fontSize: 10.5, color: Color(0xFF88A89A))),
+                Text(
+                  body,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFFBACCC3),
+                    height: 1.3,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  time,
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    color: Color(0xFF6EE7B7),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
             ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.more_vert_rounded, size: 16, color: Color(0xFF88A89A)),
-            onPressed: () {},
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
           ),
         ],
       ),

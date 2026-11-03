@@ -154,7 +154,29 @@ class TaskService {
     }
   }
 
-  /// 8. Delete Project
+  /// 8. Update Project
+  Future<ProjectModel?> updateProject(String id, Map<String, dynamic> updates) async {
+    final headers = await _getHeaders();
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/projects/$id');
+
+    try {
+      final res = await _client.put(
+        url,
+        headers: headers,
+        body: jsonEncode(updates),
+      ).timeout(const Duration(seconds: 10));
+
+      if (res.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(res.body) as Map<String, dynamic>;
+        return ProjectModel.fromJson(data);
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 9. Delete Project
   Future<bool> deleteProject(String id) async {
     final headers = await _getHeaders();
     final url = Uri.parse('${AppConfig.activeBaseUrl}/api/projects/$id');

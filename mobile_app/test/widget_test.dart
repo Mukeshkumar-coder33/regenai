@@ -591,6 +591,49 @@ void main() {
       expect(find.byType(FloatingActionButton), findsOneWidget);
     });
 
+    testWidgets('TasksView renders General Task with 4 counters, search bar, and automatic end date calculation', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: TasksView(
+            user: const UserModel(
+              id: 'owner_1',
+              userId: 'Vyshwa',
+              username: 'Vyshwa',
+              name: 'Vyshwa',
+              role: 'owner',
+              company: 'krish',
+              token: 'tok',
+            ),
+            dashboardService: MockDashboardService(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Verify General Task and Projects segments
+      expect(find.text('General Task'), findsOneWidget);
+      expect(find.text('Projects'), findsOneWidget);
+
+      // Verify 4 Metric Counters & Filter Chips
+      expect(find.text('Total Tasks'), findsOneWidget);
+      expect(find.text('Pending'), findsOneWidget);
+      expect(find.text('Incomplete'), findsWidgets);
+      expect(find.text('Completed'), findsOneWidget);
+
+      // Verify Search Bar with full placeholder
+      expect(find.text('Search by title, description, or assigned person...'), findsOneWidget);
+
+      // Verify auto calculation function
+      final calcDays = TasksView.computeEndDateTime('2026-11-03', 3, 'days');
+      expect(calcDays['endDate'], '2026-11-06');
+      expect(calcDays['dueTime'], '18:00');
+
+      final calcHours = TasksView.computeEndDateTime('2026-11-03', 4, 'hours');
+      expect(calcHours['endDate'], isNotEmpty);
+      expect(calcHours['dueTime'], isNotEmpty);
+    });
+
     testWidgets('ProfileView renders logout button and triggers confirmation', (WidgetTester tester) async {
       bool logoutCalled = false;
       await tester.pumpWidget(

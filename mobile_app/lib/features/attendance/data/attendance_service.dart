@@ -360,6 +360,47 @@ class AttendanceService {
     }
   }
 
+  /// Add Company Holiday (`POST /api/holidays`)
+  Future<HolidayModel?> addHoliday({
+    required String name,
+    required String date,
+    String? description,
+  }) async {
+    final headers = await _getHeaders();
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/holidays');
+    final id = 'holiday-${DateTime.now().millisecondsSinceEpoch}';
+    final body = jsonEncode({
+      'id': id,
+      'name': name,
+      'date': date,
+      if (description != null && description.isNotEmpty) 'description': description,
+    });
+
+    try {
+      final res = await _client.post(url, headers: headers, body: body).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        return HolidayModel.fromJson(data);
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Delete Company Holiday (`DELETE /api/holidays/:id`)
+  Future<bool> deleteHoliday(String id) async {
+    final headers = await _getHeaders();
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/holidays/$id');
+
+    try {
+      final res = await _client.delete(url, headers: headers).timeout(const Duration(seconds: 8));
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Get Attendance Report (`GET /api/attendance/report?period=day|week|month|year`)
   Future<AttendanceReportModel> getAttendanceReport({String period = 'month', String? date}) async {
     final headers = await _getHeaders();

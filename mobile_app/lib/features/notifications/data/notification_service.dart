@@ -53,14 +53,27 @@ class NotificationService {
   }
 
   /// 2. Mark single notification as read
-  Future<bool> markAsRead(String id) async {
+  Future<bool> markAsRead(String id, {String? mongoId}) async {
     final headers = await _getHeaders();
     final url = Uri.parse('${AppConfig.activeBaseUrl}/api/notifications/$id/read');
 
     try {
       final res = await _client.put(url, headers: headers).timeout(const Duration(seconds: 8));
-      return res.statusCode == 200;
+      if (res.statusCode == 200) return true;
+      if (mongoId != null && mongoId.isNotEmpty && mongoId != id) {
+        final fallbackUrl = Uri.parse('${AppConfig.activeBaseUrl}/api/notifications/$mongoId/read');
+        final res2 = await _client.put(fallbackUrl, headers: headers).timeout(const Duration(seconds: 8));
+        return res2.statusCode == 200;
+      }
+      return false;
     } catch (_) {
+      if (mongoId != null && mongoId.isNotEmpty && mongoId != id) {
+        try {
+          final fallbackUrl = Uri.parse('${AppConfig.activeBaseUrl}/api/notifications/$mongoId/read');
+          final res2 = await _client.put(fallbackUrl, headers: headers).timeout(const Duration(seconds: 8));
+          return res2.statusCode == 200;
+        } catch (_) {}
+      }
       return false;
     }
   }
@@ -81,14 +94,20 @@ class NotificationService {
   /// 4. Clear all notifications
   Future<bool> clearAll(String userId) async {
     final headers = await _getHeaders();
-    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/notifications/user/$userId/clear-all');
+    bool success = false;
+    try {
+      final url = Uri.parse('${AppConfig.activeBaseUrl}/api/notifications/user/$userId/clear-all');
+      final res = await _client.delete(url, headers: headers).timeout(const Duration(seconds: 8));
+      if (res.statusCode == 200) success = true;
+    } catch (_) {}
 
     try {
-      final res = await _client.delete(url, headers: headers).timeout(const Duration(seconds: 8));
-      return res.statusCode == 200;
-    } catch (_) {
-      return false;
-    }
+      final fallbackUrl = Uri.parse('${AppConfig.activeBaseUrl}/api/notifications/clear-all');
+      final res2 = await _client.delete(fallbackUrl, headers: headers).timeout(const Duration(seconds: 8));
+      if (res2.statusCode == 200) success = true;
+    } catch (_) {}
+
+    return success;
   }
 
   /// 5. Delete specific notification

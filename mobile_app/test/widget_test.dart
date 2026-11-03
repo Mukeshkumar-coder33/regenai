@@ -1014,6 +1014,10 @@ void main() {
       await tester.scrollUntilVisible(find.text('Employee Attendance Details'), 300);
       await tester.pumpAndSettle();
 
+      // Select Monday (past day) in the 7-day trend selector
+      await tester.tap(find.text('Mon').first);
+      await tester.pumpAndSettle();
+
       // Tap on the Absent tab in the trend section where staff Eswaran M is located
       await tester.tap(find.text('Absent').last);
       await tester.pumpAndSettle();
@@ -1315,6 +1319,53 @@ void main() {
       expect(find.text('Notifications'), findsOneWidget);
       expect(find.text('Stay updated with company activity'), findsOneWidget);
       expect(find.text('Clear all'), findsOneWidget);
+
+      // Tap Clear all button
+      await tester.tap(find.text('Clear all'));
+      await tester.pumpAndSettle();
+
+      // Empty state shown
+      expect(find.text('No notifications'), findsOneWidget);
+    });
+
+    testWidgets('CompanyDashboardView Attendance tab has Add Holiday button and opens holiday creation sheet',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanyDashboardView(
+            user: const UserModel(
+              id: 'owner_1',
+              userId: 'Vyshwa',
+              username: 'Vyshwa',
+              name: 'Vyshwa',
+              role: 'owner',
+              company: 'krish Tech Computer',
+              token: 'tok_owner',
+            ),
+            dashboardService: MockDashboardService(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Navigate to Attendance tab (tab index 2)
+      await tester.tap(find.text('Attendance').first);
+      await tester.pumpAndSettle();
+
+      // Verify Add Holiday and Work Policy buttons exist in header
+      expect(find.text('Add Holiday'), findsOneWidget);
+      expect(find.text('Work Policy'), findsOneWidget);
+
+      // Tap Add Holiday button
+      await tester.tap(find.text('Add Holiday'));
+      await tester.pumpAndSettle();
+
+      // Verify Add Company Holiday sheet opened
+      expect(find.text('Add Company Holiday'), findsOneWidget);
+      expect(find.text('Holiday Title *'), findsOneWidget);
+      expect(find.text('Holiday Date *'), findsOneWidget);
+      expect(find.text('Save Holiday'), findsOneWidget);
     });
   });
 }

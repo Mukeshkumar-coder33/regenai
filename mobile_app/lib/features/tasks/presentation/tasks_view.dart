@@ -879,51 +879,159 @@ class _TasksViewState extends State<TasksView> {
   }
 
   // Search Bar (Title, Description, and Assigned Person)
+  // Unified to match Company Employee and Attendance Typing Box (Image 1)
   Widget _buildTaskSearchBar() {
-    return Container(
-      height: 46,
-      decoration: BoxDecoration(
-        color: const Color(0xFF092017).withValues(alpha: 0.60),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: const Color(0xFF34D399).withValues(alpha: 0.30),
-          width: 1.0,
-        ),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Row(
+    return _buildTypingBoxStyle(
+      controller: _taskSearchController,
+      hintText: 'Search by title, description, or assigned person...',
+      prefixIcon: Icons.search_rounded,
+      onChanged: (_) => setState(() {}),
+      suffixWidget: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.search_rounded, size: 19, color: Color(0xFF34D399)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              controller: _taskSearchController,
-              cursorColor: const Color(0xFF34D399),
-              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
-              decoration: const InputDecoration(
-                isDense: true,
-                filled: true,
-                fillColor: Colors.transparent,
-                hintText: 'Search by title, description, or assigned person...',
-                hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 12.5),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(vertical: 12),
-              ),
-              onChanged: (_) => setState(() {}),
-            ),
-          ),
           if (_taskSearchController.text.isNotEmpty)
             GestureDetector(
               onTap: () {
                 _taskSearchController.clear();
                 setState(() {});
               },
-              child: const Icon(Icons.close_rounded, size: 17, color: Color(0xFFBACCC3)),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 4),
+                child: Icon(Icons.close_rounded, size: 18, color: Color(0xFFBACCC3)),
+              ),
             ),
+          GestureDetector(
+            onTap: _showTaskFilterSheet,
+            child: const Padding(
+              padding: EdgeInsets.only(left: 4, right: 2),
+              child: Icon(Icons.filter_list_rounded, size: 20, color: Color(0xFFBACCC3)),
+            ),
+          ),
         ],
       ),
+    );
+  }
+
+  void _showTaskFilterSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final options = [
+          {'label': 'All Tasks', 'count': _totalTaskCount, 'idx': 0, 'color': const Color(0xFF10B981), 'icon': Icons.assignment_rounded},
+          {'label': 'Pending (Active)', 'count': _pendingCount, 'idx': 1, 'color': const Color(0xFF06B6D4), 'icon': Icons.schedule_rounded},
+          {'label': 'Completed (Done)', 'count': _completedCount, 'idx': 2, 'color': const Color(0xFF10B981), 'icon': Icons.check_circle_outline_rounded},
+          {'label': 'Incomplete', 'count': _incompleteCount, 'idx': 3, 'color': const Color(0xFFEF4444), 'icon': Icons.cancel_outlined},
+        ];
+
+        final media = MediaQuery.of(ctx);
+        final maxHeight = media.size.height * 0.75;
+
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF042018),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+              border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.35), width: 1.0),
+            ),
+            child: SafeArea(
+              top: false,
+              bottom: true,
+              child: SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Filter Tasks',
+                            style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800, color: Colors.white),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, color: Color(0xFFBACCC3), size: 20),
+                            onPressed: () => Navigator.pop(ctx),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      const Divider(color: Colors.white12, height: 1),
+                      const SizedBox(height: 8),
+                      ...options.map((opt) {
+                        final idx = opt['idx'] as int;
+                        final isSelected = _selectedTaskFilter == idx;
+                        final optColor = opt['color'] as Color;
+                        final count = opt['count'] as int;
+                        final icon = opt['icon'] as IconData;
+
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: InkWell(
+                            onTap: () {
+                              setState(() => _selectedTaskFilter = idx);
+                              Navigator.pop(ctx);
+                            },
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: isSelected ? optColor.withValues(alpha: 0.18) : Colors.white.withValues(alpha: 0.04),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: isSelected ? optColor : Colors.white12, width: isSelected ? 1.5 : 0.8),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(7),
+                                    decoration: BoxDecoration(color: optColor.withValues(alpha: 0.20), borderRadius: BorderRadius.circular(8)),
+                                    child: Icon(icon, color: optColor, size: 18),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      opt['label'] as String,
+                                      style: TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(color: optColor.withValues(alpha: 0.20), borderRadius: BorderRadius.circular(10)),
+                                    child: Text(
+                                      '$count',
+                                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: optColor),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  if (isSelected)
+                                    Icon(Icons.check_circle_rounded, color: optColor, size: 20)
+                                  else
+                                    const SizedBox(width: 20),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -2398,12 +2506,35 @@ class _TasksViewState extends State<TasksView> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
       children: [
-        // 1. Unified Search Bar matching Company Employee typing box
+        // 1. Unified Search Bar matching Company Employee typing box (Image 1)
         _buildTypingBoxStyle(
           controller: _projectSearchController,
           hintText: 'Search projects by name...',
           prefixIcon: Icons.search_rounded,
           onChanged: (_) => setState(() {}),
+          suffixWidget: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_projectSearchController.text.isNotEmpty)
+                GestureDetector(
+                  onTap: () {
+                    _projectSearchController.clear();
+                    setState(() {});
+                  },
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4),
+                    child: Icon(Icons.close_rounded, size: 18, color: Color(0xFFBACCC3)),
+                  ),
+                ),
+              GestureDetector(
+                onTap: _showProjectFilterSheet,
+                child: const Padding(
+                  padding: EdgeInsets.only(left: 4, right: 2),
+                  child: Icon(Icons.filter_list_rounded, size: 20, color: Color(0xFFBACCC3)),
+                ),
+              ),
+            ],
+          ),
         ),
 
         const SizedBox(height: 14),
@@ -2663,12 +2794,35 @@ class _TasksViewState extends State<TasksView> {
 
         const SizedBox(height: 14),
 
-        // 5. Search Box (Matching company employee search box style)
+        // 5. Search Box (Matching company employee search box style, Image 1)
         _buildTypingBoxStyle(
           controller: _projectTaskSearchController,
           hintText: 'Search tasks by title, desc, assignee...',
           prefixIcon: Icons.search_rounded,
           onChanged: (_) => setState(() {}),
+          suffixWidget: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_projectTaskSearchController.text.isNotEmpty)
+                GestureDetector(
+                  onTap: () {
+                    _projectTaskSearchController.clear();
+                    setState(() {});
+                  },
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4),
+                    child: Icon(Icons.close_rounded, size: 18, color: Color(0xFFBACCC3)),
+                  ),
+                ),
+              GestureDetector(
+                onTap: _showProjectTaskFilterSheet,
+                child: const Padding(
+                  padding: EdgeInsets.only(left: 4, right: 2),
+                  child: Icon(Icons.filter_list_rounded, size: 20, color: Color(0xFFBACCC3)),
+                ),
+              ),
+            ],
+          ),
         ),
 
         const SizedBox(height: 12),
@@ -2766,56 +2920,289 @@ class _TasksViewState extends State<TasksView> {
     );
   }
 
-  /// Typing box styled identically to Company Employee Typing Box
+  /// Typing box styled identically to Company Employee Typing Box (Image 1)
   Widget _buildTypingBoxStyle({
     required TextEditingController controller,
     required String hintText,
     required ValueChanged<String> onChanged,
     IconData prefixIcon = Icons.search_rounded,
+    Widget? suffixWidget,
     VoidCallback? onClear,
   }) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(14),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
           height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
           decoration: BoxDecoration(
-            color: const Color(0xFF042018).withValues(alpha: 0.70),
+            color: const Color(0xFF0A2218).withValues(alpha: 0.85),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.28), width: 1.0),
+            border: Border.all(
+              color: const Color(0xFF34D399).withValues(alpha: 0.25),
+              width: 1.0,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.25),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 14),
           child: Row(
             children: [
-              Icon(prefixIcon, color: const Color(0xFF34D399), size: 20),
+              Icon(prefixIcon, color: const Color(0xFFCBD5E1), size: 20),
               const SizedBox(width: 10),
               Expanded(
                 child: TextField(
                   controller: controller,
+                  cursorColor: const Color(0xFF34D399),
                   style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w600),
                   decoration: InputDecoration(
                     hintText: hintText,
-                    hintStyle: const TextStyle(color: Color(0xFF88A89A), fontSize: 13),
+                    hintStyle: const TextStyle(
+                      color: Color(0xFF94A3B8),
+                      fontSize: 13,
+                      fontWeight: FontWeight.normal,
+                    ),
                     border: InputBorder.none,
                     isDense: true,
-                    contentPadding: EdgeInsets.zero,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                   onChanged: onChanged,
                 ),
               ),
-              if (controller.text.isNotEmpty)
+              if (suffixWidget != null)
+                suffixWidget
+              else if (controller.text.isNotEmpty)
                 GestureDetector(
-                  onTap: onClear ?? () {
-                    controller.clear();
-                    onChanged('');
-                  },
+                  onTap: onClear ??
+                      () {
+                        controller.clear();
+                        onChanged('');
+                      },
                   child: const Icon(Icons.close_rounded, size: 18, color: Color(0xFFBACCC3)),
                 ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  void _showProjectFilterSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final totalCount = _projects.length;
+        final activeCount = _projects.where((p) => p.status.toLowerCase() != 'completed').length;
+        final completedCount = _projects.where((p) => p.status.toLowerCase() == 'completed').length;
+        final options = [
+          {'label': 'All Projects', 'count': totalCount, 'color': const Color(0xFF10B981), 'icon': Icons.folder_rounded},
+          {'label': 'Active Projects', 'count': activeCount, 'color': const Color(0xFF06B6D4), 'icon': Icons.pending_actions_rounded},
+          {'label': 'Completed Projects', 'count': completedCount, 'color': const Color(0xFF10B981), 'icon': Icons.check_circle_outline_rounded},
+        ];
+
+        final media = MediaQuery.of(ctx);
+        final maxHeight = media.size.height * 0.65;
+
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF042018),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+              border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.35), width: 1.0),
+            ),
+            child: SafeArea(
+              top: false,
+              bottom: true,
+              child: SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Filter Projects',
+                            style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800, color: Colors.white),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, color: Color(0xFFBACCC3), size: 20),
+                            onPressed: () => Navigator.pop(ctx),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      const Divider(color: Colors.white12, height: 1),
+                      const SizedBox(height: 8),
+                      ...options.map((opt) {
+                        final optColor = opt['color'] as Color;
+                        final count = opt['count'] as int;
+                        final icon = opt['icon'] as IconData;
+
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.pop(ctx);
+                            },
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.04),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.white12, width: 0.8),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(7),
+                                    decoration: BoxDecoration(color: optColor.withValues(alpha: 0.20), borderRadius: BorderRadius.circular(8)),
+                                    child: Icon(icon, color: optColor, size: 18),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      opt['label'] as String,
+                                      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: Colors.white),
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(color: optColor.withValues(alpha: 0.20), borderRadius: BorderRadius.circular(10)),
+                                    child: Text(
+                                      '$count',
+                                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: optColor),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showProjectTaskFilterSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final options = [
+          {'label': 'All Tasks', 'idx': 0, 'color': const Color(0xFF10B981), 'icon': Icons.assignment_rounded},
+          {'label': 'Pending', 'idx': 1, 'color': const Color(0xFF06B6D4), 'icon': Icons.schedule_rounded},
+          {'label': 'Completed', 'idx': 2, 'color': const Color(0xFF10B981), 'icon': Icons.check_circle_outline_rounded},
+          {'label': 'Incomplete', 'idx': 3, 'color': const Color(0xFFEF4444), 'icon': Icons.cancel_outlined},
+        ];
+
+        return Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF042018),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+            border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.35), width: 1.0),
+          ),
+          child: SafeArea(
+            top: false,
+            bottom: true,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Filter Project Tasks',
+                        style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800, color: Colors.white),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, color: Color(0xFFBACCC3), size: 20),
+                        onPressed: () => Navigator.pop(ctx),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  const Divider(color: Colors.white12, height: 1),
+                  const SizedBox(height: 8),
+                  ...options.map((opt) {
+                    final idx = opt['idx'] as int;
+                    final isSelected = _selectedProjectTaskFilter == idx;
+                    final optColor = opt['color'] as Color;
+                    final icon = opt['icon'] as IconData;
+
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: InkWell(
+                        onTap: () {
+                          setState(() => _selectedProjectTaskFilter = idx);
+                          Navigator.pop(ctx);
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: isSelected ? optColor.withValues(alpha: 0.18) : Colors.white.withValues(alpha: 0.04),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: isSelected ? optColor : Colors.white12, width: isSelected ? 1.5 : 0.8),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(7),
+                                decoration: BoxDecoration(color: optColor.withValues(alpha: 0.20), borderRadius: BorderRadius.circular(8)),
+                                child: Icon(icon, color: optColor, size: 18),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  opt['label'] as String,
+                                  style: TextStyle(
+                                    fontSize: 13.5,
+                                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                              if (isSelected) Icon(Icons.check_circle_rounded, color: optColor, size: 20),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 

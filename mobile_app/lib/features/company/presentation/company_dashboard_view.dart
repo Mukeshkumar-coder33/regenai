@@ -8,6 +8,7 @@ import '../../attendance/data/attendance_service.dart';
 import '../../attendance/data/work_schedule_model.dart';
 import '../../auth/data/auth_service.dart';
 import '../../auth/data/user_model.dart';
+import '../../calendar/data/holiday_model.dart';
 import '../../calendar/data/leave_service.dart';
 import '../../dashboard/data/dashboard_service.dart';
 import '../../dashboard/data/leave_model.dart';
@@ -89,6 +90,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   List<AttendanceModel> _attendance = [];
   List<LeaveModel> _leaves = [];
   WorkScheduleModel _workSchedule = const WorkScheduleModel();
+  List<HolidayModel> _holidays = [];
 
   int _selectedYear = DateTime.now().year;
   String _selectedTrendFilter = 'Week'; // 'Week', 'Month', 'Year'
@@ -142,6 +144,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         _dashboardService.getAttendance(),
         _dashboardService.getLeaves(),
         _attendanceService.getWorkSchedule(),
+        _attendanceService.getHolidays(),
       ]);
 
       if (mounted) {
@@ -151,6 +154,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         final attendance = results[3] as List<AttendanceModel>;
         final leaves = results[4] as List<LeaveModel>;
         final schedule = results[5] as WorkScheduleModel;
+        final holidays = results[6] as List<HolidayModel>;
 
         setState(() {
           _company = companies.isNotEmpty ? companies.first : null;
@@ -159,6 +163,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           _attendance = attendance;
           _leaves = leaves;
           _workSchedule = schedule;
+          _holidays = holidays;
           _isLoading = false;
           if (_company != null) {
             final startDt = DateTime(_company!.startingYear, _company!.startingMonth, 1);
@@ -508,8 +513,22 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     return _workSchedule.isWeeklyOff(date);
   }
 
+  bool _isHoliday(DateTime date) {
+    final dStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    return _holidays.any((h) => h.date == dStr || h.date.startsWith(dStr));
+  }
+
+  HolidayModel? _getHolidayOnDate(DateTime date) {
+    final dStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    try {
+      return _holidays.firstWhere((h) => h.date == dStr || h.date.startsWith(dStr));
+    } catch (_) {
+      return null;
+    }
+  }
+
   bool _isNonWorkingOrLeave(DateTime date) {
-    return _isNonWorkingDay(date) || _isCompanyLeave(date);
+    return _isNonWorkingDay(date) || _isCompanyLeave(date) || _isHoliday(date);
   }
 
   List<UserModel> _getBirthdayEmployees(DateTime date) {
@@ -565,15 +584,16 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         return nonAdminIds.contains(uid) || nonAdminUsernames.contains(uid);
       }).length;
 
-      // Real Data: Future days haven't occurred yet, so absentCount is 0.
-      // Holidays/weekly-off days also have 0 absentCount.
+      // Real Data: "search for that data on that date . if data was not there that is future then dont give any data."
+      // If date is future OR if dayLogs is empty (no attendance recorded yet), absentCount is 0 and rate is 0%.
+      final bool hasRealAttendance = dayLogs.isNotEmpty;
       final int absentCount;
-      if (isFuture || isLeaveOrOff) {
+      if (isFuture || isLeaveOrOff || !hasRealAttendance) {
         absentCount = 0;
       } else {
         absentCount = (totalStaff - presentCount - leaveCount).clamp(0, totalStaff);
       }
-      final rate = isFuture
+      final rate = (isFuture || isLeaveOrOff || !hasRealAttendance)
           ? 0.0
           : ((presentCount / totalStaff) * 100.0).clamp(0.0, 100.0);
 
@@ -593,6 +613,29 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       });
     }
     return result;
+  }
+
+  int? _extractDayPart(String dateStr) {
+    if (dateStr.isEmpty) return null;
+    final dt = DateTime.tryParse(dateStr);
+    if (dt != null) return dt.day;
+    final parts = dateStr.split('-');
+    if (parts.length >= 3) {
+      final match = RegExp(r'^\d+').firstMatch(parts[2]);
+      if (match != null) return int.tryParse(match.group(0)!);
+    }
+    return null;
+  }
+
+  bool _isAttendanceInMonthRange(AttendanceModel a, int year, int month, int startDay, int endDay) {
+    final dt = DateTime.tryParse(a.date);
+    if (dt != null) {
+      return dt.year == year && dt.month == month && dt.day >= startDay && dt.day <= endDay;
+    }
+    final mStr = month.toString().padLeft(2, '0');
+    if (!a.date.startsWith('$year-$mStr-')) return false;
+    final day = _extractDayPart(a.date);
+    return day != null && day >= startDay && day <= endDay;
   }
 
   // 2. Month Trend Data: 4 weeks of the selected month in selectedYear
@@ -619,11 +662,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       final start = w['start'] as int;
       final end = w['end'] as int;
       final weekLogs = _attendance.where((a) {
-        if (!a.date.startsWith('$_selectedYear-$mStr-')) return false;
-        final parts = a.date.split('-');
-        if (parts.length != 3) return false;
-        final dayPart = int.tryParse(parts[2]) ?? 0;
-        if (dayPart < start || dayPart > end) return false;
+        if (!_isAttendanceInMonthRange(a, _selectedYear, targetMonth, start, end)) return false;
         if (_allNonAdminEmployees.isEmpty) return true;
         final uid = a.userId.toLowerCase();
         return nonAdminIds.contains(uid) || nonAdminUsernames.contains(uid);
@@ -646,11 +685,35 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         return false;
       }).length;
 
-      final dateSet = weekLogs.map((a) => a.date).toSet();
-      final workingDays = dateSet.isNotEmpty ? dateSet.length : 5;
-      final possible = totalStaff * workingDays;
-      final absent = (possible - attended - weekLeaveCount).clamp(0, possible);
-      final rate = possible > 0 ? ((attended / possible) * 100.0).clamp(0.0, 100.0) : 0.0;
+      final now = DateTime.now();
+      final todayMidnight = DateTime(now.year, now.month, now.day);
+      final weekStartDt = DateTime(_selectedYear, targetMonth, start);
+      final isFutureWeek = weekStartDt.isAfter(todayMidnight);
+
+      // Real Data: "search for all present,absent,late,leave and update if it is from future upcoming week like give"
+      // If week is in the future AND has no logs, don't generate mock absent data!
+      final int absent;
+      final double rate;
+      if (isFutureWeek && weekLogs.isEmpty) {
+        absent = 0;
+        rate = 0.0;
+      } else if (weekLogs.isEmpty && weekLeaveCount == 0 && weekStartDt.isBefore(todayMidnight)) {
+        absent = 0;
+        rate = 0.0;
+      } else {
+        final effectiveWorkingDays = <int>{};
+        for (int d = start; d <= end; d++) {
+          final dt = DateTime(_selectedYear, targetMonth, d);
+          if (dt.isAfter(todayMidnight)) continue; // Future upcoming day
+          if (!_isNonWorkingOrLeave(dt)) {
+            effectiveWorkingDays.add(d);
+          }
+        }
+        final numWorkingDays = effectiveWorkingDays.isNotEmpty ? effectiveWorkingDays.length : 1;
+        final possible = totalStaff * numWorkingDays;
+        absent = (possible - attended - weekLeaveCount).clamp(0, possible);
+        rate = possible > 0 ? ((attended / possible) * 100.0).clamp(0.0, 100.0) : 0.0;
+      }
 
       result.add({
         'name': w['name'],
@@ -789,12 +852,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     final mStr = targetMonth.toString().padLeft(2, '0');
 
     final empLogs = _attendance.where((a) {
-      if (!a.date.startsWith('$_selectedYear-$mStr-')) return false;
-      final parts = a.date.split('-');
-      if (parts.length != 3) return false;
-      final dayPart = int.tryParse(parts[2]) ?? 0;
-      if (dayPart < startDay || dayPart > endDay) return false;
-
+      if (!_isAttendanceInMonthRange(a, _selectedYear, targetMonth, startDay, endDay)) return false;
       final aUid = a.userId.toLowerCase();
       return aUid == uid || aUid == uname;
     }).toList();
@@ -920,8 +978,19 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   AttendanceModel? _getEmployeeAttendanceOnDate(UserModel emp, String dateStr) {
     final uid = (emp.userId.isNotEmpty ? emp.userId : emp.id).toLowerCase();
     final uname = emp.username.toLowerCase();
+    final targetDate = DateTime.tryParse(dateStr);
     for (final att in _attendance) {
-      if (att.date != dateStr) continue;
+      bool dateMatches = att.date == dateStr || att.date.startsWith(dateStr);
+      if (!dateMatches && targetDate != null) {
+        final parsed = DateTime.tryParse(att.date);
+        if (parsed != null &&
+            parsed.year == targetDate.year &&
+            parsed.month == targetDate.month &&
+            parsed.day == targetDate.day) {
+          dateMatches = true;
+        }
+      }
+      if (!dateMatches) continue;
       final aUid = att.userId.toLowerCase();
       if (aUid == uid || aUid == uname) return att;
     }
@@ -2645,6 +2714,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     final leaveEmployees = <UserModel>[];
     final absentEmployees = <UserModel>[];
 
+    // Real dynamic data: "search for that data on that date . if data was not there that is future then dont give any data."
+    // Only past and current dates can have absences. Future dates never show mock absences.
+    final bool shouldCheckAbsent = !isFutureDate && !isLeaveOrOff;
+
     for (final emp in employees) {
       final att = _getEmployeeAttendanceOnDate(emp, dateStr);
       final isOnLeave = _leaves.any((l) =>
@@ -2661,8 +2734,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         }
       } else if (isOnLeave) {
         leaveEmployees.add(emp);
-      } else if (!isFutureDate && !isLeaveOrOff) {
-        // Real dynamic data: only past or today dates can have absent staff
+      } else if (shouldCheckAbsent) {
+        // Real dynamic data: only dates with real attendance records can have absent staff
         absentEmployees.add(emp);
       }
     }
@@ -2829,19 +2902,24 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     final mStr = targetMonth.toString().padLeft(2, '0');
     final employees = _getStaffActiveInMonth(_selectedYear, targetMonth);
 
+    final now = DateTime.now();
+    final todayMidnight = DateTime(now.year, now.month, now.day);
+    final weekStartDt = DateTime(_selectedYear, targetMonth, startDay);
+    final isFutureWeek = weekStartDt.isAfter(todayMidnight);
+    final hasLogsInWeek = _attendance.any((a) => _isAttendanceInMonthRange(a, _selectedYear, targetMonth, startDay, endDay));
+
     final presentEmployees = <UserModel>[];
     final lateEmployees = <UserModel>[];
     final leaveEmployees = <UserModel>[];
     final absentEmployees = <UserModel>[];
 
+    // Real data: "search for all present,absent,late,leave and update if it is from future upcoming week like give"
+    final bool shouldCheckAbsent = !isFutureWeek && (hasLogsInWeek || _leaves.isNotEmpty);
+
     for (final emp in employees) {
       final userLogs = _attendance.where((a) {
         if (a.userId != emp.userId && a.userId != emp.id && a.userId != emp.username) return false;
-        if (!a.date.startsWith('$_selectedYear-$mStr-')) return false;
-        final parts = a.date.split('-');
-        if (parts.length != 3) return false;
-        final dayPart = int.tryParse(parts[2]) ?? 0;
-        return dayPart >= startDay && dayPart <= endDay;
+        return _isAttendanceInMonthRange(a, _selectedYear, targetMonth, startDay, endDay);
       }).toList();
 
       final hasApprovedLeave = _leaves.any((l) {
@@ -2860,7 +2938,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         presentEmployees.add(emp);
       } else if (hasApprovedLeave) {
         leaveEmployees.add(emp);
-      } else {
+      } else if (shouldCheckAbsent) {
         absentEmployees.add(emp);
       }
     }
@@ -3016,6 +3094,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             leaveEmployees: leaveEmployees,
             dateStr: '$_selectedYear-$mStr-${startDay.toString().padLeft(2, '0')}',
             periodContextLabel: '${currentWeek["name"]} (${_getMonthName(targetMonth)} $startDay - $endDay)',
+            isFutureDate: isFutureWeek || !hasLogsInWeek,
           ),
         ],
       ),
@@ -5043,18 +5122,21 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Header with Work Policy Action
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.center,
+          // Header with Work Policy & Add Holiday Actions (Responsive Wrap: Guaranteed 0 Overflow on all phones)
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
             children: [
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: const [
                   Text(
                     'Attendance',
                     style: TextStyle(
-                      fontSize: 24,
+                      fontSize: 22,
                       fontWeight: FontWeight.w800,
                       color: Colors.white,
                       letterSpacing: -0.4,
@@ -5064,46 +5146,89 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   SizedBox(height: 2),
                   Text(
                     'Track employee attendance',
-                    style: TextStyle(fontSize: 13, color: Color(0xFFBACCC3)),
+                    style: TextStyle(fontSize: 12, color: Color(0xFFBACCC3)),
                   ),
                 ],
               ),
-              InkWell(
-                onTap: _showWorkScheduleAndBreakPolicySheet,
-                borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF10B981),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  InkWell(
+                    onTap: _showAddHolidaySheet,
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: const Color(0xFF34D399).withValues(alpha: 0.30),
-                      width: 1.0,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.25),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      Icon(Icons.timer_outlined, size: 16, color: Colors.white),
-                      SizedBox(width: 5),
-                      Text(
-                        'Work Policy',
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF7C3AED),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: const Color(0xFF8B5CF6).withValues(alpha: 0.50),
+                          width: 1.0,
                         ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF7C3AED).withValues(alpha: 0.35),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
-                    ],
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Icon(Icons.add_rounded, size: 15, color: Colors.white),
+                          SizedBox(width: 4),
+                          Text(
+                            'Add Holiday',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 6),
+                  InkWell(
+                    onTap: _showWorkScheduleAndBreakPolicySheet,
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: const Color(0xFF34D399).withValues(alpha: 0.30),
+                          width: 1.0,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.25),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Icon(Icons.timer_outlined, size: 15, color: Colors.white),
+                          SizedBox(width: 4),
+                          Text(
+                            'Work Policy',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -5364,6 +5489,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
 
               final birthdayEmployees = _getBirthdayEmployees(dayDate);
               final hasBirthday = birthdayEmployees.isNotEmpty;
+              final holiday = _getHolidayOnDate(dayDate);
+              final isHoliday = holiday != null;
               final isLeaveOrOff = _isNonWorkingOrLeave(dayDate);
 
               Color bgColor = Colors.transparent;
@@ -5384,6 +5511,12 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   ),
                 ];
                 onTapAction = () => _showBirthdayEmployeesDialog(dayDate, birthdayEmployees);
+              } else if (isHoliday) {
+                // Violet color for company holiday (tap displays holiday description)
+                bgColor = const Color(0xFF7C3AED).withValues(alpha: 0.35);
+                borderColor = const Color(0xFF8B5CF6).withValues(alpha: 0.65);
+                textColor = const Color(0xFFC4B5FD);
+                onTapAction = () => _showHolidayDetailsDialog(holiday);
               } else if (isLeaveOrOff) {
                 // Violet color for leaves & non-working days (unclickable: "we cant touch that because that is leave")
                 bgColor = const Color(0xFF7C3AED).withValues(alpha: 0.35);
@@ -5904,6 +6037,329 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 color: att.status.toLowerCase() == 'late' ? const Color(0xFFF59E0B) : const Color(0xFF34D399),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------
+  // ADD COMPANY HOLIDAY SHEET
+  // ---------------------------------------------------------
+  void _showAddHolidaySheet() {
+    final nameCtrl = TextEditingController();
+    final descCtrl = TextEditingController();
+    DateTime pickedDate = _selectedCalendarDate;
+    bool isSaving = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final media = MediaQuery.of(ctx);
+          final dateStr = '${pickedDate.year}-${pickedDate.month.toString().padLeft(2, '0')}-${pickedDate.day.toString().padLeft(2, '0')}';
+
+          return Container(
+            constraints: BoxConstraints(maxHeight: media.size.height * 0.88),
+            padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
+            decoration: BoxDecoration(
+              color: const Color(0xFF042018),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.45), width: 1.2),
+            ),
+            child: SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF7C3AED).withValues(alpha: 0.25),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: const Color(0xFF8B5CF6)),
+                              ),
+                              child: const Icon(Icons.celebration_rounded, color: Color(0xFFC4B5FD), size: 20),
+                            ),
+                            const SizedBox(width: 10),
+                            const Text(
+                              'Add Company Holiday',
+                              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Colors.white),
+                            ),
+                          ],
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded, color: Color(0xFFCBD5E1)),
+                          onPressed: () => Navigator.pop(ctx),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Holidays will be highlighted in violet on both calendar and dashboard.',
+                      style: TextStyle(fontSize: 12, color: Color(0xFFBACCC3)),
+                    ),
+                    const SizedBox(height: 16),
+
+                    _buildCompanyTypingBox(
+                      controller: nameCtrl,
+                      labelText: 'Holiday Title *',
+                      hintText: 'e.g. Diwali Festival, New Year...',
+                      prefixIcon: Icons.celebration_rounded,
+                    ),
+                    const SizedBox(height: 14),
+
+                    _buildCompanyTypingBox(
+                      controller: descCtrl,
+                      labelText: 'Description / Note',
+                      hintText: 'e.g. Official national or corporate festival holiday',
+                      prefixIcon: Icons.notes_rounded,
+                      maxLines: 2,
+                    ),
+                    const SizedBox(height: 14),
+
+                    const Text(
+                      'Holiday Date *',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFCBD5E1)),
+                    ),
+                    const SizedBox(height: 6),
+                    InkWell(
+                      onTap: () async {
+                        final initial = pickedDate;
+                        final first = DateTime(2020);
+                        final last = DateTime(2035);
+                        final res = await showDatePicker(
+                          context: ctx,
+                          initialDate: initial,
+                          firstDate: first,
+                          lastDate: last,
+                          builder: (context, child) => Theme(
+                            data: ThemeData.dark().copyWith(
+                              colorScheme: const ColorScheme.dark(
+                                primary: Color(0xFF8B5CF6),
+                                onPrimary: Colors.white,
+                                surface: Color(0xFF042018),
+                                onSurface: Colors.white,
+                              ),
+                            ),
+                            child: child!,
+                          ),
+                        );
+                        if (res != null) {
+                          setSheetState(() => pickedDate = res);
+                        }
+                      },
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0A2218).withValues(alpha: 0.85),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.45)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.event_rounded, color: Color(0xFFC4B5FD), size: 20),
+                            const SizedBox(width: 10),
+                            Text(
+                              dateStr,
+                              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700),
+                            ),
+                            const Spacer(),
+                            const Icon(Icons.calendar_month_rounded, color: Color(0xFF8B5CF6), size: 18),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+
+                    InkWell(
+                      onTap: isSaving
+                          ? null
+                          : () async {
+                              final name = nameCtrl.text.trim();
+                              if (name.isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Please enter a holiday title')),
+                                );
+                                return;
+                              }
+                              final messenger = ScaffoldMessenger.of(context);
+                              final rootNav = Navigator.of(ctx);
+                              setSheetState(() => isSaving = true);
+                              try {
+                                final h = await _attendanceService.addHoliday(
+                                  name: name,
+                                  date: dateStr,
+                                  description: descCtrl.text.trim(),
+                                );
+                                final holiday = h ?? HolidayModel(
+                                  id: 'holiday-${DateTime.now().millisecondsSinceEpoch}',
+                                  name: name,
+                                  date: dateStr,
+                                  description: descCtrl.text.trim(),
+                                );
+                                setState(() {
+                                  _holidays.removeWhere((x) => x.date == dateStr);
+                                  _holidays.add(holiday);
+                                });
+                                rootNav.pop();
+                                messenger.showSnackBar(
+                                  SnackBar(
+                                    backgroundColor: const Color(0xFF7C3AED),
+                                    content: Text('✓ Holiday "$name" added for $dateStr!'),
+                                  ),
+                                );
+                              } catch (e) {
+                                setSheetState(() => isSaving = false);
+                              }
+                            },
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF7C3AED),
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF7C3AED).withValues(alpha: 0.4),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        alignment: Alignment.center,
+                        child: isSaving
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Text(
+                                'Save Holiday',
+                                style: TextStyle(
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------
+  // SHOW HOLIDAY DETAILS DIALOG
+  // ---------------------------------------------------------
+  void _showHolidayDetailsDialog(HolidayModel holiday) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF042018),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: const Color(0xFF8B5CF6).withValues(alpha: 0.6), width: 1.2),
+        ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF7C3AED).withValues(alpha: 0.25),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFF8B5CF6)),
+              ),
+              child: const Icon(Icons.celebration_rounded, color: Color(0xFFC4B5FD), size: 22),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                holiday.name,
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF7C3AED).withValues(alpha: 0.20),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.45)),
+              ),
+              child: const Text(
+                'Official Company Holiday',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFFC4B5FD)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Icon(Icons.event_rounded, size: 16, color: Color(0xFFC4B5FD)),
+                const SizedBox(width: 6),
+                Text(
+                  'Date: ${holiday.date}',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              holiday.description != null && holiday.description!.isNotEmpty
+                  ? holiday.description!
+                  : 'Official company holiday. No employee attendance or check-in required on this date.',
+              style: const TextStyle(fontSize: 12.5, color: Color(0xFFBACCC3)),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton.icon(
+            icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444), size: 16),
+            label: const Text('Delete', style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.w700)),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              setState(() {
+                _holidays.removeWhere((h) => h.id == holiday.id || h.date == holiday.date);
+              });
+              await _attendanceService.deleteHoliday(holiday.id);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    backgroundColor: const Color(0xFF10B981),
+                    content: Text('Holiday "${holiday.name}" deleted.'),
+                  ),
+                );
+              }
+            },
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF7C3AED),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
           ),
         ],
       ),
@@ -6659,11 +7115,12 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                             label: const Text('Clear all', style: TextStyle(color: Color(0xFFEF4444), fontSize: 11.5, fontWeight: FontWeight.w700)),
                             onPressed: () async {
                               if (myId.isNotEmpty) {
-                                await _notificationService.clearAll(myId);
+                                _notifications.clear();
                                 if (mounted) {
-                                  setState(() => _notifications = []);
+                                  setState(() {});
                                   setSheetState(() {});
                                 }
+                                await _notificationService.clearAll(myId);
                               }
                             },
                           ),
@@ -6744,7 +7201,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                               setState(() {});
                                               setSheetState(() {});
                                             }
-                                            _notificationService.markAsRead(notif.id).catchError((_) => false);
+                                            _notificationService.markAsRead(notif.id, mongoId: notif.mongoId).catchError((_) => false);
                                           }
                                           sheetNav.pop();
 
@@ -6768,79 +7225,34 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                       );
                                     },
                                   ))
-                            : ListView(
-                                children: [
-                                  _buildNotificationCard(
-                                    icon: Icons.assignment_rounded,
-                                    iconColor: const Color(0xFF10B981),
-                                    title: 'Tasks Active',
-                                    body: '$_activeTasksCount open tasks currently tracked in Company Workspace.',
-                                    time: 'Just now',
-                                    isUnread: true,
-                                    onTap: () {
-                                      Navigator.pop(ctx);
-                                      Navigator.of(this.context).push(
-                                        MaterialPageRoute(
-                                          builder: (pCtx) => TasksView(
-                                            user: widget.user,
-                                            onBack: () => Navigator.of(pCtx).pop(),
-                                          ),
+                            : Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 40),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(16),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                                          shape: BoxShape.circle,
+                                          border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.3)),
                                         ),
-                                      );
-                                    },
+                                        child: const Icon(Icons.notifications_off_outlined, size: 40, color: Color(0xFF34D399)),
+                                      ),
+                                      const SizedBox(height: 14),
+                                      const Text(
+                                        'No notifications',
+                                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      const Text(
+                                        'You have cleared all notifications.',
+                                        style: TextStyle(fontSize: 12.5, color: Color(0xFFBACCC3)),
+                                      ),
+                                    ],
                                   ),
-                                  _buildNotificationCard(
-                                    icon: Icons.description_outlined,
-                                    iconColor: const Color(0xFFF59E0B),
-                                    title: 'Leave Request',
-                                    body: _leaves.isNotEmpty
-                                        ? '${_leaves.first.userId} has requested leave.'
-                                        : 'Sneha Patel has requested 2 days leave.',
-                                    time: '2 minutes ago',
-                                    isUnread: true,
-                                    onTap: () {
-                                      Navigator.pop(ctx);
-                                      setState(() => _selectedBottomTab = 3);
-                                    },
-                                  ),
-                                  _buildNotificationCard(
-                                    icon: Icons.group_add_outlined,
-                                    iconColor: const Color(0xFF06B6D4),
-                                    title: 'New Employee Added',
-                                    body: _users.isNotEmpty
-                                        ? '${_users.first.name.isNotEmpty ? _users.first.name : _users.first.username} is active in team.'
-                                        : 'Arjun Kumar has been added.',
-                                    time: '1 hour ago',
-                                    isUnread: false,
-                                    onTap: () {
-                                      Navigator.pop(ctx);
-                                      setState(() => _selectedBottomTab = 1);
-                                    },
-                                  ),
-                                  _buildNotificationCard(
-                                    icon: Icons.notifications_active_outlined,
-                                    iconColor: const Color(0xFFEF4444),
-                                    title: 'Attendance Alert',
-                                    body: '${(_users.length - _attendance.length).clamp(0, 999)} employees are absent today.',
-                                    time: '3 hours ago',
-                                    isUnread: false,
-                                    onTap: () {
-                                      Navigator.pop(ctx);
-                                      setState(() => _selectedBottomTab = 2);
-                                    },
-                                  ),
-                                  _buildNotificationCard(
-                                    icon: Icons.settings_suggest_outlined,
-                                    iconColor: const Color(0xFF8B5CF6),
-                                    title: 'System Update',
-                                    body: '5m GPS Geofence validation is active on device.',
-                                    time: '1 day ago',
-                                    isUnread: false,
-                                    onTap: () {
-                                      Navigator.pop(ctx);
-                                    },
-                                  ),
-                                ],
+                                ),
                               ),
                       ),
                     ],

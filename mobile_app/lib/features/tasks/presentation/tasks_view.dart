@@ -7,6 +7,7 @@ import '../../dashboard/data/dashboard_service.dart';
 import '../data/project_model.dart';
 import '../data/task_model.dart';
 import '../data/task_service.dart';
+import '../../../core/widgets/brand_logo.dart';
 
 /// Screen: Enterprise Tasks, Projects & Schedules
 ///
@@ -534,16 +535,19 @@ class _TasksViewState extends State<TasksView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // 1. Pinned Top Header with Back Arrow
+                  // 1. Pinned Top Header with Brand, Company Name, Back Arrow & Avatar
                   _buildHeader(),
 
-                  // 2. Primary Segment Switcher: [General Task] vs [Projects]
+                  // 2. Section Header Title & Subtitle (Dashboard Style)
+                  _buildSectionHeader(),
+
+                  // 3. Primary Segment Switcher: [General Task] vs [Projects]
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                     child: _buildMainSegmentSwitcher(),
                   ),
 
-                  // 3. Tab Body
+                  // 4. Tab Body
                   Expanded(
                     child: _isLoading
                         ? const Center(child: CircularProgressIndicator(color: Color(0xFF10B981)))
@@ -566,67 +570,190 @@ class _TasksViewState extends State<TasksView> {
     );
   }
 
-  // 1. Top Header
+  // 1. Top App Bar (Matches Company Dashboard App Bar Exactly)
   Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
-      child: Row(
-        children: [
-          // Back Button / Menu
-          InkWell(
-            onTap: () {
-              if (_selectedProjectForDetail != null) {
-                setState(() => _selectedProjectForDetail = null);
-                return;
-              }
-              if (widget.onBack != null) {
-                widget.onBack!();
-              } else if (Navigator.of(context).canPop()) {
-                Navigator.of(context).pop();
-              }
-            },
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.35),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.25), width: 1.0),
-              ),
-              child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
-            ),
-          ),
-          const SizedBox(width: 12),
+    final currentUser = widget.user ?? _loggedInUser;
+    final companyName = (currentUser?.companyName?.isNotEmpty == true)
+        ? currentUser!.companyName!
+        : 'Enterprise Workspace';
+    final userChar = (currentUser?.name.isNotEmpty == true)
+        ? currentUser!.name[0].toUpperCase()
+        : ((currentUser?.username.isNotEmpty == true) ? currentUser!.username[0].toUpperCase() : 'U');
 
-          // Title & Subtitle (Title includes 'Tasks & Schedules' for compatibility)
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text(
-                  'Tasks & Schedules',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Left: Squircle Back Button
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              child: InkWell(
+                onTap: () {
+                  if (_selectedProjectForDetail != null) {
+                    setState(() => _selectedProjectForDetail = null);
+                    return;
+                  }
+                  if (widget.onBack != null) {
+                    widget.onBack!();
+                  } else if (Navigator.of(context).canPop()) {
+                    Navigator.of(context).pop();
+                  }
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        const Color(0xFF1F4839).withValues(alpha: 0.45),
+                        const Color(0xFF102D21).withValues(alpha: 0.55),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.28)),
+                  ),
+                  child: const Icon(
+                    Icons.arrow_back_rounded,
                     color: Colors.white,
-                    letterSpacing: -0.3,
+                    size: 21,
                   ),
                 ),
-                SizedBox(height: 1),
-                Text(
-                  'Company Workspace & Project Schedules',
-                  style: TextStyle(fontSize: 11, color: Color(0xFFBACCC3)),
-                ),
-              ],
+              ),
             ),
           ),
 
-          // Refresh Button
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: Color(0xFF34D399), size: 21),
-            tooltip: 'Refresh',
-            onPressed: _loadInitialData,
+          // Center: Logo + "ReGen" Brand + Subtitle (Company Name)
+          Row(
+            children: [
+              const BrandLogo(size: 28, borderRadius: 8),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'ReGen',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      letterSpacing: -0.2,
+                      shadows: [
+                        Shadow(offset: Offset(0, 1), blurRadius: 4, color: Colors.black54),
+                      ],
+                    ),
+                  ),
+                  SizedBox(
+                    width: 130,
+                    child: Text(
+                      companyName,
+                      style: const TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF94A3B8),
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+
+          // Right: Refresh Button & Avatar in Squircle Containers
+          Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                  child: InkWell(
+                    onTap: _loadInitialData,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            const Color(0xFF1F4839).withValues(alpha: 0.45),
+                            const Color(0xFF102D21).withValues(alpha: 0.55),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.28)),
+                      ),
+                      child: const Icon(
+                        Icons.refresh_rounded,
+                        color: Color(0xFF34D399),
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      const Color(0xFF1F4839).withValues(alpha: 0.45),
+                      const Color(0xFF102D21).withValues(alpha: 0.55),
+                    ],
+                  ),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.40)),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  userChar,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Section Header (Matches Company Dashboard Sections Exactly)
+  Widget _buildSectionHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: const [
+          Text(
+            'Tasks & Schedules',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+              letterSpacing: -0.4,
+              shadows: [Shadow(offset: Offset(0, 2), blurRadius: 4, color: Colors.black45)],
+            ),
+          ),
+          SizedBox(height: 2),
+          Text(
+            'Manage tasks, projects & workforce schedules',
+            style: TextStyle(fontSize: 12, color: Color(0xFFBACCC3)),
           ),
         ],
       ),
@@ -2961,6 +3088,9 @@ class _TasksViewState extends State<TasksView> {
                   cursorColor: const Color(0xFF34D399),
                   style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w600),
                   decoration: InputDecoration(
+                    isDense: true,
+                    filled: false,
+                    fillColor: Colors.transparent,
                     hintText: hintText,
                     hintStyle: const TextStyle(
                       color: Color(0xFF94A3B8),
@@ -2968,7 +3098,10 @@ class _TasksViewState extends State<TasksView> {
                       fontWeight: FontWeight.normal,
                     ),
                     border: InputBorder.none,
-                    isDense: true,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    errorBorder: InputBorder.none,
                     contentPadding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                   onChanged: onChanged,
@@ -3118,20 +3251,26 @@ class _TasksViewState extends State<TasksView> {
           {'label': 'Incomplete', 'idx': 3, 'color': const Color(0xFFEF4444), 'icon': Icons.cancel_outlined},
         ];
 
-        return Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFF042018),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-            border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.35), width: 1.0),
-          ),
-          child: SafeArea(
-            top: false,
-            bottom: true,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+        final media = MediaQuery.of(ctx);
+        final maxHeight = media.size.height * 0.70;
+
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF042018),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+              border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.35), width: 1.0),
+            ),
+            child: SafeArea(
+              top: false,
+              bottom: true,
+              child: SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -3201,10 +3340,11 @@ class _TasksViewState extends State<TasksView> {
               ),
             ),
           ),
-        );
-      },
-    );
-  }
+        ),
+      );
+    },
+  );
+}
 
   // Create Project Sheet
   void _showCreateProjectSheet() {

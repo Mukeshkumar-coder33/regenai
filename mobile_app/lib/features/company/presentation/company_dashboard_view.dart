@@ -77,7 +77,6 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   List<NotificationModel> _notifications = [];
   int get _unreadNotificationCount => _notifications.where((n) => !n.read).length;
 
-  int _selectedLeaveFilter = 0; // 0=All, 1=Pending, 2=Approved, 3=Rejected
   int _selectedNotificationFilter = 0; // 0=All, 1=Unread, 2=Tasks, 3=Leave, 4=Attendance, 5=System
 
   bool _isLoading = true;
@@ -566,7 +565,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       final totalStaff = staffList.isNotEmpty ? staffList.length : (_totalStaffInYear > 0 ? _totalStaffInYear : 1);
 
       final dayLogs = _attendance.where((a) {
-        if (a.date != dateStr) return false;
+        final matches = a.date.startsWith(dateStr) || (DateTime.tryParse(a.date)?.toIso8601String().startsWith(dateStr) ?? false);
+        if (!matches) return false;
         if (_allNonAdminEmployees.isEmpty) return true;
         final uid = a.userId.toLowerCase();
         return nonAdminIds.contains(uid) || nonAdminUsernames.contains(uid);
@@ -1301,14 +1301,6 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                       ),
                     ),
 
-                    if (widget.user.canSwitchToSuperAdmin) ...[
-                      const SizedBox(height: 8),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: _buildSuperAdminSwitchBanner(),
-                      ),
-                    ],
-
                     const SizedBox(height: 6),
 
                     // Section Label
@@ -1340,125 +1332,143 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
 
                     // The 7 Operations List (Exact Match to User Image 2)
                     Expanded(
-                      child: ListView(
+                      child: SingleChildScrollView(
+                        physics: const ClampingScrollPhysics(),
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                        children: [
-                          _buildCompanyMenuItem(
-                            icon: Icons.assignment_ind_outlined,
-                            title: 'Employee Management',
-                            subtitle: '$totalStaff registered team members',
-                            onTap: () {
-                              Navigator.of(context).pop();
-                              setState(() => _selectedBottomTab = 1);
-                            },
-                          ),
-                          _buildCompanyMenuItem(
-                            icon: Icons.calendar_today_outlined,
-                            title: 'Attendance',
-                            subtitle: '$activeStaff logs recorded',
-                            onTap: () {
-                              Navigator.of(context).pop();
-                              setState(() => _selectedBottomTab = 2);
-                            },
-                          ),
-                          _buildCompanyMenuItem(
-                            icon: Icons.assignment_outlined,
-                            title: 'Tasks',
-                            subtitle: '$_activeTasksCount open tasks in progress',
-                            onTap: () {
-                              Navigator.of(context).pop();
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => TasksView(
-                                    user: widget.user,
-                                    onBack: () => Navigator.of(context).pop(),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _buildCompanyMenuItem(
+                              icon: Icons.assignment_ind_outlined,
+                              title: 'Employee Management',
+                              subtitle: '$totalStaff registered team members',
+                              onTap: () {
+                                Navigator.of(context).pop();
+                                setState(() => _selectedBottomTab = 1);
+                              },
+                            ),
+                            _buildCompanyMenuItem(
+                              icon: Icons.calendar_today_outlined,
+                              title: 'Attendance',
+                              subtitle: '$activeStaff logs recorded',
+                              onTap: () {
+                                Navigator.of(context).pop();
+                                setState(() => _selectedBottomTab = 2);
+                              },
+                            ),
+                            _buildCompanyMenuItem(
+                              icon: Icons.assignment_outlined,
+                              title: 'Tasks',
+                              subtitle: '$_activeTasksCount open tasks in progress',
+                              onTap: () {
+                                Navigator.of(context).pop();
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => TasksView(
+                                      user: widget.user,
+                                      onBack: () => Navigator.of(context).pop(),
+                                    ),
                                   ),
-                                ),
-                              );
-                            },
-                          ),
-                          _buildCompanyMenuItem(
-                            icon: Icons.event_busy_outlined,
-                            title: 'Leaves & Holidays',
-                            subtitle: pendingLeavesCount > 0
-                                ? '$pendingLeavesCount pending • Review approvals'
-                                : 'Review leave approvals & company holidays',
-                            onTap: () {
-                              Navigator.of(context).pop();
-                              setState(() => _selectedBottomTab = 3);
-                            },
-                          ),
-                          _buildCompanyMenuItem(
-                            icon: Icons.payments_outlined,
-                            title: 'Payroll',
-                            subtitle: 'Automated payroll processing & slips',
-                            onTap: () {
-                              Navigator.of(context).pop();
-                              _showPayrollSheet();
-                            },
-                          ),
-                          _buildCompanyMenuItem(
-                            icon: Icons.bar_chart_rounded,
-                            title: 'Reports',
-                            subtitle: 'Workforce analytics & monthly summary',
-                            onTap: () {
-                              Navigator.of(context).pop();
-                              _showAttendanceReportSheet();
-                            },
-                          ),
-                          _buildCompanyMenuItem(
-                            icon: Icons.settings_outlined,
-                            title: 'Settings',
-                            subtitle: 'Company profile & working hours configuration',
-                            onTap: () {
-                              Navigator.of(context).pop();
-                              setState(() {
-                                _selectedBottomTab = 4;
-                                _selectedProfileSubTab = 2;
-                              });
-                            },
-                          ),
-                        ],
+                                );
+                              },
+                            ),
+                            _buildCompanyMenuItem(
+                              icon: Icons.event_busy_outlined,
+                              title: 'Leaves & Holidays',
+                              subtitle: pendingLeavesCount > 0
+                                  ? '$pendingLeavesCount pending • Review approvals'
+                                  : 'Review leave approvals & company holidays',
+                              onTap: () {
+                                Navigator.of(context).pop();
+                                setState(() => _selectedBottomTab = 3);
+                              },
+                            ),
+                            _buildCompanyMenuItem(
+                              icon: Icons.payments_outlined,
+                              title: 'Payroll',
+                              subtitle: 'Automated payroll processing & slips',
+                              onTap: () {
+                                Navigator.of(context).pop();
+                                _showPayrollSheet();
+                              },
+                            ),
+                            _buildCompanyMenuItem(
+                              icon: Icons.bar_chart_rounded,
+                              title: 'Reports',
+                              subtitle: 'Workforce analytics & monthly summary',
+                              onTap: () {
+                                Navigator.of(context).pop();
+                                _showAttendanceReportSheet();
+                              },
+                            ),
+                            _buildCompanyMenuItem(
+                              icon: Icons.settings_outlined,
+                              title: 'Settings',
+                              subtitle: 'Company profile & working hours configuration',
+                              onTap: () {
+                                Navigator.of(context).pop();
+                                setState(() {
+                                  _selectedBottomTab = 4;
+                                  _selectedProfileSubTab = 2;
+                                });
+                              },
+                            ),
+                            if (widget.user.canSwitchToSuperAdmin) ...[
+                              const SizedBox(height: 10),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 4),
+                                child: _buildSuperAdminSwitchBanner(),
+                              ),
+                              const SizedBox(height: 6),
+                            ],
+                          ],
+                        ),
                       ),
                     ),
 
-                    // Bottom Sign Out Button
+                    // Bottom Sign Out Button (Bright Solid Red)
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 14),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(16),
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                          child: InkWell(
-                            onTap: () {
-                              Navigator.of(context).pop();
-                              _confirmLogout();
-                            },
-                            borderRadius: BorderRadius.circular(16),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFEF4444).withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: const Color(0xFFEF4444).withValues(alpha: 0.35),
+                        child: InkWell(
+                          onTap: () {
+                            Navigator.of(context).pop();
+                            _confirmLogout();
+                          },
+                          borderRadius: BorderRadius.circular(16),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFDC2626), // Solid Bright Red
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: const Color(0xFFEF4444),
+                                width: 1.2,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFFDC2626).withValues(alpha: 0.55),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 3),
                                 ),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: const [
-                                  Icon(Icons.logout_rounded, color: Color(0xFFF87171), size: 18),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Sign Out',
-                                    style: TextStyle(
-                                      color: Color(0xFFF87171),
-                                      fontSize: 13.5,
-                                      fontWeight: FontWeight.w700,
-                                    ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: const [
+                                Icon(Icons.logout_rounded, color: Colors.white, size: 20),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Sign Out',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14.5,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.3,
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -2737,6 +2747,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       } else if (shouldCheckAbsent) {
         // Real dynamic data: only dates with real attendance records can have absent staff
         absentEmployees.add(emp);
+      } else if (isFutureDate && !isLeaveOrOff) {
+        // Upcoming shift scheduled for this employee
+        presentEmployees.add(emp);
       }
     }
 
@@ -2940,6 +2953,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         leaveEmployees.add(emp);
       } else if (shouldCheckAbsent) {
         absentEmployees.add(emp);
+      } else if (isFutureWeek) {
+        presentEmployees.add(emp);
       }
     }
 
@@ -3119,16 +3134,21 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // 1. Interactive 4-Way Status Tabs (Present, Absent, Late, Leave)
+        // 1. Interactive 4-Way Status Tabs (Present/Scheduled, Absent, Late, Leave)
         Row(
           children: [
-            _buildInteractiveTrendStatusTab('present', 'Present', presentCount, const Color(0xFF34D399)),
+            _buildInteractiveTrendStatusTab(
+              'present',
+              isFutureDate ? 'Scheduled' : 'Present',
+              presentCount,
+              isFutureDate ? const Color(0xFF38BDF8) : const Color(0xFF34D399),
+            ),
             const SizedBox(width: 6),
             _buildInteractiveTrendStatusTab('absent', 'Absent', absentCount, const Color(0xFFFB7185)),
             const SizedBox(width: 6),
             _buildInteractiveTrendStatusTab('late', 'Late', lateCount, const Color(0xFFFCD34D)),
             const SizedBox(width: 6),
-            _buildInteractiveTrendStatusTab('leave', 'Leave', leaveCount, const Color(0xFF38BDF8)),
+            _buildInteractiveTrendStatusTab('leave', 'Leave', leaveCount, const Color(0xFF8B5CF6)),
           ],
         ),
         const SizedBox(height: 12),
@@ -3222,9 +3242,16 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     final att = _getEmployeeAttendanceOnDate(employee, dateStr);
     final empName = employee.name.isNotEmpty ? employee.name : employee.username;
     final empId = employee.userId.isNotEmpty ? employee.userId : (employee.id.isNotEmpty ? employee.id : 'N/A');
+    final dt = DateTime.tryParse(dateStr);
+    final isTargetFuture = dt != null && dt.isAfter(DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day));
+
     final phone = employee.phone?.isNotEmpty == true ? employee.phone! : '--';
-    final checkIn = att?.checkIn?.isNotEmpty == true ? att!.checkIn! : 'No check-in record';
-    final checkOut = att?.checkOut?.isNotEmpty == true ? att!.checkOut! : '--';
+    final checkIn = att?.checkIn?.isNotEmpty == true
+        ? att!.checkIn!
+        : (isTargetFuture ? 'Scheduled: ${_workSchedule.checkInTime}' : 'No check-in record');
+    final checkOut = att?.checkOut?.isNotEmpty == true
+        ? att!.checkOut!
+        : (isTargetFuture ? 'Scheduled: ${_workSchedule.checkOutTime}' : '--');
     final dept = employee.department?.isNotEmpty == true
         ? employee.department!
         : (employee.designation?.isNotEmpty == true ? employee.designation! : 'Team Member');
@@ -3232,14 +3259,14 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     String statusLabel = 'Absent';
     Color statusColor = const Color(0xFFFB7185);
     if (_selectedTrendStatusTab == 'present') {
-      statusLabel = 'Present';
-      statusColor = const Color(0xFF34D399);
+      statusLabel = isTargetFuture ? 'Upcoming Shift' : 'Present';
+      statusColor = isTargetFuture ? const Color(0xFF38BDF8) : const Color(0xFF34D399);
     } else if (_selectedTrendStatusTab == 'late') {
       statusLabel = 'Late';
       statusColor = const Color(0xFFFCD34D);
     } else if (_selectedTrendStatusTab == 'leave') {
       statusLabel = 'On Leave';
-      statusColor = const Color(0xFF38BDF8);
+      statusColor = const Color(0xFF8B5CF6);
     } else {
       statusLabel = 'Absent';
       statusColor = const Color(0xFFFB7185);
@@ -3454,6 +3481,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             }
           } else if (_selectedTrendStatusTab == 'leave') {
             timingInfo = 'Approved time off';
+          } else if (isFutureDate && _selectedTrendStatusTab == 'present') {
+            timingInfo = 'Upcoming Shift: Starts ${_workSchedule.checkInTime}';
           } else if (_selectedTrendFilter == 'Month') {
             final stats = _getEmployeeWeekAttendanceStats(emp, _selectedMonthIndex, 1, 31);
             if ((stats['totalAttended'] as int) > 0) {
@@ -5150,8 +5179,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   ),
                 ],
               ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   InkWell(
                     onTap: _showAddHolidaySheet,
@@ -5190,7 +5221,6 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 6),
                   InkWell(
                     onTap: _showWorkScheduleAndBreakPolicySheet,
                     borderRadius: BorderRadius.circular(10),
@@ -6367,24 +6397,50 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   }
 
   // ---------------------------------------------------------
-  // TAB 3: LEAVE MANAGEMENT (Image 1, Screen 5)
+  // TAB 3: LEAVE MANAGEMENT (Searchable by Employee across All Statuses)
   // ---------------------------------------------------------
+  String _formatLeaveAppliedDateTime(String dateStr) {
+    if (dateStr.isEmpty) return '';
+    final dt = DateTime.tryParse(dateStr);
+    if (dt == null) return dateStr;
+    final day = dt.day.toString().padLeft(2, '0');
+    final month = _getMonthName(dt.month).substring(0, 3);
+    final year = dt.year;
+    final hour = dt.hour == 0 ? 12 : (dt.hour > 12 ? dt.hour - 12 : dt.hour);
+    final minute = dt.minute.toString().padLeft(2, '0');
+    final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+    return '$day $month $year, $hour:$minute $ampm';
+  }
+
   Widget _buildLeaveTab() {
     List<LeaveModel> filtered = _leaves;
     if (_leaveSearchQuery.isNotEmpty) {
       final q = _leaveSearchQuery.toLowerCase();
-      filtered = filtered.where((l) =>
-        l.userId.toLowerCase().contains(q) ||
-        l.type.toLowerCase().contains(q) ||
-        (l.reason?.toLowerCase().contains(q) ?? false)
-      ).toList();
-    }
-    if (_selectedLeaveFilter == 1) {
-      filtered = filtered.where((l) => l.isPending).toList();
-    } else if (_selectedLeaveFilter == 2) {
-      filtered = filtered.where((l) => l.isApproved).toList();
-    } else if (_selectedLeaveFilter == 3) {
-      filtered = filtered.where((l) => l.isRejected).toList();
+      filtered = filtered.where((l) {
+        // 1. Match User ID
+        if (l.userId.toLowerCase().contains(q)) return true;
+
+        // 2. Match Employee Name, Username, Department from _users
+        final matchedEmp = _users.where((u) =>
+          u.userId.toLowerCase() == l.userId.toLowerCase() ||
+          u.id.toLowerCase() == l.userId.toLowerCase() ||
+          u.username.toLowerCase() == l.userId.toLowerCase()
+        );
+        if (matchedEmp.isNotEmpty) {
+          final emp = matchedEmp.first;
+          if (emp.name.toLowerCase().contains(q)) return true;
+          if (emp.username.toLowerCase().contains(q)) return true;
+          if (emp.department?.toLowerCase().contains(q) ?? false) return true;
+        }
+
+        // 3. Match Leave Type, Reason, or Status (Pending, Approved, Not Approved)
+        if (l.type.toLowerCase().contains(q)) return true;
+        if (l.displayType.toLowerCase().contains(q)) return true;
+        if (l.reason?.toLowerCase().contains(q) ?? false) return true;
+        if (l.displayStatus.toLowerCase().contains(q)) return true;
+        if (q.contains('not approved') && l.isNotApproved) return true;
+        return false;
+      }).toList();
     }
 
     return Padding(
@@ -6396,7 +6452,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           const Text(
             'Leave Management',
             style: TextStyle(
-              fontSize: 24,
+              fontSize: 22,
               fontWeight: FontWeight.w800,
               color: Colors.white,
               letterSpacing: -0.4,
@@ -6405,41 +6461,36 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           ),
           const SizedBox(height: 2),
           const Text(
-            'Manage leave requests',
-            style: TextStyle(fontSize: 13, color: Color(0xFFBACCC3)),
+            'Search & review employee leave applications',
+            style: TextStyle(fontSize: 12, color: Color(0xFFBACCC3)),
           ),
           const SizedBox(height: 14),
 
-          // Search Bar (Image 2 Design)
+          // Search Bar: Unified Company Typing Box (Filters removed per user specification)
           _buildCompanyTypingBox(
             controller: _leaveSearchController,
-            hintText: 'Search leave requests...',
+            hintText: 'Search employee name, ID or leave...',
             prefixIcon: Icons.search_rounded,
             onChanged: (val) => setState(() => _leaveSearchQuery = val),
-          ),
-          const SizedBox(height: 12),
-
-          // Filter Segment Chips: [All] [Pending] [Approved] [Rejected]
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _buildSegmentChip('All', 0, _selectedLeaveFilter, (idx) => setState(() => _selectedLeaveFilter = idx)),
-                const SizedBox(width: 8),
-                _buildSegmentChip('Pending', 1, _selectedLeaveFilter, (idx) => setState(() => _selectedLeaveFilter = idx)),
-                const SizedBox(width: 8),
-                _buildSegmentChip('Approved', 2, _selectedLeaveFilter, (idx) => setState(() => _selectedLeaveFilter = idx)),
-                const SizedBox(width: 8),
-                _buildSegmentChip('Rejected', 3, _selectedLeaveFilter, (idx) => setState(() => _selectedLeaveFilter = idx)),
-              ],
-            ),
+            suffixWidget: _leaveSearchController.text.isNotEmpty
+                ? GestureDetector(
+                    onTap: () {
+                      _leaveSearchController.clear();
+                      setState(() => _leaveSearchQuery = '');
+                    },
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 4),
+                      child: Icon(Icons.close_rounded, size: 18, color: Color(0xFFBACCC3)),
+                    ),
+                  )
+                : null,
           ),
           const SizedBox(height: 14),
 
-          // Leaves List Cards (Image 1 Screen 5)
+          // Leaves List Cards (Tap opens employee details & leave application drill-down)
           Expanded(
             child: filtered.isEmpty
-                ? _buildEmptyDarkState('No leave requests matching filter.')
+                ? _buildEmptyDarkState('No leave requests found.')
                 : ListView.builder(
                     itemCount: filtered.length,
                     itemBuilder: (ctx, idx) => _buildLeaveCard(filtered[idx]),
@@ -6451,128 +6502,455 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   }
 
   Widget _buildLeaveCard(LeaveModel leave) {
+    UserModel? emp;
+    final matched = _users.where((u) =>
+      u.userId.toLowerCase() == leave.userId.toLowerCase() ||
+      u.id.toLowerCase() == leave.userId.toLowerCase() ||
+      u.username.toLowerCase() == leave.userId.toLowerCase()
+    );
+    if (matched.isNotEmpty) emp = matched.first;
+
+    final empName = emp != null && emp.name.isNotEmpty
+        ? emp.name
+        : (emp?.username.isNotEmpty == true ? emp!.username : leave.userId);
+    final empDept = emp?.department?.isNotEmpty == true
+        ? emp!.department!
+        : (emp?.designation?.isNotEmpty == true ? emp!.designation! : 'Employee');
+    final firstChar = empName.isNotEmpty ? empName[0].toUpperCase() : 'E';
+
     Color statusColor = const Color(0xFFF59E0B);
-    Color statusBg = const Color(0xFFF59E0B).withValues(alpha: 0.20);
+    Color statusBg = const Color(0xFFF59E0B).withValues(alpha: 0.18);
+    String statusText = 'PENDING';
     if (leave.isApproved) {
       statusColor = const Color(0xFF34D399);
-      statusBg = const Color(0xFF10B981).withValues(alpha: 0.20);
-    } else if (leave.isRejected) {
+      statusBg = const Color(0xFF10B981).withValues(alpha: 0.18);
+      statusText = 'APPROVED';
+    } else if (leave.isNotApproved) {
       statusColor = const Color(0xFFEF4444);
-      statusBg = const Color(0xFFEF4444).withValues(alpha: 0.20);
+      statusBg = const Color(0xFFEF4444).withValues(alpha: 0.18);
+      statusText = 'NOT APPROVED';
     }
 
     final startStr = leave.startDate.split('T').first;
     final endStr = leave.endDate.split('T').first;
+    final appliedFormatted = _formatLeaveAppliedDateTime(leave.createdAt);
 
-    return _buildGlassCard(
-      borderRadius: 18,
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              // Avatar
-              Container(
-                width: 38,
-                height: 38,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Color(0xFF0F3A2E),
-                ),
-                child: Center(
-                  child: Text(
-                    leave.userId.isNotEmpty ? leave.userId[0].toUpperCase() : 'L',
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              // User and Type
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      leave.userId,
-                      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white),
-                    ),
-                    Text(
-                      leave.displayType,
-                      style: const TextStyle(fontSize: 11.5, color: Color(0xFFBACCC3)),
-                    ),
-                  ],
-                ),
-              ),
-              // Status Pill
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: statusBg,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  leave.status.toUpperCase(),
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: statusColor),
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.more_vert_rounded, size: 16, color: Color(0xFFBACCC3)),
-                onPressed: () {},
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '$startStr to $endStr',
-            style: const TextStyle(fontSize: 12, color: Color(0xFFCBD5E1)),
-          ),
-          if (leave.reason?.isNotEmpty == true) ...[
-            const SizedBox(height: 4),
-            Text(
-              leave.reason!,
-              style: const TextStyle(fontSize: 11.5, color: Color(0xFF88A89A)),
-            ),
-          ],
-
-          // Approve / Reject Buttons (Image 1 Screen 5)
-          if (leave.isPending) ...[
-            const SizedBox(height: 12),
+    return InkWell(
+      onTap: () => _showLeaveDetailsSheet(leave, emp),
+      borderRadius: BorderRadius.circular(18),
+      child: _buildGlassCard(
+        borderRadius: 18,
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Row(
               children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () => _handleUpdateLeaveStatus(leave.id, 'approved'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF10B981),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      elevation: 0,
+                // Avatar with Status Border
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: statusColor.withValues(alpha: 0.15),
+                    border: Border.all(color: statusColor.withValues(alpha: 0.60), width: 1.5),
+                  ),
+                  child: Center(
+                    child: Text(
+                      firstChar,
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: statusColor),
                     ),
-                    child: const Text('Approve', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
+                // Employee Name and Role/Department
                 Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => _handleUpdateLeaveStatus(leave.id, 'rejected'),
-                    style: OutlinedButton.styleFrom(
-                      side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                    ),
-                    child: const Text('Reject', style: TextStyle(color: Color(0xFFEF4444), fontSize: 12, fontWeight: FontWeight.w700)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        empName,
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '$empDept • ${leave.displayType}',
+                        style: const TextStyle(fontSize: 11.5, color: Color(0xFFBACCC3)),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                // Status Badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: statusBg,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: statusColor.withValues(alpha: 0.40)),
+                  ),
+                  child: Text(
+                    statusText,
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: statusColor),
                   ),
                 ),
               ],
             ),
+            const SizedBox(height: 10),
+            // Date Range & Applied Date
+            Row(
+              children: [
+                const Icon(Icons.event_note_rounded, size: 14, color: Color(0xFF34D399)),
+                const SizedBox(width: 6),
+                Text(
+                  '$startStr  →  $endStr',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFE2E8F0)),
+                ),
+                const Spacer(),
+                if (appliedFormatted.isNotEmpty)
+                  Text(
+                    'Applied: $appliedFormatted',
+                    style: const TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8)),
+                  ),
+              ],
+            ),
+            if (leave.reason?.isNotEmpty == true) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Reason: ${leave.reason!}',
+                style: const TextStyle(fontSize: 11.5, color: Color(0xFF88A89A)),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+
+            // Approve / Reject Quick Action Buttons (if pending)
+            if (leave.isPending) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => _handleUpdateLeaveStatus(leave.id, 'approved'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF10B981),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        elevation: 0,
+                      ),
+                      child: const Text('Approve', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => _handleUpdateLeaveStatus(leave.id, 'rejected'),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: const Color(0xFFEF4444).withValues(alpha: 0.5)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                      child: const Text('Reject', style: TextStyle(color: Color(0xFFEF4444), fontSize: 12, fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
-        ],
+        ),
       ),
+    );
+  }
+
+  void _showLeaveDetailsSheet(LeaveModel leave, UserModel? emp) {
+    final empName = emp != null && emp.name.isNotEmpty
+        ? emp.name
+        : (emp?.username.isNotEmpty == true ? emp!.username : leave.userId);
+    final empId = emp?.userId.isNotEmpty == true
+        ? emp!.userId
+        : (emp?.id.isNotEmpty == true ? emp!.id : leave.userId);
+    final dept = emp?.department?.isNotEmpty == true
+        ? emp!.department!
+        : (emp?.designation?.isNotEmpty == true ? emp!.designation! : 'Team Member');
+    final phone = emp?.phone?.isNotEmpty == true ? emp!.phone! : '--';
+    final email = emp?.email?.isNotEmpty == true ? emp!.email! : '--';
+    final firstChar = empName.isNotEmpty ? empName[0].toUpperCase() : 'E';
+
+    Color statusColor = const Color(0xFFF59E0B);
+    Color statusBg = const Color(0xFFF59E0B).withValues(alpha: 0.18);
+    String statusText = 'Pending Approval';
+    if (leave.isApproved) {
+      statusColor = const Color(0xFF34D399);
+      statusBg = const Color(0xFF10B981).withValues(alpha: 0.18);
+      statusText = 'Approved';
+    } else if (leave.isNotApproved) {
+      statusColor = const Color(0xFFEF4444);
+      statusBg = const Color(0xFFEF4444).withValues(alpha: 0.18);
+      statusText = 'Not Approved';
+    }
+
+    final startStr = leave.startDate.split('T').first;
+    final endStr = leave.endDate.split('T').first;
+    final appliedFormatted = _formatLeaveAppliedDateTime(leave.createdAt);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final media = MediaQuery.of(ctx);
+        final maxHeight = media.size.height * 0.85;
+
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF042018),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+              border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.35), width: 1.0),
+            ),
+            child: SafeArea(
+              top: false,
+              bottom: true,
+              child: SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Grab handle
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.25),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Title Header with close button
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Leave Application Details',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded, color: Color(0xFFBACCC3), size: 20),
+                          onPressed: () => Navigator.pop(ctx),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    const Divider(color: Colors.white12, height: 1),
+                    const SizedBox(height: 14),
+
+                    // Employee Profile Card
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.25),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.20)),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: statusColor.withValues(alpha: 0.18),
+                              border: Border.all(color: statusColor, width: 1.8),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              firstChar,
+                              style: TextStyle(fontWeight: FontWeight.w800, color: statusColor, fontSize: 20),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  empName,
+                                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  dept,
+                                  style: const TextStyle(fontSize: 12, color: Color(0xFFBACCC3)),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'ID: $empId',
+                                  style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontWeight: FontWeight.w600),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Leave Status Banner
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: statusBg,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: statusColor.withValues(alpha: 0.45)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            leave.isApproved
+                                ? Icons.check_circle_rounded
+                                : (leave.isNotApproved ? Icons.cancel_rounded : Icons.pending_rounded),
+                            color: statusColor,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 10),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Status: $statusText',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                  color: statusColor,
+                                ),
+                              ),
+                              if (appliedFormatted.isNotEmpty)
+                                Text(
+                                  'Applied on: $appliedFormatted',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.white.withValues(alpha: 0.8),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Leave Details Grid
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.25),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.white10),
+                      ),
+                      child: Column(
+                        children: [
+                          _buildTrendDetailRow(Icons.category_rounded, 'Leave Type', leave.displayType),
+                          const SizedBox(height: 10),
+                          _buildTrendDetailRow(Icons.calendar_today_rounded, 'Start Date', startStr),
+                          const SizedBox(height: 10),
+                          _buildTrendDetailRow(Icons.event_available_rounded, 'End Date', endStr),
+                          const SizedBox(height: 10),
+                          _buildTrendDetailRow(Icons.phone_outlined, 'Employee Phone', phone),
+                          const SizedBox(height: 10),
+                          _buildTrendDetailRow(Icons.email_outlined, 'Employee Email', email),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Reason Box
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.25),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.white10),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Reason for Leave Application',
+                            style: TextStyle(fontSize: 11.5, color: Color(0xFFBACCC3), fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            leave.reason?.isNotEmpty == true ? leave.reason! : 'No specific reason provided by employee.',
+                            style: const TextStyle(fontSize: 13, color: Colors.white, height: 1.4),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Actions if pending
+                    if (leave.isPending) ...[
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () {
+                                Navigator.pop(ctx);
+                                _handleUpdateLeaveStatus(leave.id, 'approved');
+                              },
+                              icon: const Icon(Icons.check_circle_rounded, size: 18),
+                              label: const Text('Approve Leave', style: TextStyle(fontWeight: FontWeight.w800)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF10B981),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () {
+                                Navigator.pop(ctx);
+                                _handleUpdateLeaveStatus(leave.id, 'rejected');
+                              },
+                              icon: const Icon(Icons.cancel_rounded, size: 18, color: Color(0xFFEF4444)),
+                              label: const Text('Reject Leave', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFFEF4444))),
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Color(0xFFEF4444), width: 1.2),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 

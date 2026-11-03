@@ -10,6 +10,7 @@ class LeaveModel {
   final String endDate;
   final String? reason;
   final String status;
+  final String createdAt;
 
   const LeaveModel({
     required this.id,
@@ -20,6 +21,7 @@ class LeaveModel {
     required this.endDate,
     this.reason,
     this.status = 'pending',
+    this.createdAt = '',
   });
 
   factory LeaveModel.fromJson(Map<String, dynamic> json) {
@@ -32,12 +34,20 @@ class LeaveModel {
       endDate: (json['endDate'] ?? '').toString(),
       reason: json['reason']?.toString(),
       status: (json['status'] ?? 'pending').toString(),
+      createdAt: (json['createdAt'] ?? json['appliedDate'] ?? json['appliedAt'] ?? json['date'] ?? '').toString(),
     );
   }
 
   bool get isApproved => status.toLowerCase() == 'approved';
   bool get isPending => status.toLowerCase() == 'pending';
-  bool get isRejected => status.toLowerCase() == 'rejected';
+  bool get isRejected => status.toLowerCase() == 'rejected' || status.toLowerCase() == 'not_approved' || status.toLowerCase() == 'not approved';
+  bool get isNotApproved => isRejected;
+
+  String get displayStatus {
+    if (isApproved) return 'Approved';
+    if (isRejected) return 'Not Approved';
+    return 'Pending';
+  }
 
   bool coversDate(String targetDate) {
     if (startDate.isEmpty || endDate.isEmpty || targetDate.isEmpty) return false;
@@ -49,4 +59,3 @@ class LeaveModel {
     return '${type[0].toUpperCase()}${type.substring(1)} Leave';
   }
 }
-

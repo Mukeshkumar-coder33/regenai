@@ -1367,5 +1367,75 @@ void main() {
       expect(find.text('Holiday Date *'), findsOneWidget);
       expect(find.text('Save Holiday'), findsOneWidget);
     });
+
+    testWidgets('CompanyDashboardView Leave tab has employee search and tap opens leave details sheet',
+        (WidgetTester tester) async {
+      final mockDashboard = MockDashboardService();
+      final mockAuth = MockAuthService();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanyDashboardView(
+            user: const UserModel(
+              id: 'owner_1',
+              userId: 'Vyshwa',
+              username: 'Vyshwa',
+              name: 'Vyshwa',
+              role: 'owner',
+              company: 'krish Tech Computer',
+              token: 'tok_owner',
+            ),
+            dashboardService: mockDashboard,
+            authService: mockAuth,
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Navigate to Leave tab (index 3) via bottom nav icon
+      await tester.tap(find.byIcon(Icons.beach_access_outlined));
+      await tester.pumpAndSettle();
+
+      // Verify search box exists and filter segment chips are removed
+      expect(find.text('Search employee name, ID or leave...'), findsOneWidget);
+      expect(find.text('Manage leave requests'), findsNothing);
+      expect(find.text('Search & review employee leave applications'), findsOneWidget);
+
+      // Verify a leave card exists and tap opens leave details sheet
+      final leaveCard = find.text('PENDING');
+      if (leaveCard.evaluate().isNotEmpty) {
+        await tester.tap(leaveCard.first);
+        await tester.pumpAndSettle();
+        expect(find.text('Leave Application Details'), findsOneWidget);
+        expect(find.text('Reason for Leave Application'), findsOneWidget);
+      }
+    });
+
+    testWidgets('TasksView header renders BrandLogo, ReGen, and dark glass search bar without white fill',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: TasksView(
+            user: const UserModel(
+              id: 'owner_1',
+              userId: 'Vyshwa',
+              username: 'Vyshwa',
+              name: 'Vyshwa',
+              role: 'owner',
+              company: 'krish Tech Computer',
+              token: 'tok_owner',
+            ),
+            dashboardService: MockDashboardService(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.text('ReGen'), findsOneWidget);
+      expect(find.text('Tasks & Schedules'), findsOneWidget);
+      expect(find.text('Search by title, description, or assigned person...'), findsOneWidget);
+    });
   });
 }

@@ -21,6 +21,7 @@ import 'package:regen_mobile/features/tasks/data/task_model.dart';
 import 'package:regen_mobile/features/tasks/data/project_model.dart';
 import 'package:regen_mobile/features/tasks/presentation/tasks_view.dart';
 import 'package:regen_mobile/features/profile/presentation/profile_view.dart';
+import 'package:regen_mobile/features/policies/data/policy_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class MockDashboardService extends DashboardService {
@@ -1436,6 +1437,49 @@ void main() {
       expect(find.text('ReGen'), findsOneWidget);
       expect(find.text('Tasks & Schedules'), findsOneWidget);
       expect(find.text('Search by title, description, or assigned person...'), findsOneWidget);
+    });
+
+    test('CompanyPolicyItem and PolicyReviewModel properly serialize and parse JSON', () {
+      final policyJson = {
+        '_id': 'p101',
+        'title': 'Remote Work Guidelines',
+        'content': 'All employees must adhere to data security protocols while working remotely.',
+        'effectiveDate': '2026-11-01',
+      };
+      final policyItem = CompanyPolicyItem.fromJson(policyJson);
+      expect(policyItem.id, 'p101');
+      expect(policyItem.title, 'Remote Work Guidelines');
+      expect(policyItem.content, contains('data security'));
+      expect(policyItem.effectiveDate, '2026-11-01');
+
+      final reviewJson = {
+        '_id': 'rev1',
+        'companyId': 'comp1',
+        'policyId': 'p101',
+        'policyTitle': 'Remote Work Guidelines',
+        'policyContent': 'Data security protocols',
+        'userId': 'emp_12',
+        'userName': 'Kavya S',
+        'userEmail': 'kavya@example.com',
+        'department': 'Development',
+        'status': 'declined',
+        'declineReason': 'I require hardware tokens before agreeing to security protocols.',
+        'declinedAt': '2026-11-03T10:00:00Z',
+      };
+      final review = PolicyReviewModel.fromJson(reviewJson);
+      expect(review.isDeclined, isTrue);
+      expect(review.isAllowed, isFalse);
+      expect(review.userName, 'Kavya S');
+      expect(review.declineReason, contains('hardware tokens'));
+
+      final statusJson = {
+        'hasBlockedPolicy': true,
+        'blockedPolicies': [reviewJson],
+        'pendingPolicies': <Map<String, dynamic>>[],
+      };
+      final empStatus = EmployeePolicyStatus.fromJson(statusJson);
+      expect(empStatus.hasBlockedPolicy, isTrue);
+      expect(empStatus.blockedPolicies.length, 1);
     });
   });
 }

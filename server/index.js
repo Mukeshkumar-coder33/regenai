@@ -1145,6 +1145,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/company', companyRoutes);
+app.use('/api/companies', companyRoutes);
 app.use('/api/leaves', leavesRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/messages', messageRoutes);

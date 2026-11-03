@@ -14,6 +14,7 @@ import '../../dashboard/data/dashboard_service.dart';
 import '../../dashboard/data/leave_model.dart';
 import '../../notifications/data/notification_model.dart';
 import '../../notifications/data/notification_service.dart';
+import '../../policies/data/policy_service.dart';
 import '../../tasks/data/task_model.dart';
 import '../../tasks/presentation/tasks_view.dart';
 import '../data/company_model.dart';
@@ -90,6 +91,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   List<LeaveModel> _leaves = [];
   WorkScheduleModel _workSchedule = const WorkScheduleModel();
   List<HolidayModel> _holidays = [];
+  final PolicyService _policyService = PolicyService();
+  List<PolicyReviewModel> _policyReviews = [];
 
   int _selectedYear = DateTime.now().year;
   String _selectedTrendFilter = 'Week'; // 'Week', 'Month', 'Year'
@@ -175,13 +178,18 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           }
         });
 
-        // Load dynamic notifications from MongoDB
+        // Load dynamic notifications and policy reviews from MongoDB
         final myId = widget.user.userId.isNotEmpty ? widget.user.userId : widget.user.id;
         if (myId.isNotEmpty) {
-          _notificationService.getUserNotifications(myId).then((notifs) {
+          try {
+            final notifs = await _notificationService.getUserNotifications(myId);
             if (mounted) setState(() => _notifications = notifs);
-          }).catchError((_) {});
+          } catch (_) {}
         }
+        try {
+          final reviews = await _policyService.getCompanyPolicyReviews();
+          if (mounted) setState(() => _policyReviews = reviews);
+        } catch (_) {}
       }
     } catch (e) {
       if (mounted) {
@@ -478,21 +486,41 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   }
 
   bool _isCompanyLeave(DateTime date) {
-    for (final l in _leaves) {
-      if (!l.isApproved) continue;
-      try {
-        final start = DateTime.parse(l.startDate);
-        final end = DateTime.parse(l.endDate);
-        final dZero = DateTime(date.year, date.month, date.day);
-        final sZero = DateTime(start.year, start.month, start.day);
-        final eZero = DateTime(end.year, end.month, end.day);
-        if ((dZero.isAtSameMomentAs(sZero) || dZero.isAfter(sZero)) &&
-            (dZero.isAtSameMomentAs(eZero) || dZero.isBefore(eZero))) {
-          return true;
-        }
-      } catch (_) {
-        final dStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-        if (l.startDate.startsWith(dStr)) return true;
+    // Approved personal employee leaves are individual and must NOT paint the company calendar or dashboard violet.
+    // Only Holidays added via "Add Holiday" represent company leaves.
+    return false;
+  }
+
+  bool _isAttendanceLate(AttendanceModel att, WorkScheduleModel schedule) {
+    if (att.status.toLowerCase() == 'late') return true;
+    final checkInStr = att.checkIn;
+    if (checkInStr == null || checkInStr.isEmpty) return false;
+
+    final targetTimeStr = schedule.checkInTime.isNotEmpty ? schedule.checkInTime : '09:30';
+    final targetParts = targetTimeStr.trim().split(':');
+    final targetH = int.tryParse(targetParts[0]) ?? 9;
+    final targetM = (targetParts.length > 1) ? (int.tryParse(targetParts[1]) ?? 30) : 30;
+
+    final dt = DateTime.tryParse(checkInStr);
+    if (dt != null) {
+      if (dt.hour > targetH || (dt.hour == targetH && dt.minute > targetM)) {
+        return true;
+      }
+      return false;
+    }
+
+    final clean = checkInStr.trim().toUpperCase();
+    final isPM = clean.contains('PM');
+    final isAM = clean.contains('AM');
+    final numeric = clean.replaceAll(RegExp(r'[^0-9:]'), '');
+    final parts = numeric.split(':');
+    if (parts.isNotEmpty) {
+      int h = int.tryParse(parts[0]) ?? 0;
+      final m = (parts.length > 1) ? (int.tryParse(parts[1]) ?? 0) : 0;
+      if (isPM && h < 12) h += 12;
+      if (isAM && h == 12) h = 0;
+      if (h > targetH || (h == targetH && m > targetM)) {
+        return true;
       }
     }
     return false;
@@ -527,7 +555,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   }
 
   bool _isNonWorkingOrLeave(DateTime date) {
-    return _isNonWorkingDay(date) || _isCompanyLeave(date) || _isHoliday(date);
+    return _isNonWorkingDay(date) || _isHoliday(date);
   }
 
   List<UserModel> _getBirthdayEmployees(DateTime date) {
@@ -572,11 +600,12 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         return nonAdminIds.contains(uid) || nonAdminUsernames.contains(uid);
       }).toList();
 
+      final lateCount = dayLogs.where((a) => _isAttendanceLate(a, _workSchedule)).length;
       final presentCount = dayLogs.where((a) {
         final st = a.status.toLowerCase();
-        return st == 'present' || st == 'late';
+        if (st == 'absent') return false;
+        return !_isAttendanceLate(a, _workSchedule);
       }).length;
-      final lateCount = dayLogs.where((a) => a.status.toLowerCase() == 'late').length;
       final leaveCount = _leaves.where((l) {
         if (!l.isApproved || !l.coversDate(dateStr)) return false;
         if (_allNonAdminEmployees.isEmpty) return true;
@@ -5151,114 +5180,119 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Header with Work Policy & Add Holiday Actions (Responsive Wrap: Guaranteed 0 Overflow on all phones)
-          Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 8,
-            runSpacing: 8,
+          // Header with Work Policy & Add Holiday Actions (Scrollable: Guaranteed 0 Overflow on all phones)
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: const [
-                  Text(
-                    'Attendance',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      letterSpacing: -0.4,
-                      shadows: [Shadow(offset: Offset(0, 2), blurRadius: 4, color: Colors.black45)],
-                    ),
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    'Track employee attendance',
-                    style: TextStyle(fontSize: 12, color: Color(0xFFBACCC3)),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Text(
+                        'Attendance',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          letterSpacing: -0.4,
+                          shadows: [Shadow(offset: Offset(0, 2), blurRadius: 4, color: Colors.black45)],
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Track employee attendance',
+                        style: TextStyle(fontSize: 12, color: Color(0xFFBACCC3)),
+                      ),
+                    ],
                   ),
                 ],
               ),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  InkWell(
-                    onTap: _showAddHolidaySheet,
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF7C3AED),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: const Color(0xFF8B5CF6).withValues(alpha: 0.50),
-                          width: 1.0,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFF7C3AED).withValues(alpha: 0.35),
-                            blurRadius: 6,
-                            offset: const Offset(0, 2),
+              const SizedBox(height: 10),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                child: Row(
+                  children: [
+                    InkWell(
+                      onTap: _showAddHolidaySheet,
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF7C3AED),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: const Color(0xFF8B5CF6).withValues(alpha: 0.50),
+                            width: 1.0,
                           ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          Icon(Icons.add_rounded, size: 15, color: Colors.white),
-                          SizedBox(width: 4),
-                          Text(
-                            'Add Holiday',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF7C3AED).withValues(alpha: 0.35),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.add_rounded, size: 15, color: Colors.white),
+                            SizedBox(width: 4),
+                            Text(
+                              'Add Holiday',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  InkWell(
-                    onTap: _showWorkScheduleAndBreakPolicySheet,
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF10B981),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: const Color(0xFF34D399).withValues(alpha: 0.30),
-                          width: 1.0,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.25),
-                            blurRadius: 6,
-                            offset: const Offset(0, 2),
+                    const SizedBox(width: 8),
+                    InkWell(
+                      onTap: _showWorkScheduleAndBreakPolicySheet,
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10B981),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: const Color(0xFF34D399).withValues(alpha: 0.30),
+                            width: 1.0,
                           ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          Icon(Icons.timer_outlined, size: 15, color: Colors.white),
-                          SizedBox(width: 4),
-                          Text(
-                            'Work Policy',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.25),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.timer_outlined, size: 15, color: Colors.white),
+                            SizedBox(width: 4),
+                            Text(
+                              'Work Policy',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
@@ -6598,19 +6632,103 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: statusColor),
                   ),
                 ),
+                const SizedBox(width: 4),
+                // Three vertical dots menu with Remove
+                Theme(
+                  data: Theme.of(context).copyWith(
+                    popupMenuTheme: PopupMenuThemeData(
+                      color: const Color(0xFF042018),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: const BorderSide(color: Color(0xFF1B4332), width: 1.2),
+                      ),
+                    ),
+                  ),
+                  child: PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert_rounded, size: 20, color: Color(0xFFBACCC3)),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onSelected: (val) async {
+                      if (val == 'remove') {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (c) => AlertDialog(
+                            backgroundColor: const Color(0xFF042018),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            title: const Text('Remove Leave Application', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                            content: const Text('Are you sure you want to remove this leave application from the records?', style: TextStyle(color: Color(0xFFCBD5E1))),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(c, false),
+                                child: const Text('Cancel', style: TextStyle(color: Color(0xFF94A3B8))),
+                              ),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
+                                onPressed: () => Navigator.pop(c, true),
+                                child: const Text('Remove', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirm == true) {
+                          try {
+                            final leaveService = LeaveService();
+                            await leaveService.deleteLeave(leave.id);
+                            await _dashboardService.deleteLeave(leave.id);
+                            setState(() {
+                              _leaves.removeWhere((l) => l.id == leave.id);
+                            });
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Leave application removed successfully')),
+                              );
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Failed to remove: $e'), backgroundColor: Colors.red),
+                              );
+                            }
+                          }
+                        }
+                      }
+                    },
+                    itemBuilder: (ctx) => [
+                      const PopupMenuItem<String>(
+                        value: 'remove',
+                        height: 40,
+                        child: Row(
+                          children: [
+                            Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFFEF4444)),
+                            SizedBox(width: 8),
+                            Text('Remove', style: TextStyle(color: Color(0xFFEF4444), fontSize: 13, fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 10),
-            // Date Range & Applied Date
-            Row(
+            // Date Range & Applied Date (Responsive Wrap: Guaranteed 0 Overflow on all phones)
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 4,
               children: [
-                const Icon(Icons.event_note_rounded, size: 14, color: Color(0xFF34D399)),
-                const SizedBox(width: 6),
-                Text(
-                  '$startStr  →  $endStr',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFE2E8F0)),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.event_note_rounded, size: 14, color: Color(0xFF34D399)),
+                    const SizedBox(width: 6),
+                    Text(
+                      '$startStr  →  $endStr',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFE2E8F0)),
+                    ),
+                  ],
                 ),
-                const Spacer(),
                 if (appliedFormatted.isNotEmpty)
                   Text(
                     'Applied: $appliedFormatted',
@@ -7053,7 +7171,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         ),
         const SizedBox(height: 2),
         const Text(
-          'Manage company information',
+          'Manage company information & organizational policies',
           style: TextStyle(fontSize: 12.5, color: Color(0xFFBACCC3)),
         ),
         const SizedBox(height: 14),
@@ -7086,7 +7204,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
                         ),
                         const SizedBox(height: 2),
-                        const Text('Private Limited', style: TextStyle(fontSize: 12, color: Color(0xFFBACCC3))),
+                        Text(_company?.category ?? 'Private Limited', style: const TextStyle(fontSize: 12, color: Color(0xFFBACCC3))),
                       ],
                     ),
                   ),
@@ -7096,9 +7214,12 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               Divider(color: Colors.white.withValues(alpha: 0.12)),
               const SizedBox(height: 10),
 
-              _buildCompanyDetailRow('Industry', 'IT Services'),
-              _buildCompanyDetailRow('Company Size', '${_users.length} employees'),
+              _buildCompanyDetailRow('Industry', _company?.category ?? 'IT Services'),
+              _buildCompanyDetailRow('Company Size', '${_users.length} registered members'),
+              _buildCompanyDetailRow('Phone', _company?.phoneNumber?.isNotEmpty == true ? _company!.phoneNumber! : 'Not provided'),
+              _buildCompanyDetailRow('Email', _company?.email?.isNotEmpty == true ? _company!.email! : 'Not provided'),
               _buildCompanyDetailRow('Location', location),
+              _buildCompanyDetailRow('GST / Tax ID', _company?.taxDetails?.isNotEmpty == true ? _company!.taxDetails! : 'Not provided'),
               _buildCompanyDetailRow(
                 'Office Geofence',
                 _company?.latitude != null
@@ -7107,8 +7228,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               ),
               const SizedBox(height: 16),
 
-              ElevatedButton(
-                onPressed: _showOfficeLocationDialog,
+              ElevatedButton.icon(
+                onPressed: _showEditCompanyDialog,
+                icon: const Icon(Icons.edit_rounded, size: 16),
+                label: const Text('Edit Company Details', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF10B981),
                   foregroundColor: Colors.white,
@@ -7116,29 +7239,120 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   elevation: 0,
                 ),
-                child: const Text('Edit Company Details', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
               ),
             ],
           ),
         ),
         const SizedBox(height: 16),
 
-        // About Company Card (Image 2 Screen 1)
+        // About Company Card
         _buildGlassCard(
           borderRadius: 22,
           padding: const EdgeInsets.all(18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              Text(
+            children: [
+              const Text(
                 'About Company',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
               ),
-              SizedBox(height: 8),
+              const SizedBox(height: 8),
               Text(
-                'ReGen is a modern workforce management platform designed to simplify employee operations, track geofenced attendance, and enhance productivity.',
-                style: TextStyle(fontSize: 12.5, color: Color(0xFFBACCC3), height: 1.45),
+                _company?.about?.isNotEmpty == true
+                    ? _company!.about!
+                    : 'ReGen is a modern workforce management platform designed to simplify employee operations, track geofenced attendance, and enhance productivity.',
+                style: const TextStyle(fontSize: 12.5, color: Color(0xFFBACCC3), height: 1.45),
               ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // Company Policies Card (Owner can create & review policies)
+        _buildGlassCard(
+          borderRadius: 22,
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10B981).withValues(alpha: 0.20),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.policy_rounded, color: Color(0xFF34D399), size: 20),
+                      ),
+                      const SizedBox(width: 10),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          Text(
+                            'Company Policies',
+                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
+                          ),
+                          Text(
+                            'Mandatory employee agreement policies',
+                            style: TextStyle(fontSize: 11, color: Color(0xFFBACCC3)),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: _showCreatePolicyDialog,
+                    icon: const Icon(Icons.add_rounded, size: 16),
+                    label: const Text('Add Policy', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF10B981),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Divider(color: Colors.white.withValues(alpha: 0.12)),
+              const SizedBox(height: 10),
+
+              if (_company?.companyPolicies.isEmpty ?? true)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 14),
+                  child: Center(
+                    child: Text(
+                      'No organizational policies added yet.\nTap "Add Policy" to publish a policy to all employees.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12.5, height: 1.4),
+                    ),
+                  ),
+                )
+              else
+                ...(_company!.companyPolicies.map((p) => _buildPolicyItemCard(p))),
+
+              // Employee Policy Approvals / Declined Responses
+              if (_policyReviews.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Divider(color: Colors.white.withValues(alpha: 0.12)),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    const Icon(Icons.pending_actions_rounded, color: Color(0xFFF59E0B), size: 18),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Employee Policy Responses & Approvals',
+                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ..._policyReviews.map((rev) => _buildPolicyReviewCard(rev)),
+              ],
             ],
           ),
         ),
@@ -7755,6 +7969,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     int maxLines = 1,
     VoidCallback? onTap,
     bool readOnly = false,
+    bool showFilterIcon = false,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -7801,43 +8016,58 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     const SizedBox(width: 10),
                   ],
                   Expanded(
-                    child: TextField(
-                      controller: controller,
-                      onChanged: onChanged,
-                      obscureText: obscureText,
-                      keyboardType: keyboardType,
-                      maxLines: maxLines,
-                      readOnly: readOnly,
-                      onTap: onTap,
-                      cursorColor: const Color(0xFF34D399),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      decoration: InputDecoration(
-                        isDense: true,
-                        filled: false,
-                        hintText: hintText,
-                        hintStyle: const TextStyle(
-                          color: Color(0xFF94A3B8),
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w500,
+                    child: Theme(
+                      data: Theme.of(context).copyWith(
+                        inputDecorationTheme: const InputDecorationTheme(
+                          filled: false,
+                          fillColor: Colors.transparent,
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
+                          errorBorder: InputBorder.none,
+                          focusedErrorBorder: InputBorder.none,
                         ),
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        disabledBorder: InputBorder.none,
-                        errorBorder: InputBorder.none,
-                        focusedErrorBorder: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(vertical: maxLines > 1 ? 8 : 10),
+                      ),
+                      child: TextField(
+                        controller: controller,
+                        onChanged: onChanged,
+                        obscureText: obscureText,
+                        keyboardType: keyboardType,
+                        maxLines: maxLines,
+                        readOnly: readOnly,
+                        onTap: onTap,
+                        cursorColor: const Color(0xFF34D399),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        decoration: InputDecoration(
+                          isDense: true,
+                          filled: false,
+                          fillColor: Colors.transparent,
+                          hintText: hintText,
+                          hintStyle: const TextStyle(
+                            color: Color(0xFF94A3B8),
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
+                          errorBorder: InputBorder.none,
+                          focusedErrorBorder: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(vertical: maxLines > 1 ? 8 : 10),
+                        ),
                       ),
                     ),
                   ),
                   if (suffixWidget != null) ...[
                     const SizedBox(width: 8),
                     suffixWidget,
-                  ] else if (prefixIcon == Icons.search_rounded) ...[
+                  ] else if (showFilterIcon) ...[
                     const SizedBox(width: 8),
                     const Padding(
                       padding: EdgeInsets.only(left: 2, right: 2),
@@ -8036,7 +8266,17 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     }
   }
 
-  void _showOfficeLocationDialog() {
+  void _showEditCompanyDialog() {
+    final nameCtrl = TextEditingController(text: _company?.name ?? '');
+    final catCtrl = TextEditingController(text: _company?.category ?? '');
+    final phoneCtrl = TextEditingController(text: _company?.phone ?? '');
+    final emailCtrl = TextEditingController(text: _company?.email ?? '');
+    final addrCtrl = TextEditingController(text: _company?.address ?? '');
+    final cityCtrl = TextEditingController(text: _company?.city ?? '');
+    final stateCtrl = TextEditingController(text: _company?.state ?? '');
+    final zipCtrl = TextEditingController(text: _company?.zip ?? '');
+    final taxCtrl = TextEditingController(text: _company?.taxDetails ?? '');
+    final aboutCtrl = TextEditingController(text: _company?.about ?? '');
     double currentLat = _company?.latitude ?? 11.0168;
     double currentLng = _company?.longitude ?? 76.9558;
     final latCtrl = TextEditingController(text: currentLat.toStringAsFixed(6));
@@ -8052,51 +8292,160 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             borderRadius: BorderRadius.circular(22),
             side: BorderSide(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
           ),
-          title: const Text('5m Office GPS Geofence', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
+          title: const Row(
             children: [
-              const Text(
-                'Attendance is validated against your registered office coordinates using a strict 5-meter geofence.',
-                style: TextStyle(fontSize: 12, color: Color(0xFFBACCC3)),
-              ),
-              const SizedBox(height: 14),
-              _buildCompanyTypingBox(
-                controller: latCtrl,
-                labelText: 'Latitude',
-                hintText: 'e.g. 11.016800',
-                prefixIcon: Icons.location_on_outlined,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              ),
-              const SizedBox(height: 12),
-              _buildCompanyTypingBox(
-                controller: lngCtrl,
-                labelText: 'Longitude',
-                hintText: 'e.g. 76.955800',
-                prefixIcon: Icons.my_location_outlined,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: () async {
-                  try {
-                    final pos = await LocationService.getCurrentPosition();
-                    setDlgState(() {
-                      latCtrl.text = pos.latitude.toStringAsFixed(6);
-                      lngCtrl.text = pos.longitude.toStringAsFixed(6);
-                    });
-                  } catch (e) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(backgroundColor: Colors.red, content: Text('GPS error: $e')),
-                      );
-                    }
-                  }
-                },
-                icon: const Icon(Icons.my_location_rounded, size: 16, color: Color(0xFF34D399)),
-                label: const Text('Capture Current GPS Coordinates', style: TextStyle(color: Color(0xFF34D399), fontSize: 12)),
-              ),
+              Icon(Icons.business_rounded, color: Color(0xFF34D399), size: 22),
+              SizedBox(width: 10),
+              Text('Edit Company Details', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 17)),
             ],
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Update your company profile, industry, contact info, tax details, and geofence coordinates.',
+                    style: TextStyle(fontSize: 12, color: Color(0xFFBACCC3)),
+                  ),
+                  const SizedBox(height: 14),
+                  _buildCompanyTypingBox(
+                    controller: nameCtrl,
+                    labelText: 'Company Name',
+                    hintText: 'e.g. Acme Corp',
+                    prefixIcon: Icons.apartment_rounded,
+                  ),
+                  const SizedBox(height: 10),
+                  _buildCompanyTypingBox(
+                    controller: catCtrl,
+                    labelText: 'Industry / Category',
+                    hintText: 'e.g. IT & Software Services',
+                    prefixIcon: Icons.category_rounded,
+                  ),
+                  const SizedBox(height: 10),
+                  _buildCompanyTypingBox(
+                    controller: phoneCtrl,
+                    labelText: 'Phone Number',
+                    hintText: 'e.g. +91 98765 43210',
+                    prefixIcon: Icons.phone_rounded,
+                    keyboardType: TextInputType.phone,
+                  ),
+                  const SizedBox(height: 10),
+                  _buildCompanyTypingBox(
+                    controller: emailCtrl,
+                    labelText: 'Company Email',
+                    hintText: 'e.g. contact@company.com',
+                    prefixIcon: Icons.email_rounded,
+                    keyboardType: TextInputType.emailAddress,
+                  ),
+                  const SizedBox(height: 10),
+                  _buildCompanyTypingBox(
+                    controller: addrCtrl,
+                    labelText: 'Address',
+                    hintText: 'e.g. 100 Main Street',
+                    prefixIcon: Icons.pin_drop_rounded,
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildCompanyTypingBox(
+                          controller: cityCtrl,
+                          labelText: 'City',
+                          hintText: 'e.g. Coimbatore',
+                          prefixIcon: Icons.location_city_rounded,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildCompanyTypingBox(
+                          controller: stateCtrl,
+                          labelText: 'State',
+                          hintText: 'e.g. Tamil Nadu',
+                          prefixIcon: Icons.map_rounded,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  _buildCompanyTypingBox(
+                    controller: zipCtrl,
+                    labelText: 'Zip / Postal Code',
+                    hintText: 'e.g. 641001',
+                    prefixIcon: Icons.numbers_rounded,
+                    keyboardType: TextInputType.number,
+                  ),
+                  const SizedBox(height: 10),
+                  _buildCompanyTypingBox(
+                    controller: taxCtrl,
+                    labelText: 'GST / Tax ID',
+                    hintText: 'e.g. 33AAAAA0000A1Z5',
+                    prefixIcon: Icons.receipt_long_rounded,
+                  ),
+                  const SizedBox(height: 10),
+                  _buildCompanyTypingBox(
+                    controller: aboutCtrl,
+                    labelText: 'About Company',
+                    hintText: 'Company overview and mission...',
+                    prefixIcon: Icons.info_outline_rounded,
+                    maxLines: 3,
+                  ),
+                  const SizedBox(height: 14),
+                  const Divider(color: Color(0xFF1E3A2E)),
+                  const SizedBox(height: 6),
+                  const Text(
+                    '5m Office GPS Geofence Coordinates',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF34D399)),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildCompanyTypingBox(
+                          controller: latCtrl,
+                          labelText: 'Latitude',
+                          hintText: '11.016800',
+                          prefixIcon: Icons.location_on_outlined,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildCompanyTypingBox(
+                          controller: lngCtrl,
+                          labelText: 'Longitude',
+                          hintText: '76.955800',
+                          prefixIcon: Icons.my_location_outlined,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      try {
+                        final pos = await LocationService.getCurrentPosition();
+                        setDlgState(() {
+                          latCtrl.text = pos.latitude.toStringAsFixed(6);
+                          lngCtrl.text = pos.longitude.toStringAsFixed(6);
+                        });
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(backgroundColor: Colors.red, content: Text('GPS error: $e')),
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.my_location_rounded, size: 16, color: Color(0xFF34D399)),
+                    label: const Text('Capture Current GPS Coordinates', style: TextStyle(color: Color(0xFF34D399), fontSize: 12)),
+                  ),
+                ],
+              ),
+            ),
           ),
           actions: [
             TextButton(
@@ -8107,37 +8456,365 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               onPressed: isSaving
                   ? null
                   : () async {
-                      final lat = double.tryParse(latCtrl.text.trim());
-                      final lng = double.tryParse(lngCtrl.text.trim());
-                      if (lat == null || lng == null) return;
+                      final compId = _company?.id;
+                      if (compId == null || compId.isEmpty) return;
                       final nav = Navigator.of(ctx);
                       final messenger = ScaffoldMessenger.of(context);
                       setDlgState(() => isSaving = true);
                       try {
-                        if (_company != null) {
-                          await _attendanceService.updateOfficeLocation(
-                            _company!.id,
-                            latitude: lat,
-                            longitude: lng,
-                          );
+                        final lat = double.tryParse(latCtrl.text.trim());
+                        final lng = double.tryParse(lngCtrl.text.trim());
+
+                        final updates = <String, dynamic>{
+                          'name': nameCtrl.text.trim(),
+                          'category': catCtrl.text.trim(),
+                          'phone': phoneCtrl.text.trim(),
+                          'email': emailCtrl.text.trim(),
+                          'address': addrCtrl.text.trim(),
+                          'city': cityCtrl.text.trim(),
+                          'state': stateCtrl.text.trim(),
+                          'zip': zipCtrl.text.trim(),
+                          'taxDetails': taxCtrl.text.trim(),
+                          'about': aboutCtrl.text.trim(),
+                        };
+                        if (lat != null && lng != null) {
+                          updates['latitude'] = lat;
+                          updates['longitude'] = lng;
+                          await _attendanceService.updateOfficeLocation(compId, latitude: lat, longitude: lng);
                         }
+
+                        final updatedComp = await _policyService.updateCompanyDetails(
+                          companyId: compId,
+                          updates: updates,
+                        );
+
                         nav.pop();
                         messenger.showSnackBar(
-                          const SnackBar(backgroundColor: Color(0xFF10B981), content: Text('5m Geofence coordinates saved!')),
+                          const SnackBar(backgroundColor: Color(0xFF10B981), content: Text('Company details updated successfully!')),
                         );
+                        if (updatedComp != null && mounted) {
+                          setState(() => _company = updatedComp);
+                        }
                         _loadCompanyData();
                       } catch (e) {
                         setDlgState(() => isSaving = false);
                         messenger.showSnackBar(
-                          SnackBar(backgroundColor: Colors.red, content: Text('Error: $e')),
+                          SnackBar(backgroundColor: Colors.red, content: Text('Error updating company: $e')),
                         );
                       }
                     },
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981), foregroundColor: Colors.white),
-              child: isSaving ? const CircularProgressIndicator(color: Colors.white) : const Text('Save'),
+              child: isSaving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Save Changes'),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showCreatePolicyDialog() {
+    final titleCtrl = TextEditingController();
+    final contentCtrl = TextEditingController();
+    final now = DateTime.now();
+    final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final dateCtrl = TextEditingController(text: dateStr);
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDlgState) => AlertDialog(
+          backgroundColor: const Color(0xFF072118),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+            side: BorderSide(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.policy_rounded, color: Color(0xFF34D399), size: 22),
+              SizedBox(width: 10),
+              Text('Publish Company Policy', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 17)),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Once published, this policy will be sent to all employees. Employees must allow/acknowledge it before continuing work.',
+                  style: TextStyle(fontSize: 12, color: Color(0xFFBACCC3)),
+                ),
+                const SizedBox(height: 14),
+                _buildCompanyTypingBox(
+                  controller: titleCtrl,
+                  labelText: 'Policy Title',
+                  hintText: 'e.g. Workplace Code of Conduct & Remote Policy',
+                  prefixIcon: Icons.title_rounded,
+                ),
+                const SizedBox(height: 12),
+                _buildCompanyTypingBox(
+                  controller: dateCtrl,
+                  labelText: 'Effective Date',
+                  hintText: 'YYYY-MM-DD',
+                  prefixIcon: Icons.calendar_today_rounded,
+                ),
+                const SizedBox(height: 12),
+                _buildCompanyTypingBox(
+                  controller: contentCtrl,
+                  labelText: 'Policy Terms & Description',
+                  hintText: 'Outline the requirements, conduct guidelines, and compliance terms...',
+                  prefixIcon: Icons.description_rounded,
+                  maxLines: 5,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel', style: TextStyle(color: Color(0xFF88A89A))),
+            ),
+            ElevatedButton(
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      final title = titleCtrl.text.trim();
+                      final content = contentCtrl.text.trim();
+                      if (title.isEmpty || content.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(backgroundColor: Colors.red, content: Text('Please enter policy title and terms.')),
+                        );
+                        return;
+                      }
+                      final compId = _company?.id;
+                      if (compId == null || compId.isEmpty) return;
+                      final nav = Navigator.of(ctx);
+                      final messenger = ScaffoldMessenger.of(context);
+                      setDlgState(() => isSaving = true);
+                      try {
+                        final updatedComp = await _policyService.addCompanyPolicy(
+                          companyId: compId,
+                          title: title,
+                          content: content,
+                          effectiveDate: dateCtrl.text.trim(),
+                          existingPolicies: _company?.companyPolicies ?? [],
+                        );
+
+                        nav.pop();
+                        messenger.showSnackBar(
+                          const SnackBar(backgroundColor: Color(0xFF10B981), content: Text('Policy published! Notification sent to all employees.')),
+                        );
+                        if (updatedComp != null && mounted) {
+                          setState(() => _company = updatedComp);
+                        }
+                        _loadCompanyData();
+                      } catch (e) {
+                        setDlgState(() => isSaving = false);
+                        messenger.showSnackBar(
+                          SnackBar(backgroundColor: Colors.red, content: Text('Error publishing policy: $e')),
+                        );
+                      }
+                    },
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981), foregroundColor: Colors.white),
+              child: isSaving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Publish Policy'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPolicyItemCard(CompanyPolicyItem p) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0A261E).withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.22)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.verified_user_rounded, color: Color(0xFF34D399), size: 16),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  p.title,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white),
+                ),
+              ),
+              if (p.effectiveDate != null && p.effectiveDate!.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF34D399).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    p.effectiveDate!,
+                    style: const TextStyle(color: Color(0xFF34D399), fontSize: 10.5, fontWeight: FontWeight.w600),
+                  ),
+                ),
+            ],
+          ),
+          if (p.content.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              p.content,
+              style: const TextStyle(fontSize: 12, color: Color(0xFFBACCC3), height: 1.4),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPolicyReviewCard(PolicyReviewModel rev) {
+    final isDeclined = rev.isDeclined;
+    final isAllowed = rev.isAllowed;
+    final isAccepted = rev.isAccepted;
+
+    Color badgeColor = const Color(0xFFF59E0B);
+    String statusText = 'Pending';
+    if (isDeclined) {
+      badgeColor = const Color(0xFFEF4444);
+      statusText = 'Declined / Access Paused';
+    } else if (isAllowed) {
+      badgeColor = const Color(0xFF10B981);
+      statusText = 'Allowed to Work';
+    } else if (isAccepted) {
+      badgeColor = const Color(0xFF10B981);
+      statusText = 'Accepted';
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDeclined
+            ? const Color(0xFFEF4444).withValues(alpha: 0.08)
+            : const Color(0xFF0A261E).withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isDeclined
+              ? const Color(0xFFEF4444).withValues(alpha: 0.45)
+              : const Color(0xFF10B981).withValues(alpha: 0.22),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 14,
+                backgroundColor: const Color(0xFF164E3D),
+                child: Text(
+                  rev.userName.isNotEmpty ? rev.userName[0].toUpperCase() : 'E',
+                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      rev.userName,
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white),
+                    ),
+                    Text(
+                      '${rev.department} • Policy: ${rev.policyTitle}',
+                      style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: badgeColor.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  statusText,
+                  style: TextStyle(color: badgeColor, fontSize: 10, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          if (rev.declineReason != null && rev.declineReason!.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF03140E),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.chat_bubble_outline_rounded, color: Color(0xFFF87171), size: 14),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Decline Reason: "${rev.declineReason!}"',
+                      style: const TextStyle(fontSize: 11.5, color: Color(0xFFFCA5A5), fontStyle: FontStyle.italic),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (isDeclined) ...[
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  final ok = await _policyService.allowEmployeeWorkForward(rev.id);
+                  if (ok) {
+                    messenger.showSnackBar(
+                      SnackBar(
+                        backgroundColor: const Color(0xFF10B981),
+                        content: Text('Allowed ${rev.userName} to work forward! Access restored.'),
+                      ),
+                    );
+                    final reviews = await _policyService.getCompanyPolicyReviews();
+                    if (mounted) {
+                      setState(() => _policyReviews = reviews);
+                    }
+                  } else {
+                    messenger.showSnackBar(
+                      const SnackBar(backgroundColor: Colors.red, content: Text('Failed to update employee status.')),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.check_circle_outline_rounded, size: 15),
+                label: const Text('Allow to Work', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF10B981),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -8407,8 +9084,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
 
       if (attMatches.isNotEmpty) {
         final att = attMatches.first;
-        final isLate = att.status.toLowerCase() == 'late' ||
-            (att.checkIn != null && att.checkIn!.compareTo(_workSchedule.shiftStart) > 0);
+        final isLate = _isAttendanceLate(att, _workSchedule);
         final isAbsent = att.status.toLowerCase() == 'absent';
 
         if (isAbsent) {

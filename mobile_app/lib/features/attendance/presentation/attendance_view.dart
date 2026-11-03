@@ -165,6 +165,7 @@ class _AttendanceViewState extends State<AttendanceView> {
           latitude: position.latitude,
           longitude: position.longitude,
           accuracy: position.accuracy,
+          checkInTargetTime: _workSchedule.checkInTime,
         );
         setState(() {
           _todayAttendance = newRecord;

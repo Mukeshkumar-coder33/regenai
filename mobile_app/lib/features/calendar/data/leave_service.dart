@@ -125,5 +125,18 @@ class LeaveService {
       throw const AuthException(message: 'Server connection unreachable', statusCode: 0);
     }
   }
+
+  /// 5. Delete Leave Application
+  Future<bool> deleteLeave(String id) async {
+    final headers = await _getHeaders();
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/leaves/$id');
+
+    try {
+      final res = await _client.delete(url, headers: headers).timeout(const Duration(seconds: 10));
+      return res.statusCode == 200 || res.statusCode == 204;
+    } catch (_) {
+      return false;
+    }
+  }
 }
 

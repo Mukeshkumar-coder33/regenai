@@ -161,6 +161,19 @@ class DashboardService {
     }
   }
 
+  /// Delete Leave Request (/api/leaves/:id)
+  Future<bool> deleteLeave(String id) async {
+    final headers = await _getHeaders();
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/leaves/$id');
+
+    try {
+      final res = await _client.delete(url, headers: headers).timeout(const Duration(seconds: 10));
+      return res.statusCode == 200 || res.statusCode == 204;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Create new user / employee (/api/users)
   Future<UserModel> createUser(Map<String, dynamic> userData) async {
     final headers = await _getHeaders();

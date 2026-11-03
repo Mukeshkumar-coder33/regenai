@@ -109,6 +109,23 @@ export const recordAttendance = async (req, res) => {
     }
     body.companyId = await resolveCompanyId(req, body);
 
+    // Evaluate Late status against company's work schedule
+    try {
+      const settings = await PayrollSetting.findOne({ companyId: body.companyId }).lean();
+      const checkInTargetStr = settings?.checkInTime || '09:30';
+      const parts = checkInTargetStr.split(':').map(Number);
+      const tH = parts[0] || 9;
+      const tM = parts.length > 1 ? parts[1] : 30;
+      if (body.checkIn) {
+        const cDate = new Date(body.checkIn);
+        const cH = cDate.getHours();
+        const cM = cDate.getMinutes();
+        if (cH > tH || (cH === tH && cM > tM)) {
+          body.status = 'late';
+        }
+      }
+    } catch (_) {}
+
     // Geofence verification for check-in action
     const geo = await verifyGeofenceOrThrow(body.companyId, {
       latitude: body.latitude ?? body.coords?.latitude ?? body.locationCoordinates?.latitude,

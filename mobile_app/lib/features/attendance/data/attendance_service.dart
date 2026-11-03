@@ -128,6 +128,8 @@ class AttendanceService {
     required double longitude,
     double? accuracy,
     String? workMode,
+    String? status,
+    String? checkInTargetTime,
   }) async {
     final user = await SessionStorage.getUserSession();
     final userId = user?.userId ?? user?.id ?? '';
@@ -136,10 +138,19 @@ class AttendanceService {
     final now = DateTime.now();
     final todayStr = _formatDate(now);
 
+    String determinedStatus = status ?? 'present';
+    final targetTimeStr = (checkInTargetTime != null && checkInTargetTime.isNotEmpty) ? checkInTargetTime : '09:30';
+    final parts = targetTimeStr.trim().split(':');
+    final targetH = int.tryParse(parts[0]) ?? 9;
+    final targetM = (parts.length > 1) ? (int.tryParse(parts[1]) ?? 30) : 30;
+    if (now.hour > targetH || (now.hour == targetH && now.minute > targetM)) {
+      determinedStatus = 'late';
+    }
+
     final body = jsonEncode({
       'userId': userId,
       'date': todayStr,
-      'status': 'present',
+      'status': determinedStatus,
       'checkIn': now.toIso8601String(),
       'latitude': latitude,
       'longitude': longitude,

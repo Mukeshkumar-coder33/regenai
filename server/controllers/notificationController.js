@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import Notification from '../models/Notification.js';
 import User from '../models/User.js';
+import Company from '../models/Company.js';
 import { resolveCompanyId } from '../utils/resolveCompanyId.js';
 import { emitToUser } from '../socket.js';
 
@@ -165,6 +166,20 @@ export const getUserNotifications = async (req, res) => {
         if (u._id) userIds.add(String(u._id));
       }
     } catch (_) {}
+
+    if (req.companyId) {
+      try {
+        const comp = await Company.findById(req.companyId).lean();
+        if (comp && comp.ownerId) {
+          const isOwnerReq = userIds.has(String(comp.ownerId)) || 
+                             req.user?.userId === comp.ownerId || 
+                             req.user?.username === comp.ownerId;
+          if (isOwnerReq) {
+            userIds.add(String(comp.ownerId));
+          }
+        }
+      } catch (_) {}
+    }
 
     const filter = { userId: { $in: Array.from(userIds) } };
     if (req.companyId) filter.companyId = req.companyId;
@@ -354,6 +369,20 @@ export const clearAllNotifications = async (req, res) => {
         if (u._id) userIds.add(String(u._id));
       }
     } catch (_) {}
+
+    if (req.companyId) {
+      try {
+        const comp = await Company.findById(req.companyId).lean();
+        if (comp && comp.ownerId) {
+          const isOwnerReq = userIds.has(String(comp.ownerId)) || 
+                             req.user?.userId === comp.ownerId || 
+                             req.user?.username === comp.ownerId;
+          if (isOwnerReq) {
+            userIds.add(String(comp.ownerId));
+          }
+        }
+      } catch (_) {}
+    }
 
     // Security check: non-param users can only clear their own notifications
     if (req.user?.role !== 'param') {

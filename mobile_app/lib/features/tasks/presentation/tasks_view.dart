@@ -3083,28 +3083,43 @@ class _TasksViewState extends State<TasksView> {
               Icon(prefixIcon, color: const Color(0xFFCBD5E1), size: 20),
               const SizedBox(width: 10),
               Expanded(
-                child: TextField(
-                  controller: controller,
-                  cursorColor: const Color(0xFF34D399),
-                  style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w600),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    filled: false,
-                    fillColor: Colors.transparent,
-                    hintText: hintText,
-                    hintStyle: const TextStyle(
-                      color: Color(0xFF94A3B8),
-                      fontSize: 13,
-                      fontWeight: FontWeight.normal,
+                child: Theme(
+                  data: Theme.of(context).copyWith(
+                    inputDecorationTheme: const InputDecorationTheme(
+                      filled: false,
+                      fillColor: Colors.transparent,
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      disabledBorder: InputBorder.none,
+                      errorBorder: InputBorder.none,
+                      focusedErrorBorder: InputBorder.none,
                     ),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    disabledBorder: InputBorder.none,
-                    errorBorder: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
                   ),
-                  onChanged: onChanged,
+                  child: TextField(
+                    controller: controller,
+                    cursorColor: const Color(0xFF34D399),
+                    style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w600),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      filled: false,
+                      fillColor: Colors.transparent,
+                      hintText: hintText,
+                      hintStyle: const TextStyle(
+                        color: Color(0xFF94A3B8),
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      disabledBorder: InputBorder.none,
+                      errorBorder: InputBorder.none,
+                      focusedErrorBorder: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    onChanged: onChanged,
+                  ),
                 ),
               ),
               if (suffixWidget != null)

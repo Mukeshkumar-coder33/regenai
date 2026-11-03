@@ -1,6 +1,38 @@
 /// ReGen Company Model
 ///
 /// Maps exactly to MongoDB `Company` documents returned by `GET /api/company`.
+class CompanyPolicyItem {
+  final String id;
+  final String title;
+  final String content;
+  final String? effectiveDate;
+  final String? createdAt;
+
+  const CompanyPolicyItem({
+    required this.id,
+    required this.title,
+    required this.content,
+    this.effectiveDate,
+    this.createdAt,
+  });
+
+  factory CompanyPolicyItem.fromJson(Map<String, dynamic> json) {
+    return CompanyPolicyItem(
+      id: (json['_id'] ?? json['id'] ?? '').toString(),
+      title: (json['title'] ?? '').toString(),
+      content: (json['content'] ?? '').toString(),
+      effectiveDate: json['effectiveDate']?.toString(),
+      createdAt: json['createdAt']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'title': title,
+    'content': content,
+    'effectiveDate': effectiveDate ?? '',
+  };
+}
+
 class CompanyModel {
   final String id;
   final String name;
@@ -13,6 +45,7 @@ class CompanyModel {
   final String? city;
   final String? state;
   final String? zip;
+  final String? taxDetails;
   final String? ownerId;
   final String? ownerName;
   final String status;
@@ -23,6 +56,7 @@ class CompanyModel {
   final int? establishmentYear;
   final int? establishmentMonth;
   final String? founded;
+  final List<CompanyPolicyItem> companyPolicies;
 
   const CompanyModel({
     required this.id,
@@ -36,6 +70,7 @@ class CompanyModel {
     this.city,
     this.state,
     this.zip,
+    this.taxDetails,
     this.ownerId,
     this.ownerName,
     this.status = 'active',
@@ -46,6 +81,7 @@ class CompanyModel {
     this.establishmentYear,
     this.establishmentMonth,
     this.founded,
+    this.companyPolicies = const [],
   });
 
   int get startingYear {
@@ -98,11 +134,19 @@ class CompanyModel {
       officeLoc = json['officeLocation'] as Map<String, dynamic>;
     }
 
+    List<CompanyPolicyItem> policiesList = [];
+    if (json['companyPolicies'] is List) {
+      policiesList = (json['companyPolicies'] as List)
+          .whereType<Map<String, dynamic>>()
+          .map((p) => CompanyPolicyItem.fromJson(p))
+          .toList();
+    }
+
     return CompanyModel(
       id: (json['_id'] ?? json['id'] ?? '').toString(),
       name: (json['name'] ?? 'Company').toString(),
       logo: json['logo']?.toString(),
-      phoneNumber: json['phoneNumber']?.toString(),
+      phoneNumber: json['phoneNumber']?.toString() ?? json['phone']?.toString(),
       email: json['email']?.toString(),
       category: json['category']?.toString(),
       about: json['about']?.toString(),
@@ -110,6 +154,7 @@ class CompanyModel {
       city: json['city']?.toString() ?? 'Chennai',
       state: json['state']?.toString(),
       zip: json['zip']?.toString(),
+      taxDetails: json['taxDetails']?.toString() ?? json['gst']?.toString(),
       ownerId: json['ownerId']?.toString(),
       ownerName: json['ownerName']?.toString(),
       status: (json['status'] ?? 'active').toString(),
@@ -130,11 +175,13 @@ class CompanyModel {
           ? int.tryParse(json['establishmentMonth'].toString())
           : null,
       founded: (json['founded'] ?? json['establishmentDate'] ?? json['startingDate'] ?? json['startDate'])?.toString(),
+      companyPolicies: policiesList,
     );
   }
 
   bool get isActive => status.toLowerCase() == 'active';
   bool get isBlocked => status.toLowerCase() == 'blocked';
   bool get hasOfficeLocation => latitude != null && longitude != null;
+  String? get phone => phoneNumber;
 }
 

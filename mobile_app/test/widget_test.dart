@@ -211,9 +211,10 @@ void main() {
       // Verify Login button
       expect(find.widgetWithText(ElevatedButton, 'Login'), findsOneWidget);
 
-      // Verify NO third-party SSO or signup links
-      expect(find.text('or continue with'), findsOneWidget);
-      expect(find.textContaining('Sign Up'), findsWidgets);
+      // Verify NO third-party SSO, divider, or signup links below Login button
+      expect(find.text('or continue with'), findsNothing);
+      expect(find.textContaining('Sign Up'), findsNothing);
+      expect(find.text('Server Settings'), findsNothing);
       
     });
 

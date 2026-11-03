@@ -142,35 +142,38 @@ class _LoginScreenState extends State<LoginScreen> {
                     children: [
                       // ReGen Official Branding (Using existing ReGen logo asset and clean typography)
                       Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Image.asset(
-                              'assets/images/logo.png',
-                              height: 48,
-                              fit: BoxFit.contain,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  const SizedBox.shrink(),
-                            ),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'ReGen',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 32,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.5,
-                                color: Color(0xFFFFFFFF),
-                                shadows: [
-                                  Shadow(
-                                    offset: Offset(0, 2),
-                                    blurRadius: 8,
-                                    color: Color(0x99000000),
-                                  ),
-                                ],
+                        child: GestureDetector(
+                          onLongPress: _showServerUrlDialog,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Image.asset(
+                                'assets/images/logo.png',
+                                height: 48,
+                                fit: BoxFit.contain,
+                                errorBuilder: (context, error, stackTrace) =>
+                                    const SizedBox.shrink(),
                               ),
-                            ),
-                          ],
+                              const SizedBox(height: 8),
+                              const Text(
+                                'ReGen',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.5,
+                                  color: Color(0xFFFFFFFF),
+                                  shadows: [
+                                    Shadow(
+                                      offset: Offset(0, 2),
+                                      blurRadius: 8,
+                                      color: Color(0x99000000),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -467,143 +470,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                             ),
                                     ),
                                   ),
-                                  const SizedBox(height: 24),
-
-                                  // Divider: "or continue with"
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Container(
-                                          height: 1,
-                                          color: const Color(0xFFCBD5E1)
-                                              .withValues(alpha: 0.25),
-                                        ),
-                                      ),
-                                      Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 14),
-                                        child: Text(
-                                          'or continue with',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                            color: const Color(0xFFE2E8F0)
-                                                .withValues(alpha: 0.85),
-                                          ),
-                                        ),
-                                      ),
-                                      Expanded(
-                                        child: Container(
-                                          height: 1,
-                                          color: const Color(0xFFCBD5E1)
-                                              .withValues(alpha: 0.25),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 18),
-
-                                  // Social SSO Buttons (Circular White Badges matching reference)
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.center,
-                                    children: [
-                                      _buildCircularSocialButton(
-                                        icon: const _GoogleIcon(),
-                                        onTap: () =>
-                                            _showSocialNotice('Google'),
-                                      ),
-                                      const SizedBox(width: 20),
-                                      _buildCircularSocialButton(
-                                        icon: const Icon(
-                                          Icons.apple,
-                                          size: 26,
-                                          color: Colors.black87,
-                                        ),
-                                        onTap: () =>
-                                            _showSocialNotice('Apple ID'),
-                                      ),
-                                      const SizedBox(width: 20),
-                                      _buildCircularSocialButton(
-                                        icon: const _MicrosoftIcon(),
-                                        onTap: () =>
-                                            _showSocialNotice('Microsoft 365'),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 22),
-
-                                  // Sign Up Prompt
-                                  Wrap(
-                                    alignment: WrapAlignment.center,
-                                    crossAxisAlignment: WrapCrossAlignment.center,
-                                    children: [
-                                      Text(
-                                        "Don't have an account? ",
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w500,
-                                          color: const Color(0xFFE2E8F0)
-                                              .withValues(alpha: 0.90),
-                                        ),
-                                      ),
-                                      GestureDetector(
-                                        onTap: () {
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            const SnackBar(
-                                              content: Text(
-                                                  'Employee accounts are provisioned by your company administrator.'),
-                                              backgroundColor:
-                                                  CeladonColors.primary,
-                                            ),
-                                          );
-                                        },
-                                        child: const Text(
-                                          'Sign Up',
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w700,
-                                            color: Color(0xFF34D399),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                   const SizedBox(height: 18),
-                                   Center(
-                                     child: GestureDetector(
-                                       onTap: _showServerUrlDialog,
-                                       child: Container(
-                                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                         decoration: BoxDecoration(
-                                           color: Colors.black.withValues(alpha: 0.35),
-                                           borderRadius: BorderRadius.circular(10),
-                                           border: Border.all(
-                                             color: const Color(0xFF34D399).withValues(alpha: 0.25),
-                                             width: 0.8,
-                                           ),
-                                         ),
-                                         child: Row(
-                                           mainAxisSize: MainAxisSize.min,
-                                           children: [
-                                             const Icon(Icons.dns_rounded, size: 13, color: Color(0xFF34D399)),
-                                             const SizedBox(width: 5),
-                                             Text(
-                                                'Server Settings',
-                                               style: const TextStyle(
-                                                 fontSize: 11,
-                                                 color: Color(0xFF94A3B8),
-                                                 fontWeight: FontWeight.w500,
-                                               ),
-                                             ),
-                                             const SizedBox(width: 4),
-                                             const Icon(Icons.edit_rounded, size: 11, color: Color(0xFF94A3B8)),
-                                           ],
-                                         ),
-                                       ),
-                                     ),
-                                   ),
                                 ],
                               ),
                             ),
@@ -618,15 +484,6 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  void _showSocialNotice(String provider) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$provider single sign-on is enabled for enterprise accounts.'),
-        backgroundColor: CeladonColors.primary,
       ),
     );
   }
@@ -692,35 +549,6 @@ class _LoginScreenState extends State<LoginScreen> {
           focusedErrorBorder: InputBorder.none,
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCircularSocialButton({
-    required Widget icon,
-    required VoidCallback onTap,
-  }) {
-    return Container(
-      width: 50,
-      height: 50,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x24000000),
-            blurRadius: 10,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          customBorder: const CircleBorder(),
-          child: Center(child: icon),
         ),
       ),
     );
@@ -828,55 +656,6 @@ class _LoginScreenState extends State<LoginScreen> {
           border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.3)),
         ),
         child: Text(label, style: const TextStyle(fontSize: 10, color: Color(0xFF6EE7B7))),
-      ),
-    );
-  }
-}
-
-/// Custom colored Google "G" icon
-class _GoogleIcon extends StatelessWidget {
-  const _GoogleIcon();
-
-  @override
-  Widget build(BuildContext context) {
-    return const SizedBox(
-      width: 22,
-      height: 22,
-      child: Center(
-        child: Text(
-          'G',
-          style: TextStyle(
-            fontFamily: 'sans-serif',
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFFEA4335),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Custom 4-quadrant Microsoft icon
-class _MicrosoftIcon extends StatelessWidget {
-  const _MicrosoftIcon();
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 20,
-      height: 20,
-      child: GridView.count(
-        crossAxisCount: 2,
-        crossAxisSpacing: 2.5,
-        mainAxisSpacing: 2.5,
-        physics: const NeverScrollableScrollPhysics(),
-        children: const [
-          ColoredBox(color: Color(0xFFF25022)),
-          ColoredBox(color: Color(0xFF7FBA00)),
-          ColoredBox(color: Color(0xFF00A4EF)),
-          ColoredBox(color: Color(0xFFFFB900)),
-        ],
       ),
     );
   }

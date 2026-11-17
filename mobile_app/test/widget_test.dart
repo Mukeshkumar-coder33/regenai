@@ -585,11 +585,21 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Tasks & Schedules'), findsOneWidget);
-      expect(find.textContaining('All'), findsOneWidget);
-      expect(find.textContaining('Active'), findsOneWidget);
-      expect(find.textContaining('Done'), findsOneWidget);
+      expect(find.textContaining('General Task'), findsOneWidget);
+      expect(find.textContaining('Overview'), findsOneWidget);
       expect(find.textContaining('Projects'), findsOneWidget);
       expect(find.byType(FloatingActionButton), findsOneWidget);
+
+      // Tap filter icon to open task filter sheet
+      await tester.tap(find.byIcon(Icons.filter_list_rounded).first);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('All'), findsWidgets);
+      expect(find.textContaining('Active'), findsWidgets);
+      expect(find.textContaining('Done'), findsWidgets);
+
+      // Close filter sheet
+      await tester.tap(find.byIcon(Icons.close_rounded).first);
+      await tester.pumpAndSettle();
     });
 
     testWidgets('TasksView renders General Task with 4 counters, search bar, and automatic end date calculation', (WidgetTester tester) async {

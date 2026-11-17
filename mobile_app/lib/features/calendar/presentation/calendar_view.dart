@@ -116,8 +116,8 @@ class _CalendarViewState extends State<CalendarView> {
       for (final h in holidays) {
         dynamicEvents.add(h.copyWith(
           icon: Icons.celebration_outlined,
-          color: const Color(0xFFE0533C),
-          bg: const Color(0xFFFFECE8),
+          color: const Color(0xFF334155),
+          bg: const Color(0xFFF1F5F9),
         ));
       }
 
@@ -1044,10 +1044,10 @@ class _CalendarViewState extends State<CalendarView> {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: const Color(0xFFFFECE8),
+              color: const Color(0xFFF1F5F9),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.celebration_outlined, color: Color(0xFFE0533C), size: 20),
+            child: const Icon(Icons.celebration_outlined, color: Color(0xFF334155), size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1061,7 +1061,7 @@ class _CalendarViewState extends State<CalendarView> {
                 const SizedBox(height: 2),
                 Text(
                   dateStr,
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFE0533C)),
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
                 ),
               ],
             ),

@@ -80,6 +80,7 @@ class _TasksViewState extends State<TasksView> {
 
   // Selected project for full details view
   ProjectModel? _selectedProjectForDetail;
+  ProjectModel? _overviewSelectedProject;
   int _selectedProjectTaskFilter = 0; // 0: All, 1: Pending, 2: Completed, 3: Incomplete
 
   Timer? _liveTicker;
@@ -463,7 +464,7 @@ class _TasksViewState extends State<TasksView> {
       },
       child: Scaffold(
         backgroundColor: CeladonColors.background,
-        floatingActionButton: _canManage
+        floatingActionButton: (_canManage && _activeMainSegment != 1 && _overviewSelectedProject == null)
             ? Container(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(28),
@@ -478,7 +479,7 @@ class _TasksViewState extends State<TasksView> {
                 child: FloatingActionButton.extended(
                   heroTag: 'tasks_fab',
                   onPressed: () {
-                    if (_activeMainSegment == 0 || _activeMainSegment == 1) {
+                    if (_activeMainSegment == 0) {
                       _showCreateTaskSheet();
                     } else if (_selectedProjectForDetail != null) {
                       _showCreateTaskSheet(
@@ -492,7 +493,7 @@ class _TasksViewState extends State<TasksView> {
                   backgroundColor: CeladonColors.primary,
                   icon: const Icon(Icons.add_rounded, color: Colors.white, size: 22),
                   label: Text(
-                    _activeMainSegment == 0 || _activeMainSegment == 1
+                    _activeMainSegment == 0
                         ? 'Add Task'
                         : (_selectedProjectForDetail != null ? 'Add Project Task' : 'Create Project'),
                     style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white, fontSize: 13.5),
@@ -700,7 +701,11 @@ class _TasksViewState extends State<TasksView> {
           SizedBox(height: 2),
           Text(
             'Manage tasks, projects & workforce schedules',
-            style: TextStyle(fontSize: 12, color: CeladonColors.textMuted),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF475569),
+            ),
           ),
         ],
       ),
@@ -823,6 +828,10 @@ class _TasksViewState extends State<TasksView> {
   // TAB 0: OVERVIEW TAB (Executive Summary for General Tasks & Projects)
   // ===========================================================================
   Widget _buildOverviewTab() {
+    if (_overviewSelectedProject != null) {
+      return _buildProjectOverviewDetailView(_overviewSelectedProject!);
+    }
+
     final completedRate = _totalTaskCount > 0
         ? ((_completedCount / _totalTaskCount) * 100).round()
         : 0;
@@ -842,8 +851,8 @@ class _TasksViewState extends State<TasksView> {
           title: 'General Tasks Overview',
           subtitle: 'Operational task assignments & progress',
           icon: Icons.assignment_rounded,
-          actionLabel: 'View All Tasks →',
-          onAction: () => setState(() => _activeMainSegment = 1),
+          actionLabel: '',
+          onAction: () {},
         ),
         const SizedBox(height: 10),
 
@@ -852,7 +861,7 @@ class _TasksViewState extends State<TasksView> {
           onTapOverride: (filterIdx) {
             setState(() {
               _selectedTaskFilter = filterIdx;
-              _activeMainSegment = 1;
+              _activeMainSegment = 0;
             });
           },
         ),
@@ -914,8 +923,8 @@ class _TasksViewState extends State<TasksView> {
           title: 'Project Overview',
           subtitle: 'Active deliverables & team allocations',
           icon: Icons.folder_copy_rounded,
-          actionLabel: 'View Projects →',
-          onAction: () => setState(() => _activeMainSegment = 2),
+          actionLabel: '',
+          onAction: () {},
         ),
         const SizedBox(height: 10),
 
@@ -928,7 +937,7 @@ class _TasksViewState extends State<TasksView> {
                 count: _projects.length,
                 icon: Icons.folder_rounded,
                 color: CeladonColors.primary,
-                onTap: () => setState(() => _activeMainSegment = 2),
+                onTap: () {},
               ),
             ),
             const SizedBox(width: 8),
@@ -938,7 +947,7 @@ class _TasksViewState extends State<TasksView> {
                 count: inProgressProjects,
                 icon: Icons.timelapse_rounded,
                 color: const Color(0xFF0284C7),
-                onTap: () => setState(() => _activeMainSegment = 2),
+                onTap: () {},
               ),
             ),
             const SizedBox(width: 8),
@@ -948,14 +957,14 @@ class _TasksViewState extends State<TasksView> {
                 count: completedProjects,
                 icon: Icons.verified_rounded,
                 color: const Color(0xFF10B981),
-                onTap: () => setState(() => _activeMainSegment = 2),
+                onTap: () {},
               ),
             ),
           ],
         ),
         const SizedBox(height: 14),
 
-        // Recent Projects Cards Preview
+        // Projects List (Clicking any project reveals full project overview details)
         if (_projects.isEmpty)
           Container(
             padding: const EdgeInsets.symmetric(vertical: 24),
@@ -967,11 +976,11 @@ class _TasksViewState extends State<TasksView> {
             ),
             child: const Text(
               'No projects available',
-              style: TextStyle(fontSize: 12.5, color: CeladonColors.textMuted),
+              style: TextStyle(fontSize: 12.5, color: Color(0xFF475569)),
             ),
           )
         else
-          ..._projects.take(3).map((proj) => _buildProjectOverviewCard(proj)),
+          ..._projects.map((proj) => _buildProjectOverviewCard(proj)),
       ],
     );
   }
@@ -1081,86 +1090,339 @@ class _TasksViewState extends State<TasksView> {
   }
 
   Widget _buildProjectOverviewCard(ProjectModel proj) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  proj.name,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    color: CeladonColors.textPrimary,
+    return InkWell(
+      onTap: () => setState(() => _overviewSelectedProject = proj),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    proj.name,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: CeladonColors.textPrimary,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: proj.status.toLowerCase() == 'completed'
-                      ? const Color(0xFFDEF7EC)
-                      : const Color(0xFFE0F2FE),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  proj.status.toUpperCase(),
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
                     color: proj.status.toLowerCase() == 'completed'
-                        ? const Color(0xFF03543F)
-                        : const Color(0xFF0369A1),
+                        ? const Color(0xFFDEF7EC)
+                        : const Color(0xFFE0F2FE),
+                    borderRadius: BorderRadius.circular(8),
                   ),
+                  child: Text(
+                    proj.status.toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: proj.status.toLowerCase() == 'completed'
+                          ? const Color(0xFF03543F)
+                          : const Color(0xFF0369A1),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (proj.description.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                proj.description,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF475569),
                 ),
               ),
             ],
-          ),
-          if (proj.description.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              proj.description,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 12,
-                color: CeladonColors.textMuted,
-              ),
-            ),
-          ],
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              const Icon(Icons.people_outline_rounded, size: 14, color: CeladonColors.textMuted),
-              const SizedBox(width: 4),
-              Text(
-                '${proj.assignedEmployees.length} members',
-                style: const TextStyle(fontSize: 11, color: CeladonColors.textMuted),
-              ),
-              const Spacer(),
-              if (proj.dueDate != null && proj.dueDate!.isNotEmpty) ...[
-                const Icon(Icons.event_outlined, size: 14, color: CeladonColors.textMuted),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                const Icon(Icons.people_outline_rounded, size: 14, color: Color(0xFF475569)),
                 const SizedBox(width: 4),
                 Text(
-                  proj.dueDate!,
-                  style: const TextStyle(fontSize: 11, color: CeladonColors.textMuted),
+                  '${proj.assignedEmployees.length} members',
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF475569)),
+                ),
+                const Spacer(),
+                if (proj.dueDate != null && proj.dueDate!.isNotEmpty) ...[
+                  const Icon(Icons.event_outlined, size: 14, color: Color(0xFF475569)),
+                  const SizedBox(width: 4),
+                  Text(
+                    proj.dueDate!,
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF475569)),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Project Overview Detail Screen (Image 1 Structure with Dark Typography & Zero Redirection)
+  Widget _buildProjectOverviewDetailView(ProjectModel proj) {
+    final projTasks = _tasks.where((t) => t.isProjectTask && t.projectId == proj.id).toList();
+    final totalCount = projTasks.length;
+    final completedCount = projTasks.where((t) => t.isCompleted).length;
+    final pendingCount = projTasks.where((t) => t.isPending).length;
+    final incompleteCount = projTasks.where((t) => !t.isCompleted && !t.isPending).length;
+    final rate = totalCount > 0 ? ((completedCount / totalCount) * 100).round() : 0;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
+      children: [
+        // 1. Back navigation row
+        InkWell(
+          onTap: () => setState(() => _overviewSelectedProject = null),
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
+              children: const [
+                Icon(Icons.arrow_back_rounded, size: 18, color: CeladonColors.primary),
+                SizedBox(width: 6),
+                Text(
+                  'Back to Overview',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: CeladonColors.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+
+        // 2. Project Card Banner (Title, Description, Due Date, Status)
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: CeladonColors.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      proj.name,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: CeladonColors.textPrimary,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: proj.status.toLowerCase() == 'completed'
+                          ? const Color(0xFFDEF7EC)
+                          : const Color(0xFFE0F2FE),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      proj.status.toUpperCase(),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: proj.status.toLowerCase() == 'completed'
+                            ? const Color(0xFF03543F)
+                            : const Color(0xFF0369A1),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (proj.description.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  proj.description,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    color: Color(0xFF475569),
+                    height: 1.35,
+                  ),
+                ),
+              ],
+              if (proj.dueDate != null && proj.dueDate!.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Icon(Icons.event_outlined, size: 14, color: Color(0xFF475569)),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Due ${proj.dueDate}',
+                      style: const TextStyle(fontSize: 11.5, color: Color(0xFF475569), fontWeight: FontWeight.w600),
+                    ),
+                  ],
                 ),
               ],
             ],
           ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 14),
+
+        // 3. Project Members (Exact Match to Image 1 with Dark Text)
+        const Text(
+          'Project Members',
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary),
+        ),
+        const SizedBox(height: 8),
+        if (proj.assignedEmployees.isEmpty)
+          const Text('No members assigned yet.', style: TextStyle(fontSize: 11.5, color: Color(0xFF475569)))
+        else
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: proj.assignedEmployees.map((empMap) {
+                final empId = (empMap['userId'] ?? empMap['id'] ?? empMap['_id'] ?? '').toString();
+                final rawName = (empMap['name'] ?? empMap['username'] ?? '').toString();
+                final emp = _resolveEmployee(empId.isNotEmpty ? empId : rawName);
+                final name = rawName.isNotEmpty ? rawName : _getAssigneeDisplayName(empId);
+                return Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Row(
+                    children: [
+                      _buildEmployeeAvatarMini(emp, name),
+                      const SizedBox(width: 6),
+                      Text(name, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: CeladonColors.textPrimary)),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        const SizedBox(height: 16),
+
+        // 4. Image 1 4 Metric Cards: Total Tasks, Pending, Completed, Incomplete
+        Row(
+          children: [
+            Expanded(
+              child: _buildMetricTile(
+                title: 'Total Tasks',
+                count: totalCount,
+                icon: Icons.assignment_rounded,
+                color: CeladonColors.primary,
+                isSelected: true,
+                onTap: () {},
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildMetricTile(
+                title: 'Pending',
+                count: pendingCount,
+                icon: Icons.schedule_rounded,
+                color: const Color(0xFF06B6D4),
+                isSelected: false,
+                onTap: () {},
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildMetricTile(
+                title: 'Completed',
+                count: completedCount,
+                icon: Icons.check_circle_rounded,
+                color: CeladonColors.primary,
+                isSelected: false,
+                onTap: () {},
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildMetricTile(
+                title: 'Incomplete',
+                count: incompleteCount,
+                icon: Icons.cancel_outlined,
+                color: const Color(0xFFEF4444),
+                isSelected: false,
+                onTap: () {},
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+
+        // 5. Completion Progress
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: CeladonColors.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Project Progress', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: CeladonColors.textPrimary)),
+                  Text('$rate%', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: CeladonColors.primary)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: LinearProgressIndicator(
+                  value: totalCount > 0 ? (completedCount / totalCount) : 0.0,
+                  minHeight: 7,
+                  backgroundColor: CeladonColors.border,
+                  valueColor: const AlwaysStoppedAnimation<Color>(CeladonColors.primary),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // 6. Deliverables / Tasks List Overview
+        const Text(
+          'Project Tasks Overview',
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary),
+        ),
+        const SizedBox(height: 8),
+        if (projTasks.isEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: CeladonColors.border),
+            ),
+            child: const Text('No tasks recorded for this project.', style: TextStyle(fontSize: 12, color: CeladonColors.textMuted)),
+          )
+        else
+          ...projTasks.map((t) => _buildTaskCard(t)),
+      ],
     );
   }
 
@@ -1173,17 +1435,12 @@ class _TasksViewState extends State<TasksView> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
       children: [
-        // 1. Full Search Box: Searches by Title, Description, and Assigned Person
+        // 1. Full Search Box: Searches by Title, Description, and Assigned Person with Suffix Filter Icon
         _buildTaskSearchBar(),
-
-        const SizedBox(height: 12),
-
-        // 2. Filter Segment Tabs: [All] [Pending / Active] [Completed / Done] [Incomplete]
-        _buildTaskFilterTabs(),
 
         const SizedBox(height: 14),
 
-        // 3. Tasks List
+        // 2. Tasks List
         if (tasksToDisplay.isEmpty)
           _buildEmptyTasksPlaceholder()
         else
@@ -1482,77 +1739,6 @@ class _TasksViewState extends State<TasksView> {
           ),
         );
       },
-    );
-  }
-
-  // Filter Tabs: [All] [Pending / Active] [Completed / Done] [Incomplete]
-  Widget _buildTaskFilterTabs() {
-    final filters = [
-      {'label': 'All', 'count': _totalTaskCount, 'idx': 0},
-      {'label': 'Pending (Active)', 'count': _pendingCount, 'idx': 1},
-      {'label': 'Completed (Done)', 'count': _completedCount, 'idx': 2},
-      {'label': 'Incomplete', 'count': _incompleteCount, 'idx': 3},
-    ];
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: filters.map((f) {
-          final idx = f['idx'] as int;
-          final isSelected = _selectedTaskFilter == idx;
-          final count = f['count'] as int;
-          final label = f['label'] as String;
-
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: InkWell(
-              onTap: () => setState(() => _selectedTaskFilter = idx),
-              borderRadius: BorderRadius.circular(16),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? CeladonColors.primary
-                      : CeladonColors.cardBackground,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: isSelected ? CeladonColors.primary : CeladonColors.border,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                        color: isSelected ? Colors.white : CeladonColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(width: 5),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: isSelected ? Colors.white.withValues(alpha: 0.25) : CeladonColors.lightGreen,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        '$count',
-                        style: TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w700,
-                          color: isSelected ? Colors.white : CeladonColors.primary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
     );
   }
 
@@ -3189,7 +3375,7 @@ class _TasksViewState extends State<TasksView> {
                     children: [
                       _buildEmployeeAvatarMini(emp, name),
                       const SizedBox(width: 6),
-                      Text(name, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Colors.white)),
+                      Text(name, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: CeladonColors.textPrimary)),
                     ],
                   ),
                 );
@@ -3199,58 +3385,7 @@ class _TasksViewState extends State<TasksView> {
 
         const SizedBox(height: 14),
 
-        // 4. Metrics Row (Matching General Task: Total Tasks, Pending, Completed, Incomplete)
-        Row(
-          children: [
-            Expanded(
-              child: _buildMetricTile(
-                title: 'Total Tasks',
-                count: totalCount,
-                icon: Icons.assignment_rounded,
-                color: CeladonColors.primary,
-                isSelected: _selectedProjectTaskFilter == 0,
-                onTap: () => setState(() => _selectedProjectTaskFilter = 0),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildMetricTile(
-                title: 'Pending',
-                count: pendingCount,
-                icon: Icons.pending_actions_rounded,
-                color: const Color(0xFF06B6D4),
-                isSelected: _selectedProjectTaskFilter == 1,
-                onTap: () => setState(() => _selectedProjectTaskFilter = 1),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildMetricTile(
-                title: 'Completed',
-                count: completedCount,
-                icon: Icons.check_circle_rounded,
-                color: CeladonColors.primary,
-                isSelected: _selectedProjectTaskFilter == 2,
-                onTap: () => setState(() => _selectedProjectTaskFilter = 2),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildMetricTile(
-                title: 'Incomplete',
-                count: incompleteCount,
-                icon: Icons.cancel_outlined,
-                color: const Color(0xFFEF4444),
-                isSelected: _selectedProjectTaskFilter == 3,
-                onTap: () => setState(() => _selectedProjectTaskFilter = 3),
-              ),
-            ),
-          ],
-        ),
-
-        const SizedBox(height: 14),
-
-        // 5. Search Box (Matching company employee search box style, Image 1)
+        // 4. Search Box (Matching company employee search box style, Image 1)
         _buildTypingBoxStyle(
           controller: _projectTaskSearchController,
           hintText: 'Search tasks by title, desc, assignee...',

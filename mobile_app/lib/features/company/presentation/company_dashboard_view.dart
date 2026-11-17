@@ -1482,35 +1482,26 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     child: Row(
                       children: [
                         Container(
-                          width: 50,
-                          height: 50,
+                          width: 48,
+                          height: 48,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
+                            color: CeladonColors.primaryLight,
                             border: Border.all(
                               color: CeladonColors.primary,
                               width: 2,
                             ),
                           ),
-                          child: ClipOval(
-                            child: Image.asset(
-                              'assets/images/profile_avatar_female.png',
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  Container(
-                                    color: CeladonColors.primaryLight,
-                                    child: Center(
-                                      child: Text(
-                                        displayName.isNotEmpty
-                                            ? displayName[0].toUpperCase()
-                                            : 'A',
-                                        style: const TextStyle(
-                                          color: CeladonColors.primary,
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
+                          child: Center(
+                            child: Text(
+                              displayName.isNotEmpty
+                                  ? displayName[0].toUpperCase()
+                                  : 'A',
+                              style: const TextStyle(
+                                color: CeladonColors.primary,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                           ),
                         ),
@@ -1768,42 +1759,45 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     Color? highlightColor,
   }) {
     final accentColor = highlightColor ?? CeladonColors.primary;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 9),
-      child: _buildGlassCard(
-        borderRadius: 18,
-        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         onTap: onTap,
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: CeladonColors.primaryLight,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: CeladonColors.border, width: 1.0),
+        borderRadius: BorderRadius.circular(12),
+        splashColor: CeladonColors.primary.withValues(alpha: 0.08),
+        highlightColor: CeladonColors.primary.withValues(alpha: 0.04),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: CeladonColors.primaryLight,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, size: 20, color: accentColor),
               ),
-              child: Icon(icon, size: 21, color: accentColor),
-            ),
-            const SizedBox(width: 13),
-            Expanded(
-              child: Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w700,
-                  color: CeladonColors.textPrimary,
-                  letterSpacing: -0.2,
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: CeladonColors.textPrimary,
+                    letterSpacing: -0.1,
+                  ),
                 ),
               ),
-            ),
-            const Icon(
-              Icons.chevron_right_rounded,
-              color: CeladonColors.textMuted,
-              size: 22,
-            ),
-          ],
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: Color(0xFF94A3B8),
+                size: 20,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -3357,7 +3351,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                         color: isDayEvent
                             ? const Color(0xFF7C3AED).withValues(alpha: 0.15)
                             : (isDayLeaveOrOff
-                                  ? CeladonColors.coralLight
+                                  ? CeladonColors.holidayLight
                                   : (isSelected
                                         ? CeladonColors.primary
                                         : CeladonColors.searchBackground)),
@@ -3366,7 +3360,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                           color: isDayEvent
                               ? const Color(0xFF8B5CF6).withValues(alpha: 0.75)
                               : (isDayLeaveOrOff
-                                    ? CeladonColors.coralBorder
+                                    ? CeladonColors.holidayBorder
                                     : (isSelected
                                           ? CeladonColors.primary
                                           : CeladonColors.border)),
@@ -3388,7 +3382,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                               color: isDayEvent
                                   ? const Color(0xFF7C3AED)
                                   : (isDayLeaveOrOff
-                                        ? CeladonColors.coralDark
+                                        ? CeladonColors.holidayDark
                                         : (isSelected
                                               ? Colors.white
                                               : CeladonColors.textSecondary)),
@@ -3405,7 +3399,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                               color: isDayEvent
                                   ? const Color(0xFF7C3AED)
                                   : (isDayLeaveOrOff
-                                        ? CeladonColors.coralDark
+                                        ? CeladonColors.holidayDark
                                         : (isSelected
                                               ? Colors.white
                                               : CeladonColors.textPrimary)),
@@ -3453,7 +3447,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   color: isDayEvent
                       ? const Color(0xFF7C3AED).withValues(alpha: 0.12)
                       : (isLeaveOrOff
-                            ? CeladonColors.coralLight
+                            ? CeladonColors.holidayLight
                             : (isFutureDate
                                   ? CeladonColors.info.withValues(alpha: 0.12)
                                   : CeladonColors.primaryLight)),
@@ -3462,7 +3456,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     color: isDayEvent
                         ? const Color(0xFF8B5CF6).withValues(alpha: 0.40)
                         : (isLeaveOrOff
-                              ? CeladonColors.coralBorder
+                              ? CeladonColors.holidayBorder
                               : (isFutureDate
                                     ? CeladonColors.info.withValues(alpha: 0.35)
                                     : CeladonColors.primary.withValues(
@@ -3484,7 +3478,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     color: isDayEvent
                         ? const Color(0xFF7C3AED)
                         : (isLeaveOrOff
-                              ? CeladonColors.coralDark
+                              ? CeladonColors.holidayDark
                               : (isFutureDate
                                     ? CeladonColors.info
                                     : CeladonColors.primary)),
@@ -6626,16 +6620,16 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 ];
                 onTapAction = () => _showEventDetailsDialog(event);
               } else if (isHoliday) {
-                // Coral color for company holiday (tap displays holiday description)
-                bgColor = CeladonColors.coralLight;
-                borderColor = CeladonColors.coralBorder;
-                textColor = CeladonColors.coralDark;
+                // Dark grey color for company holiday (tap displays holiday description)
+                bgColor = CeladonColors.holidayLight;
+                borderColor = CeladonColors.holidayBorder;
+                textColor = CeladonColors.holidayDark;
                 onTapAction = () => _showHolidayDetailsDialog(holiday);
               } else if (isLeaveOrOff) {
-                // Soft coral for leaves & non-working days (unclickable: locked)
-                bgColor = const Color(0xFFFFF2EF);
-                borderColor = const Color(0xFFFFB5A7);
-                textColor = CeladonColors.coralDark;
+                // Dark grey for leaves & non-working days (unclickable: locked)
+                bgColor = CeladonColors.holidayLight;
+                borderColor = CeladonColors.holidayBorder;
+                textColor = CeladonColors.holidayDark;
                 onTapAction = null;
               } else {
                 // Regular working day
@@ -6720,7 +6714,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             children: [
               _buildCalendarLegendDot(CeladonColors.primary, 'Working Day'),
               _buildCalendarLegendDot(const Color(0xFF7C3AED), 'Event ★'),
-              _buildCalendarLegendDot(CeladonColors.coralDark, 'Holiday / Off'),
+              _buildCalendarLegendDot(CeladonColors.holidayDark, 'Holiday / Off'),
               _buildCalendarLegendDot(const Color(0xFFF59E0B), 'Birthday 🎂'),
             ],
           ),
@@ -9308,43 +9302,50 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: CeladonColors.lightGreen,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(
-                          Icons.policy_rounded,
-                          color: CeladonColors.primary,
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text(
-                            'Company Policies',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: CeladonColors.textPrimary,
-                            ),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: CeladonColors.lightGreen,
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                          Text(
-                            'Mandatory employee agreement policies',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: CeladonColors.textSecondary,
-                            ),
+                          child: const Icon(
+                            Icons.policy_rounded,
+                            color: CeladonColors.primary,
+                            size: 20,
                           ),
-                        ],
-                      ),
-                    ],
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: const [
+                              Text(
+                                'Company Policies',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  color: CeladonColors.textPrimary,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                'Mandatory employee agreement policies',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: CeladonColors.textSecondary,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+                  const SizedBox(width: 8),
                   ElevatedButton.icon(
                     onPressed: _showCreatePolicyDialog,
                     icon: const Icon(Icons.add_rounded, size: 16),
@@ -9439,12 +9440,17 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               color: CeladonColors.textSecondary,
             ),
           ),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
-              color: CeladonColors.textPrimary,
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: CeladonColors.textPrimary,
+              ),
             ),
           ),
         ],
@@ -10526,15 +10532,15 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         children: [
           Row(
             children: const [
-              Icon(Icons.shield_outlined, color: Color(0xFFA7F3D0), size: 18),
+              Icon(Icons.shield_outlined, color: CeladonColors.primary, size: 18),
               SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'Super Admin Console Available',
                   style: TextStyle(
                     fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    color: CeladonColors.textPrimary,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -10546,7 +10552,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             'You are logged in as Company Owner. You have authorized platform permissions to switch to ReGen Central.',
             style: TextStyle(
               fontSize: 12,
-              color: Color(0xFFBACCC3),
+              color: Color(0xFF334155),
+              fontWeight: FontWeight.w500,
               height: 1.35,
             ),
           ),

@@ -98,7 +98,11 @@ abstract final class CeladonColors {
   static const Color teal = Color(0xFF1DA190);
   static const Color tealLight = Color(0xFFE4F6F4);
 
-  // Coral Accent for Holidays & Non-Working / Off Days
+  // Dark Grey Accent for Holidays & Non-Working / Off Days
+  static const Color holidayDark = Color(0xFF334155); // Slate / Dark Grey
+  static const Color holidayGrey = Color(0xFF475569);
+  static const Color holidayLight = Color(0xFFF1F5F9); // Crisp light slate grey
+  static const Color holidayBorder = Color(0xFFCBD5E1); // Clean slate border
   static const Color coral = Color(0xFFFF6F61);
   static const Color coralDark = Color(0xFFE0533C);
   static const Color coralLight = Color(0xFFFFECE8);

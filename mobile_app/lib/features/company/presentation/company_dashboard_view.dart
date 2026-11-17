@@ -2256,17 +2256,17 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                       ),
                     ),
                   ),
-                  // Bottom-left green wave ribbon accent (Image 2 Match)
+                  // Bottom-left green wave ribbon accent (Clean, sleek, strictly at bottom edge)
                   const Positioned(
                     left: 0,
                     bottom: 0,
-                    width: 190,
-                    height: 52,
+                    width: 140,
+                    height: 26,
                     child: CustomPaint(painter: _WelcomeCardWavePainter()),
                   ),
                   // Content
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 14, 16),
+                    padding: const EdgeInsets.fromLTRB(18, 18, 14, 26),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -2281,8 +2281,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                   const Text(
                                     'Welcome back,',
                                     style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w500,
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.w600,
                                       color: Color(0xFF475569),
                                     ),
                                   ),
@@ -2355,19 +2355,19 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 10),
                         ConstrainedBox(
                           constraints: BoxConstraints(
                             maxWidth:
-                                MediaQuery.of(context).size.width * 0.54,
+                                MediaQuery.of(context).size.width * 0.52,
                           ),
                           child: const Text(
                             'Manage your team, track attendance and keep your workplace running smoothly.',
                             style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w400,
-                              color: Color(0xFF64748B),
-                              height: 1.38,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF334155),
+                              height: 1.40,
                             ),
                           ),
                         ),
@@ -2534,7 +2534,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         : Icons.groups_rounded;
     final watermarkColor =
         (isAmber ? const Color(0xFFD9822B) : const Color(0xFF096544))
-            .withValues(alpha: 0.14);
+            .withValues(alpha: 0.05);
 
     return InkWell(
       onTap: onTap,
@@ -2584,26 +2584,25 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     Row(
                       children: [
                         Container(
-                          width: 32,
-                          height: 32,
+                          width: 30,
+                          height: 30,
                           decoration: BoxDecoration(
                             color: iconBgColor,
-                            borderRadius: BorderRadius.circular(9),
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Icon(icon, size: 17, color: iconColor),
+                          child: Icon(icon, size: 16, color: iconColor),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              title,
-                              style: const TextStyle(
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF0F172A),
-                              ),
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF0F172A),
+                              letterSpacing: -0.2,
                             ),
                           ),
                         ),
@@ -2627,7 +2626,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                       ),
                       decoration: BoxDecoration(
                         color: chipBgColor,
-                        borderRadius: BorderRadius.circular(9),
+                        borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -2716,7 +2715,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 child: Icon(
                   Icons.event_available_rounded,
                   size: 68,
-                  color: const Color(0xFF047857).withValues(alpha: 0.14),
+                  color: const Color(0xFF047857).withValues(alpha: 0.05),
                 ),
               ),
               Padding(
@@ -2727,32 +2726,36 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     Row(
                       children: [
                         Container(
-                          width: 32,
-                          height: 32,
+                          width: 30,
+                          height: 30,
                           decoration: BoxDecoration(
                             color: const Color(0xFFECFDF5),
-                            borderRadius: BorderRadius.circular(9),
+                            borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Icon(
                             Icons.calendar_today_outlined,
-                            size: 16,
+                            size: 15,
                             color: Color(0xFF047857),
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 7),
                         Expanded(
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              '$title >',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF0F172A),
-                              ),
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF0F172A),
+                              letterSpacing: -0.2,
                             ),
                           ),
+                        ),
+                        const Icon(
+                          Icons.chevron_right_rounded,
+                          size: 14,
+                          color: Color(0xFF0F172A),
                         ),
                       ],
                     ),
@@ -2830,15 +2833,6 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 width: 3.5,
                 child: Container(color: const Color(0xFF0D9488)),
               ),
-              Positioned(
-                right: -4,
-                bottom: -6,
-                child: Icon(
-                  Icons.pie_chart_outline_rounded,
-                  size: 58,
-                  color: const Color(0xFF0D9488).withValues(alpha: 0.08),
-                ),
-              ),
               Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,
@@ -2850,30 +2844,29 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     Row(
                       children: [
                         Container(
-                          width: 32,
-                          height: 32,
+                          width: 30,
+                          height: 30,
                           decoration: BoxDecoration(
                             color: const Color(0xFFF0FDFA),
-                            borderRadius: BorderRadius.circular(9),
+                            borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Icon(
                             Icons.bar_chart_rounded,
-                            size: 18,
+                            size: 17,
                             color: Color(0xFF0D9488),
                           ),
                         ),
                         const SizedBox(width: 8),
                         const Expanded(
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              'Attendance Rate',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF0F172A),
-                              ),
+                          child: Text(
+                            'Attendance Rate',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF0F172A),
+                              letterSpacing: -0.2,
                             ),
                           ),
                         ),
@@ -3018,12 +3011,12 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 width: 3.5,
                 child: Container(color: stripeColor),
               ),
-              // Bottom wave curve decoration (Image 2 Match)
+              // Bottom wave curve decoration (Clean, smooth, in lower portion)
               Positioned(
                 left: 0,
                 right: 0,
                 bottom: 0,
-                height: 52,
+                height: 38,
                 child: CustomPaint(
                   painter: _CardBottomWavePainter(color: waveColor),
                 ),
@@ -3037,26 +3030,25 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     Row(
                       children: [
                         Container(
-                          width: 32,
-                          height: 32,
+                          width: 30,
+                          height: 30,
                           decoration: BoxDecoration(
                             color: iconBg,
-                            borderRadius: BorderRadius.circular(9),
+                            borderRadius: BorderRadius.circular(8),
                           ),
                           child: Icon(icon, size: 16, color: iconColor),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              title,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF0F172A),
-                              ),
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF0F172A),
+                              letterSpacing: -0.3,
                             ),
                           ),
                         ),
@@ -3725,7 +3717,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     style: const TextStyle(
                       fontSize: 13.5,
                       fontWeight: FontWeight.w800,
-                      color: Colors.white,
+                      color: Color(0xFF0F172A),
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -3733,8 +3725,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     'Weekly Team Attendance Details',
                     style: TextStyle(
                       fontSize: 10.5,
-                      color: Color(0xFFCBD5E1),
-                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF475569),
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
@@ -4178,11 +4170,15 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           ? 'This date is in the future. Attendance will be recorded when employees check in.'
           : 'No employees categorized as $statusLabel on this date.';
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 14),
+        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
         child: Center(
           child: Text(
             emptyMsg,
-            style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 11.5),
+            style: const TextStyle(
+              color: Color(0xFF475569),
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+            ),
             textAlign: TextAlign.center,
           ),
         ),
@@ -4435,7 +4431,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     style: const TextStyle(
                       fontSize: 13.5,
                       fontWeight: FontWeight.w800,
-                      color: Colors.white,
+                      color: Color(0xFF0F172A),
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -4443,8 +4439,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     'Full Year Team Attendance Summary',
                     style: TextStyle(
                       fontSize: 10.5,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xFFCBD5E1),
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF475569),
                     ),
                   ),
                 ],
@@ -4492,7 +4488,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             ],
           ),
           const SizedBox(height: 12),
-          const Divider(color: Colors.white12, height: 1),
+          const Divider(color: Color(0xFFE2E8F0), height: 1),
           const SizedBox(height: 8),
 
           if (employees.isEmpty)
@@ -4500,7 +4496,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               padding: EdgeInsets.symmetric(vertical: 8),
               child: Text(
                 'No employees active in this year.',
-                style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 11.5),
+                style: TextStyle(
+                  color: Color(0xFF475569),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             )
           else
@@ -4547,7 +4547,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                             style: const TextStyle(
                               fontSize: 12.5,
                               fontWeight: FontWeight.w700,
-                              color: Colors.white,
+                              color: Color(0xFF0F172A),
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -4556,7 +4556,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                             style: const TextStyle(
                               fontSize: 10.5,
                               fontWeight: FontWeight.w500,
-                              color: Color(0xFFCBD5E1),
+                              color: Color(0xFF475569),
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -4800,7 +4800,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                           size: 20,
                           color: hasActiveRoleOrDept
                               ? CeladonColors.primary
-                              : const Color(0xFFCBD5E1),
+                              : const Color(0xFF94A3B8),
                         ),
                         if (hasActiveRoleOrDept)
                           Positioned(
@@ -6415,7 +6415,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                           size: 20,
                           color: _selectedDayLogFilter != 'all'
                               ? CeladonColors.primary
-                              : const Color(0xFFCBD5E1),
+                              : const Color(0xFF94A3B8),
                         ),
                         if (_selectedDayLogFilter != 'all')
                           Positioned(
@@ -8007,7 +8007,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                           : FontWeight.w600,
                                       color: salaryDeduction
                                           ? Colors.white
-                                          : const Color(0xFFCBD5E1),
+                                          : const Color(0xFF475569),
                                     ),
                                   ),
                                 ],
@@ -11898,8 +11898,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 child: Text(
                   'No employee found matching "$_attendanceSearchQuery" on this date.',
                   style: const TextStyle(
-                    color: Color(0xFFCBD5E1),
-                    fontSize: 11.5,
+                    color: Color(0xFF475569),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -12839,7 +12840,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                         'Period: ${r.leave!.startDate} to ${r.leave!.endDate}',
                         style: const TextStyle(
                           fontSize: 11.5,
-                          color: Color(0xFFCBD5E1),
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF475569),
                         ),
                       ),
                       if (r.leave!.reason != null &&
@@ -13079,31 +13081,31 @@ class _WelcomeCardWavePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 1. Primary flowing emerald ribbon
+    // 1. Sleek flowing emerald ribbon strictly in bottom corner
     final primaryPaint = Paint()
       ..shader = const LinearGradient(
         begin: Alignment.bottomLeft,
         end: Alignment.topRight,
         colors: [
-          Color(0xFF075438),
-          Color(0xFF096544),
-          Color(0x00096544),
+          Color(0xFF064E3B),
+          Color(0xFF047857),
+          Color(0x00047857),
         ],
-        stops: [0.0, 0.65, 1.0],
+        stops: [0.0, 0.70, 1.0],
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
       ..style = PaintingStyle.fill;
 
     final primaryPath = Path()
-      ..moveTo(0, size.height * 0.28)
+      ..moveTo(0, size.height * 0.35)
       ..quadraticBezierTo(
-        size.width * 0.30,
+        size.width * 0.32,
         size.height * 0.65,
-        size.width * 0.65,
-        size.height * 0.85,
+        size.width * 0.68,
+        size.height * 0.84,
       )
       ..quadraticBezierTo(
-        size.width * 0.85,
-        size.height * 0.95,
+        size.width * 0.88,
+        size.height * 0.94,
         size.width,
         size.height,
       )
@@ -13112,41 +13114,13 @@ class _WelcomeCardWavePainter extends CustomPainter {
 
     canvas.drawPath(primaryPath, primaryPaint);
 
-    // 2. Secondary lighter accent curve underneath
-    final accentPaint = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.bottomLeft,
-        end: Alignment.topRight,
-        colors: [
-          Color(0xFF0E7A52),
-          Color(0x5515803D),
-          Color(0x0015803D),
-        ],
-        stops: [0.0, 0.50, 1.0],
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
-      ..style = PaintingStyle.fill;
-
-    final accentPath = Path()
-      ..moveTo(0, size.height * 0.55)
-      ..quadraticBezierTo(
-        size.width * 0.25,
-        size.height * 0.80,
-        size.width * 0.55,
-        size.height * 0.92,
-      )
-      ..lineTo(size.width * 0.80, size.height)
-      ..lineTo(0, size.height)
-      ..close();
-
-    canvas.drawPath(accentPath, accentPaint);
-
-    // 3. Fine upper ridge contour line
+    // 2. Fine mint highlight ridge
     final ridgePaint = Paint()
       ..shader = const LinearGradient(
         begin: Alignment.bottomLeft,
         end: Alignment.topRight,
         colors: [
-          Color(0x99A7F3D0),
+          Color(0xBBA7F3D0),
           Color(0x33A7F3D0),
           Color(0x00A7F3D0),
         ],
@@ -13156,16 +13130,16 @@ class _WelcomeCardWavePainter extends CustomPainter {
       ..strokeWidth = 1.2;
 
     final ridgePath = Path()
-      ..moveTo(0, size.height * 0.28)
+      ..moveTo(0, size.height * 0.35)
       ..quadraticBezierTo(
-        size.width * 0.30,
+        size.width * 0.32,
         size.height * 0.65,
-        size.width * 0.65,
-        size.height * 0.85,
+        size.width * 0.68,
+        size.height * 0.84,
       )
       ..quadraticBezierTo(
-        size.width * 0.85,
-        size.height * 0.95,
+        size.width * 0.88,
+        size.height * 0.94,
         size.width,
         size.height,
       );
@@ -13190,8 +13164,8 @@ class _CardBottomWavePainter extends CustomPainter {
         begin: Alignment.bottomLeft,
         end: Alignment.topRight,
         colors: [
-          color.withValues(alpha: 0.20),
-          color.withValues(alpha: 0.10),
+          color.withValues(alpha: 0.14),
+          color.withValues(alpha: 0.06),
           color.withValues(alpha: 0.0),
         ],
         stops: const [0.0, 0.60, 1.0],
@@ -13199,18 +13173,18 @@ class _CardBottomWavePainter extends CustomPainter {
       ..style = PaintingStyle.fill;
 
     final backPath = Path()
-      ..moveTo(0, size.height * 0.55)
+      ..moveTo(0, size.height * 0.60)
       ..quadraticBezierTo(
         size.width * 0.40,
-        size.height * 0.20,
-        size.width * 0.75,
-        size.height * 0.50,
+        size.height * 0.25,
+        size.width * 0.72,
+        size.height * 0.52,
       )
       ..quadraticBezierTo(
-        size.width * 0.90,
-        size.height * 0.65,
+        size.width * 0.88,
+        size.height * 0.68,
         size.width,
-        size.height * 0.25,
+        size.height * 0.30,
       )
       ..lineTo(size.width, size.height)
       ..lineTo(0, size.height)
@@ -13224,19 +13198,19 @@ class _CardBottomWavePainter extends CustomPainter {
         begin: Alignment.bottomLeft,
         end: Alignment.topRight,
         colors: [
-          color.withValues(alpha: 0.45),
-          color.withValues(alpha: 0.22),
-          color.withValues(alpha: 0.02),
+          color.withValues(alpha: 0.32),
+          color.withValues(alpha: 0.14),
+          color.withValues(alpha: 0.01),
         ],
         stops: const [0.0, 0.60, 1.0],
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
       ..style = PaintingStyle.fill;
 
     final frontPath = Path()
-      ..moveTo(0, size.height * 0.75)
+      ..moveTo(0, size.height * 0.78)
       ..quadraticBezierTo(
         size.width * 0.35,
-        size.height * 0.35,
+        size.height * 0.38,
         size.width * 0.68,
         size.height * 0.62,
       )
@@ -13244,7 +13218,7 @@ class _CardBottomWavePainter extends CustomPainter {
         size.width * 0.85,
         size.height * 0.78,
         size.width,
-        size.height * 0.40,
+        size.height * 0.42,
       )
       ..lineTo(size.width, size.height)
       ..lineTo(0, size.height)

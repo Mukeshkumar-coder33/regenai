@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/celadon_colors.dart';
 
-/// Premium Celadon Reusable Card
+/// ReGen Card Component
 class CeladonCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
@@ -24,12 +24,12 @@ class CeladonCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: color ?? CeladonColors.cardBackground,
         borderRadius: BorderRadius.circular(16),
-        border: border ?? Border.all(color: CeladonColors.border, width: 1),
+        border: border ?? Border.all(color: CeladonColors.border, width: 1.0),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x081B5E4B),
-            blurRadius: 10,
-            offset: Offset(0, 3),
+            color: Color(0x06000000),
+            blurRadius: 8,
+            offset: Offset(0, 2),
           ),
         ],
       ),
@@ -48,4 +48,3 @@ class CeladonCard extends StatelessWidget {
     return content;
   }
 }
-

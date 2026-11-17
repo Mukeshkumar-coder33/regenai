@@ -230,53 +230,19 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
 
     return Container(
       decoration: const BoxDecoration(
-        color: CeladonColors.primaryDark,
+        color: CeladonColors.primary,
         borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(28),
           bottomRight: Radius.circular(28),
         ),
       ),
-      child: ClipRRect(
-        borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(28),
-          bottomRight: Radius.circular(28),
-        ),
-        child: Stack(
-          children: [
-            // Background office image texture
-            Positioned.fill(
-              child: Opacity(
-                opacity: 0.18,
-                child: Image.asset(
-                  'assets/images/office_dashboard_header.png',
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
-                ),
-              ),
-            ),
-            // Gradient Overlay
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      const Color(0xFF071F15).withValues(alpha: 0.95),
-                      CeladonColors.primaryDark.withValues(alpha: 0.92),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
                     // Top Bar: Hamburger Menu Button (Left) and Refresh + Logout (Right)
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -446,9 +412,6 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
                 ),
               ),
             ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -510,13 +473,13 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF0B291E),
+        color: CeladonColors.primary,
         borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Color(0x180B291E),
+            color: CeladonColors.primary.withValues(alpha: 0.15),
             blurRadius: 10,
-            offset: Offset(0, 4),
+            offset: const Offset(0, 4),
           ),
         ],
       ),

@@ -40,7 +40,7 @@ class _VirtualDeviceFrameState extends State<VirtualDeviceFrame> {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFE5EDE8),
+      backgroundColor: const Color(0xFFF5F7F8),
       body: Stack(
         children: [
           // Background ambient circles
@@ -52,7 +52,7 @@ class _VirtualDeviceFrameState extends State<VirtualDeviceFrame> {
               height: 350,
               decoration: const BoxDecoration(
                 shape: BoxShape.circle,
-                color: Color(0xFFD4E7DC),
+                color: Color(0xFFE8F5EC),
               ),
             ),
           ),
@@ -64,7 +64,7 @@ class _VirtualDeviceFrameState extends State<VirtualDeviceFrame> {
               height: 400,
               decoration: const BoxDecoration(
                 shape: BoxShape.circle,
-                color: Color(0xFFDCEFE5),
+                color: Color(0xFFE2E8F0),
               ),
             ),
           ),

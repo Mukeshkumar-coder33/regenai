@@ -425,7 +425,7 @@ class _TeamDirectoryViewState extends State<TeamDirectoryView> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF031A14),
+      backgroundColor: CeladonColors.cardBackground,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -444,24 +444,24 @@ class _TeamDirectoryViewState extends State<TeamDirectoryView> {
                 height: 46,
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0A2218).withValues(alpha: 0.70),
+                  color: CeladonColors.inputBackground,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                    color: const Color(0xFF34D399).withValues(alpha: 0.22),
+                    color: CeladonColors.inputBorder,
                     width: 1.0,
                   ),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.search_rounded, size: 19, color: Color(0xFFCBD5E1)),
+                    const Icon(Icons.search_rounded, size: 19, color: CeladonColors.textMuted),
                     const SizedBox(width: 10),
                     Expanded(
                       child: TextField(
                         controller: _searchController,
                         autofocus: true,
-                        cursorColor: const Color(0xFF34D399),
+                        cursorColor: CeladonColors.primary,
                         style: const TextStyle(
-                          color: Colors.white,
+                          color: CeladonColors.textPrimary,
                           fontSize: 13.5,
                           fontWeight: FontWeight.w600,
                         ),
@@ -471,7 +471,7 @@ class _TeamDirectoryViewState extends State<TeamDirectoryView> {
                           fillColor: Colors.transparent,
                           hintText: 'Search by name or department...',
                           hintStyle: TextStyle(
-                            color: Color(0xFF94A3B8),
+                            color: CeladonColors.textPlaceholder,
                             fontSize: 13.5,
                             fontWeight: FontWeight.w500,
                           ),
@@ -489,7 +489,7 @@ class _TeamDirectoryViewState extends State<TeamDirectoryView> {
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFFBACCC3)),
+                      icon: const Icon(Icons.close_rounded, size: 18, color: CeladonColors.textMuted),
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
                       onPressed: () {
@@ -499,7 +499,7 @@ class _TeamDirectoryViewState extends State<TeamDirectoryView> {
                       },
                     ),
                     const SizedBox(width: 6),
-                    const Icon(Icons.filter_list_rounded, size: 20, color: Color(0xFFCBD5E1)),
+                    const Icon(Icons.filter_list_rounded, size: 20, color: CeladonColors.textMuted),
                   ],
                 ),
               ),

@@ -1,8 +1,8 @@
 import 'dart:convert';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../core/theme/celadon_colors.dart';
 import '../../../core/widgets/brand_logo.dart';
 import '../../auth/data/user_model.dart';
 import '../../dashboard/data/dashboard_service.dart';
@@ -136,11 +136,12 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
       } catch (_) {}
     }
 
+    final now = DateTime.now();
     final firstDate = isDob
-        ? DateTime(1950, 1, 1)
+        ? DateTime(1940, 1, 1)
         : DateTime.now().subtract(const Duration(days: 365 * 2));
     final lastDate = isDob
-        ? DateTime.now().subtract(const Duration(days: 365 * 18))
+        ? DateTime(now.year - 18, now.month, now.day)
         : DateTime.now().add(const Duration(days: 365));
 
     final picked = await showDatePicker(
@@ -152,12 +153,12 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
       lastDate: lastDate,
       builder: (context, child) {
         return Theme(
-          data: ThemeData.dark().copyWith(
-            colorScheme: const ColorScheme.dark(
-              primary: Color(0xFF10B981),
+          data: ThemeData.light().copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: CeladonColors.primary,
               onPrimary: Colors.white,
-              surface: Color(0xFF072118),
-              onSurface: Colors.white,
+              surface: CeladonColors.cardBackground,
+              onSurface: CeladonColors.textPrimary,
             ),
           ),
           child: child!,
@@ -183,6 +184,14 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
     final firstName = _firstNameCtrl.text.trim();
     final lastName = _lastNameCtrl.text.trim();
     final aadhaar = _aadhaarCtrl.text.replaceAll(RegExp(r'\D'), '');
+    final phone = _phoneCtrl.text.trim().replaceAll(RegExp(r'[\s\-]'), '');
+    final dob = _dobCtrl.text.trim();
+    final joiningDate = _joiningDateCtrl.text.trim();
+    final dept = _deptCtrl.text.trim();
+    final designation = _designationCtrl.text.trim();
+    final salary = _salaryCtrl.text.trim();
+    final address = _addressCtrl.text.trim();
+    final password = _passwordCtrl.text.trim();
 
     if (staffId.isEmpty) {
       _showError('Staff ID is required.');
@@ -192,42 +201,82 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
       _showError('Please enter a valid 12-digit Aadhaar number (cannot start with 0 or 1).');
       return;
     }
-    if (username.isEmpty) {
-      _showError('Username is required for system login.');
+    if (username.length < 3) {
+      _showError('Username is required (minimum 3 characters).');
+      return;
+    }
+    if (password.isNotEmpty && password.length < 4) {
+      _showError('Password must be at least 4 characters.');
       return;
     }
     if (firstName.isEmpty) {
       _showError('First Name is required.');
       return;
     }
-
+    if (lastName.isEmpty) {
+      _showError('Last Name is required.');
+      return;
+    }
+    if (phone.isEmpty || !RegExp(r'^\+?[0-9]{10,14}$').hasMatch(phone)) {
+      _showError('Valid Contact Number is required (at least 10 digits).');
+      return;
+    }
+    if (dob.isEmpty) {
+      _showError('Date of Birth is required.');
+      return;
+    }
+    if (_calculatedAge == null || _calculatedAge! < 18) {
+      _showError('Employee must be at least 18 years of age.');
+      return;
+    }
+    if (dept.isEmpty) {
+      _showError('Department is required.');
+      return;
+    }
+    if (designation.isEmpty) {
+      _showError('Designation is required.');
+      return;
+    }
+    if (joiningDate.isEmpty) {
+      _showError('Joining Date is required.');
+      return;
+    }
+    final num? salaryNum = num.tryParse(salary);
+    if (salary.isEmpty || salaryNum == null || salaryNum <= 0) {
+      _showError('Please enter a valid positive monthly salary.');
+      return;
+    }
+    if (address.isEmpty) {
+      _showError('Communication Address is required.');
+      return;
+    }
     if (!_hasUploadedProfilePic || _customAvatarUrl == null || _customAvatarUrl!.trim().isEmpty) {
-      _showError('Profile picture is mandatory. Please upload an image.');
+      _showError('Profile picture is mandatory. Please upload an image or capture with camera.');
       return;
     }
 
     final fullName = '$firstName $lastName'.trim();
-    final password = _passwordCtrl.text.trim().isNotEmpty ? _passwordCtrl.text.trim() : '1234';
+    final finalPassword = password.isNotEmpty ? password : '1234';
 
     setState(() => _isSubmitting = true);
 
     final payload = <String, dynamic>{
       'userId': staffId,
       'username': username,
-      'password': password,
+      'password': finalPassword,
       'aadhaar': aadhaar,
       'firstName': firstName,
       'lastName': lastName,
       'name': fullName,
-      'department': _deptCtrl.text.trim().isNotEmpty ? _deptCtrl.text.trim() : 'General',
-      'designation': _designationCtrl.text.trim().isNotEmpty ? _designationCtrl.text.trim() : 'Staff Member',
+      'department': dept,
+      'designation': designation,
       'role': _role,
       'gender': _gender,
-      'dateOfBirth': _dobCtrl.text.trim(),
-      'joiningDate': _joiningDateCtrl.text.trim(),
-      'phone': _phoneCtrl.text.trim(),
-      'address': _addressCtrl.text.trim(),
-      'salary': _salaryCtrl.text.trim().isNotEmpty ? _salaryCtrl.text.trim() : '0',
+      'dateOfBirth': dob,
+      'joiningDate': joiningDate,
+      'phone': phone,
+      'address': address,
+      'salary': salary,
       'avatar': _customAvatarUrl!,
       'profilePicture': _customAvatarUrl!,
       'photo': _customAvatarUrl!,
@@ -287,88 +336,50 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF031A14),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          // 1. Photographic dark corporate office background with bokeh blur
-          Positioned.fill(
-            child: ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: 5.5, sigmaY: 5.5),
-              child: Transform.scale(
-                scale: 1.05,
-                child: Image.asset(
-                  'assets/images/corporate_office_dark.jpg',
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) =>
-                      Image.asset('assets/images/office_auth_portrait.png', fit: BoxFit.cover),
-                ),
-              ),
-            ),
-          ),
-
-          // 2. Ambient Lighting Gradient Overlay
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    const Color(0xFF04100B).withValues(alpha: 0.12),
-                    Colors.transparent,
-                    const Color(0xFF020906).withValues(alpha: 0.35),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-          // 3. Safe Foreground Form Content
-          SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildHeader(context),
-                Expanded(
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Form(
-                      key: _formKey,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _buildProfilePhotoCard(),
-                          const SizedBox(height: 14),
-                          _buildCredentialsCard(),
-                          const SizedBox(height: 14),
-                          _buildPersonalInfoCard(),
-                          const SizedBox(height: 14),
-                          _buildOrganizationalPlacementCard(),
-                          const SizedBox(height: 22),
-                          _buildSubmitButton(),
-                          const SizedBox(height: 24),
-                        ],
-                      ),
-                    ),
+      backgroundColor: CeladonColors.background,
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildHeader(context),
+            Expanded(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _buildProfilePhotoCard(),
+                      const SizedBox(height: 14),
+                      _buildCredentialsCard(),
+                      const SizedBox(height: 14),
+                      _buildPersonalInfoCard(),
+                      const SizedBox(height: 14),
+                      _buildOrganizationalPlacementCard(),
+                      const SizedBox(height: 22),
+                      _buildSubmitButton(),
+                      const SizedBox(height: 24),
+                    ],
                   ),
                 ),
-              ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildHeader(BuildContext context) {
-    return Padding(
+    return Container(
+      color: CeladonColors.cardBackground,
       padding: const EdgeInsets.fromLTRB(14, 8, 16, 10),
       child: Row(
         children: [
           IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: Colors.white),
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: CeladonColors.textPrimary),
             onPressed: () => Navigator.of(context).pop(),
           ),
           const SizedBox(width: 4),
@@ -384,7 +395,7 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
-                    color: Colors.white,
+                    color: CeladonColors.textPrimary,
                     letterSpacing: -0.2,
                   ),
                 ),
@@ -393,7 +404,7 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
-                    color: Color(0xFF94A3B8),
+                    color: CeladonColors.textMuted,
                   ),
                 ),
               ],
@@ -405,52 +416,38 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
   }
 
   Widget _buildGlassCard({required Widget child, EdgeInsetsGeometry? padding}) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Container(
-          padding: padding ?? const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                const Color(0xFF1A4032).withValues(alpha: 0.45),
-                const Color(0xFF102D22).withValues(alpha: 0.52),
-                const Color(0xFF081C15).withValues(alpha: 0.62),
-              ],
-            ),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: const Color(0xFF34D399).withValues(alpha: 0.28),
-              width: 1.1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.22),
-                blurRadius: 16,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: child,
+    return Container(
+      padding: padding ?? const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: CeladonColors.cardBackground,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: CeladonColors.border,
+          width: 1.0,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
+      child: child,
     );
   }
 
   Widget _buildSectionTitle(String title, IconData icon) {
     return Row(
       children: [
-        Icon(icon, size: 17, color: const Color(0xFF34D399)),
+        Icon(icon, size: 17, color: CeladonColors.primary),
         const SizedBox(width: 8),
         Text(
           title,
           style: const TextStyle(
             fontSize: 13.5,
             fontWeight: FontWeight.w800,
-            color: Colors.white,
+            color: CeladonColors.textPrimary,
             letterSpacing: 0.2,
           ),
         ),
@@ -476,15 +473,15 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: _hasUploadedProfilePic ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+                          color: _hasUploadedProfilePic ? CeladonColors.primary : CeladonColors.warning,
                           width: 2.2,
                         ),
-                        color: const Color(0xFF0F3A2E),
+                        color: CeladonColors.primaryLight,
                         boxShadow: [
                           BoxShadow(
-                            color: (_hasUploadedProfilePic ? const Color(0xFF10B981) : const Color(0xFFF59E0B))
-                                .withValues(alpha: 0.35),
-                            blurRadius: 10,
+                            color: (_hasUploadedProfilePic ? CeladonColors.primary : CeladonColors.warning)
+                                .withValues(alpha: 0.25),
+                            blurRadius: 8,
                           ),
                         ],
                       ),
@@ -492,8 +489,8 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
                         child: _hasUploadedProfilePic && _customAvatarUrl != null
                             ? _buildAvatarImagePreview(_customAvatarUrl!)
                             : Container(
-                                color: const Color(0xFF0B2B20),
-                                child: const Icon(Icons.add_a_photo_rounded, size: 28, color: Color(0xFF34D399)),
+                                color: CeladonColors.primaryLight,
+                                child: const Icon(Icons.add_a_photo_rounded, size: 28, color: CeladonColors.primary),
                               ),
                       ),
                     ),
@@ -503,7 +500,7 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
                       child: Container(
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
-                          color: _hasUploadedProfilePic ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+                          color: _hasUploadedProfilePic ? CeladonColors.primary : CeladonColors.warning,
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 1.2),
                         ),
@@ -529,7 +526,7 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w800,
-                            color: Colors.white,
+                            color: CeladonColors.textPrimary,
                           ),
                         ),
                         SizedBox(width: 4),
@@ -538,7 +535,7 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFFEF4444),
+                            color: CeladonColors.error,
                           ),
                         ),
                       ],
@@ -550,19 +547,17 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
                           : 'Mandatory profile image required by database.',
                       style: TextStyle(
                         fontSize: 11,
-                        color: _hasUploadedProfilePic ? const Color(0xFFBACCC3) : const Color(0xFFFCD34D),
+                        color: _hasUploadedProfilePic ? CeladonColors.textMuted : CeladonColors.warning,
                       ),
                     ),
                     const SizedBox(height: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
                       decoration: BoxDecoration(
-                        color: (_hasUploadedProfilePic ? const Color(0xFF10B981) : const Color(0xFFEF4444))
-                            .withValues(alpha: 0.18),
+                        color: (_hasUploadedProfilePic ? CeladonColors.primaryLight : CeladonColors.errorLight),
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(
-                          color: (_hasUploadedProfilePic ? const Color(0xFF34D399) : const Color(0xFFEF4444))
-                              .withValues(alpha: 0.35),
+                          color: (_hasUploadedProfilePic ? CeladonColors.primary : CeladonColors.error),
                         ),
                       ),
                       child: Text(
@@ -570,7 +565,7 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w800,
-                          color: _hasUploadedProfilePic ? const Color(0xFF34D399) : const Color(0xFFFCA5A5),
+                          color: _hasUploadedProfilePic ? CeladonColors.primary : CeladonColors.error,
                         ),
                       ),
                     ),
@@ -587,11 +582,11 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
               padding: const EdgeInsets.symmetric(vertical: 8),
               decoration: BoxDecoration(
                 color: _hasUploadedProfilePic
-                    ? const Color(0xFF0C241B).withValues(alpha: 0.70)
-                    : const Color(0xFF10B981),
+                    ? CeladonColors.cardBackground
+                    : CeladonColors.primary,
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                  color: const Color(0xFF34D399).withValues(alpha: 0.30),
+                  color: _hasUploadedProfilePic ? CeladonColors.border : CeladonColors.primary,
                   width: 1.0,
                 ),
               ),
@@ -602,15 +597,15 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
                   Icon(
                     _hasUploadedProfilePic ? Icons.sync_rounded : Icons.upload_file_rounded,
                     size: 15,
-                    color: Colors.white,
+                    color: _hasUploadedProfilePic ? CeladonColors.textPrimary : Colors.white,
                   ),
                   const SizedBox(width: 6),
                   Text(
                     _hasUploadedProfilePic ? 'Change Profile Picture' : 'Upload / Select Profile Picture *',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: Colors.white,
+                      color: _hasUploadedProfilePic ? CeladonColors.textPrimary : Colors.white,
                     ),
                   ),
                 ],
@@ -653,9 +648,10 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
       final picker = ImagePicker();
       final XFile? file = await picker.pickImage(
         source: source,
-        maxWidth: 800,
-        maxHeight: 800,
+        maxWidth: 1080,
+        maxHeight: 1080,
         imageQuality: 85,
+        preferredCameraDevice: CameraDevice.front,
       );
       if (file != null) {
         final bytes = await file.readAsBytes();
@@ -668,16 +664,18 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
         });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              backgroundColor: Color(0xFF10B981),
-              content: Text('✓ Profile picture uploaded successfully from device!'),
+            SnackBar(
+              backgroundColor: const Color(0xFF10B981),
+              content: Text(source == ImageSource.camera
+                  ? '✓ Camera photo captured and uploaded successfully!'
+                  : '✓ Profile picture uploaded successfully from device!'),
             ),
           );
         }
       }
     } catch (e) {
       if (mounted) {
-        _showError('Failed to access device photo: $e');
+        _showError('Failed to capture or access photo: $e');
       }
     }
   }
@@ -688,132 +686,128 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => ClipRRect(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-            decoration: BoxDecoration(
-              color: const Color(0xFF072118).withValues(alpha: 0.95),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-              border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.25)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF34D399).withValues(alpha: 0.35),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+          decoration: const BoxDecoration(
+            color: CeladonColors.cardBackground,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 14),
+                  decoration: BoxDecoration(
+                    color: CeladonColors.border,
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Upload Profile Photo *',
-                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Colors.white),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded, color: Color(0xFFCBD5E1), size: 20),
-                      onPressed: () => Navigator.pop(ctx),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Upload employee photo directly from device files or gallery.',
-                  style: TextStyle(fontSize: 12, color: Color(0xFFBACCC3)),
-                ),
-                const SizedBox(height: 20),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Upload Profile Photo *',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, color: CeladonColors.textMuted, size: 20),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Upload employee photo directly from device files or gallery.',
+                style: TextStyle(fontSize: 12, color: CeladonColors.textMuted),
+              ),
+              const SizedBox(height: 20),
 
-                // Device Gallery Option
-                InkWell(
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _pickImageFromSource(ImageSource.gallery);
-                  },
-                  borderRadius: BorderRadius.circular(14),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF10B981).withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.40)),
-                    ),
-                    child: Row(
-                      children: const [
-                        Icon(Icons.photo_library_rounded, color: Color(0xFF34D399), size: 22),
-                        SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Choose from Device Gallery',
-                                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white),
-                              ),
-                              SizedBox(height: 2),
-                              Text(
-                                'Select employee photo from device files or gallery',
-                                style: TextStyle(fontSize: 11, color: Color(0xFFBACCC3)),
-                              ),
-                            ],
-                          ),
+              // Device Gallery Option
+              InkWell(
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickImageFromSource(ImageSource.gallery);
+                },
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: CeladonColors.primaryLight,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: CeladonColors.primary),
+                  ),
+                  child: Row(
+                    children: const [
+                      Icon(Icons.photo_library_rounded, color: CeladonColors.primary, size: 22),
+                      SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Choose from Device Gallery',
+                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: CeladonColors.textPrimary),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Select employee photo from device files or gallery',
+                              style: TextStyle(fontSize: 11, color: CeladonColors.textMuted),
+                            ),
+                          ],
                         ),
-                        Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFF34D399), size: 14),
-                      ],
-                    ),
+                      ),
+                      Icon(Icons.arrow_forward_ios_rounded, color: CeladonColors.primary, size: 14),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 12),
+              ),
+              const SizedBox(height: 12),
 
-                // Device Camera Option
-                InkWell(
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _pickImageFromSource(ImageSource.camera);
-                  },
-                  borderRadius: BorderRadius.circular(14),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF042F24).withValues(alpha: 0.55),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.20)),
-                    ),
-                    child: Row(
-                      children: const [
-                        Icon(Icons.camera_alt_rounded, color: Color(0xFF6EE7B7), size: 22),
-                        SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Take Photo with Camera',
-                                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white),
-                              ),
-                              SizedBox(height: 2),
-                              Text(
-                                'Capture photo directly using device camera',
-                                style: TextStyle(fontSize: 11, color: Color(0xFFBACCC3)),
-                              ),
-                            ],
-                          ),
+              // Device Camera Option
+              InkWell(
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickImageFromSource(ImageSource.camera);
+                },
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: CeladonColors.inputBackground,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: CeladonColors.border),
+                  ),
+                  child: Row(
+                    children: const [
+                      Icon(Icons.camera_alt_rounded, color: CeladonColors.primary, size: 22),
+                      SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Take Photo with Camera',
+                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: CeladonColors.textPrimary),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Capture photo directly using device camera',
+                              style: TextStyle(fontSize: 11, color: CeladonColors.textMuted),
+                            ),
+                          ],
                         ),
-                        Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFF6EE7B7), size: 14),
-                      ],
-                    ),
+                      ),
+                      Icon(Icons.arrow_forward_ios_rounded, color: CeladonColors.textMuted, size: 14),
+                    ],
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -951,45 +945,39 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFFCBD5E1),
+                        color: CeladonColors.textSecondary,
                         letterSpacing: 0.2,
                       ),
                     ),
                     const SizedBox(height: 6),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(14),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                        child: Container(
-                          height: 46,
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF0A2218).withValues(alpha: 0.70),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: const Color(0xFF34D399).withValues(alpha: 0.22),
-                              width: 1.0,
-                            ),
+                    Container(
+                      height: 46,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      decoration: BoxDecoration(
+                        color: CeladonColors.inputBackground,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: CeladonColors.border,
+                          width: 1.0,
+                        ),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _gender,
+                          isExpanded: true,
+                          dropdownColor: CeladonColors.cardBackground,
+                          icon: const Icon(Icons.arrow_drop_down_rounded, color: CeladonColors.textMuted),
+                          style: const TextStyle(
+                            color: CeladonColors.textPrimary,
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
                           ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              value: _gender,
-                              isExpanded: true,
-                              dropdownColor: const Color(0xFF0A2218),
-                              icon: const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFFCBD5E1)),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              items: const [
-                                DropdownMenuItem(value: 'Male', child: Text('Male')),
-                                DropdownMenuItem(value: 'Female', child: Text('Female')),
-                                DropdownMenuItem(value: 'Other', child: Text('Other')),
-                              ],
-                              onChanged: (v) => setState(() => _gender = v ?? 'Male'),
-                            ),
-                          ),
+                          items: const [
+                            DropdownMenuItem(value: 'Male', child: Text('Male')),
+                            DropdownMenuItem(value: 'Female', child: Text('Female')),
+                            DropdownMenuItem(value: 'Other', child: Text('Other')),
+                          ],
+                          onChanged: (v) => setState(() => _gender = v ?? 'Male'),
                         ),
                       ),
                     ),
@@ -1057,43 +1045,37 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFFCBD5E1),
+                        color: CeladonColors.textSecondary,
                         letterSpacing: 0.2,
                       ),
                     ),
                     const SizedBox(height: 6),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(14),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                        child: Container(
-                          height: 46,
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF0A2218).withValues(alpha: 0.70),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: const Color(0xFF34D399).withValues(alpha: 0.22),
-                              width: 1.0,
-                            ),
+                    Container(
+                      height: 46,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      decoration: BoxDecoration(
+                        color: CeladonColors.inputBackground,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: CeladonColors.border,
+                          width: 1.0,
+                        ),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _departments.contains(_deptCtrl.text) ? _deptCtrl.text : _departments.first,
+                          isExpanded: true,
+                          dropdownColor: CeladonColors.cardBackground,
+                          icon: const Icon(Icons.arrow_drop_down_rounded, color: CeladonColors.textMuted),
+                          style: const TextStyle(
+                            color: CeladonColors.textPrimary,
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
                           ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              value: _departments.contains(_deptCtrl.text) ? _deptCtrl.text : _departments.first,
-                              isExpanded: true,
-                              dropdownColor: const Color(0xFF0A2218),
-                              icon: const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFFCBD5E1)),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              items: _departments
-                                  .map((d) => DropdownMenuItem(value: d, child: Text(d)))
-                                  .toList(),
-                              onChanged: (v) => setState(() => _deptCtrl.text = v ?? 'Engineering'),
-                            ),
-                          ),
+                          items: _departments
+                              .map((d) => DropdownMenuItem(value: d, child: Text(d)))
+                              .toList(),
+                          onChanged: (v) => setState(() => _deptCtrl.text = v ?? 'Engineering'),
                         ),
                       ),
                     ),
@@ -1125,47 +1107,41 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFFCBD5E1),
+                        color: CeladonColors.textSecondary,
                         letterSpacing: 0.2,
                       ),
                     ),
                     const SizedBox(height: 6),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(14),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                        child: Container(
-                          height: 46,
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF0A2218).withValues(alpha: 0.70),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: const Color(0xFF34D399).withValues(alpha: 0.22),
-                              width: 1.0,
-                            ),
+                    Container(
+                      height: 46,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      decoration: BoxDecoration(
+                        color: CeladonColors.inputBackground,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: CeladonColors.border,
+                          width: 1.0,
+                        ),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _role,
+                          isExpanded: true,
+                          dropdownColor: CeladonColors.cardBackground,
+                          icon: const Icon(Icons.arrow_drop_down_rounded, color: CeladonColors.textMuted),
+                          style: const TextStyle(
+                            color: CeladonColors.textPrimary,
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
                           ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              value: _role,
-                              isExpanded: true,
-                              dropdownColor: const Color(0xFF0A2218),
-                              icon: const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFFCBD5E1)),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              items: const [
-                                DropdownMenuItem(value: 'staff', child: Text('Staff Member')),
-                                DropdownMenuItem(value: 'admin', child: Text('Company Admin')),
-                                DropdownMenuItem(value: 'intern', child: Text('Intern')),
-                                DropdownMenuItem(value: 'freelancer', child: Text('Freelancer')),
-                                DropdownMenuItem(value: 'owner', child: Text('Company Owner')),
-                              ],
-                              onChanged: (v) => setState(() => _role = v ?? 'staff'),
-                            ),
-                          ),
+                          items: const [
+                            DropdownMenuItem(value: 'staff', child: Text('Staff Member')),
+                            DropdownMenuItem(value: 'admin', child: Text('Company Admin')),
+                            DropdownMenuItem(value: 'intern', child: Text('Intern')),
+                            DropdownMenuItem(value: 'freelancer', child: Text('Freelancer')),
+                            DropdownMenuItem(value: 'owner', child: Text('Company Owner')),
+                          ],
+                          onChanged: (v) => setState(() => _role = v ?? 'staff'),
                         ),
                       ),
                     ),
@@ -1224,79 +1200,66 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
           style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w700,
-            color: Color(0xFFCBD5E1),
+            color: CeladonColors.textSecondary,
             letterSpacing: 0.2,
           ),
         ),
         const SizedBox(height: 6),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-            child: Container(
-              height: maxLines == 1 ? 48 : null,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0A2218).withValues(alpha: 0.85),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: const Color(0xFF34D399).withValues(alpha: 0.25),
-                  width: 1.0,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.25),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  if (prefixIcon != null) ...[
-                    Icon(prefixIcon, size: 20, color: const Color(0xFFCBD5E1)),
-                    const SizedBox(width: 10),
-                  ],
-                  Expanded(
-                    child: TextField(
-                      controller: controller,
-                      onChanged: onChanged,
-                      obscureText: obscureText,
-                      keyboardType: keyboardType,
-                      maxLines: maxLines,
-                      inputFormatters: inputFormatters,
-                      cursorColor: const Color(0xFF34D399),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      decoration: InputDecoration(
-                        isDense: true,
-                        filled: false,
-                        hintText: hintText,
-                        hintStyle: const TextStyle(
-                          color: Color(0xFF94A3B8),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        disabledBorder: InputBorder.none,
-                        errorBorder: InputBorder.none,
-                        focusedErrorBorder: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(vertical: maxLines > 1 ? 8 : 10),
-                      ),
-                    ),
-                  ),
-                  if (suffixWidget != null) ...[
-                    const SizedBox(width: 8),
-                    suffixWidget,
-                  ],
-                ],
-              ),
+        Container(
+          height: maxLines == 1 ? 48 : null,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+          decoration: BoxDecoration(
+            color: CeladonColors.inputBackground,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: CeladonColors.border,
+              width: 1.0,
             ),
+          ),
+          child: Row(
+            children: [
+              if (prefixIcon != null) ...[
+                Icon(prefixIcon, size: 20, color: CeladonColors.textMuted),
+                const SizedBox(width: 10),
+              ],
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  onChanged: onChanged,
+                  obscureText: obscureText,
+                  keyboardType: keyboardType,
+                  maxLines: maxLines,
+                  inputFormatters: inputFormatters,
+                  cursorColor: CeladonColors.primary,
+                  style: const TextStyle(
+                    color: CeladonColors.textPrimary,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    filled: false,
+                    hintText: hintText,
+                    hintStyle: const TextStyle(
+                      color: CeladonColors.textPlaceholder,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    errorBorder: InputBorder.none,
+                    focusedErrorBorder: InputBorder.none,
+                    contentPadding: EdgeInsets.symmetric(vertical: maxLines > 1 ? 8 : 10),
+                  ),
+                ),
+              ),
+              if (suffixWidget != null) ...[
+                const SizedBox(width: 8),
+                suffixWidget,
+              ],
+            ],
           ),
         ),
       ],
@@ -1310,15 +1273,11 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
       child: Container(
         height: 48,
         decoration: BoxDecoration(
-          color: const Color(0xFF10B981),
+          color: CeladonColors.primary,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: const Color(0xFF34D399).withValues(alpha: 0.30),
-            width: 1.0,
-          ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.25),
+              color: CeladonColors.primary.withValues(alpha: 0.25),
               blurRadius: 6,
               offset: const Offset(0, 2),
             ),

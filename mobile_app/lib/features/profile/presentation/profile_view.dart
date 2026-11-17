@@ -593,209 +593,172 @@ class _ProfileViewState extends State<ProfileView> {
   Widget _buildProfileHeader(String displayName, String roleName) {
     return Container(
       decoration: const BoxDecoration(
-        color: CeladonColors.primaryDark,
+        color: CeladonColors.primary,
         borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(32),
           bottomRight: Radius.circular(32),
         ),
       ),
-      child: ClipRRect(
-        borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(32),
-          bottomRight: Radius.circular(32),
-        ),
-        child: Stack(
-          children: [
-            // Reusing exact Dashboard background image
-            Positioned.fill(
-              child: Image.asset(
-                'assets/images/office_dashboard_header.png',
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
-              ),
-            ),
-
-            // Bright, translucent emerald-green overlay matching dashboard visibility
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      const Color(0xFF0F3A2E).withValues(alpha: 0.58),
-                      const Color(0xFF1B4332).withValues(alpha: 0.38),
-                      const Color(0xFF0F3A2E).withValues(alpha: 0.62),
-                    ],
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 26),
+          child: Column(
+            children: [
+              // Top App Bar Row with Hamburger Icon
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(
+                      Icons.menu_rounded,
+                      color: Colors.white,
+                      size: 26,
+                    ),
+                    tooltip: 'Open navigation menu',
+                    onPressed: () => _scaffoldKey.currentState?.openDrawer(),
                   ),
-                ),
-              ),
-            ),
-
-            // Header Content
-            SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 26),
-                child: Column(
-                  children: [
-                    // Top App Bar Row with Hamburger Icon
-                    Row(
-                      children: [
-                        IconButton(
-                          icon: const Icon(
-                            Icons.menu_rounded,
-                            color: Colors.white,
-                            size: 26,
-                          ),
-                          tooltip: 'Open navigation menu',
-                          onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-                        ),
-                        const Expanded(
-                          child: Text(
-                            'Profile',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(
-                            Icons.logout_rounded,
-                            color: Colors.white,
-                            size: 22,
-                          ),
-                          tooltip: 'Log Out',
-                          onPressed: () => _confirmLogout(context),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Profile Avatar with Edit Badge
-                    Center(
-                      child: Stack(
-                        children: [
-                          Container(
-                            width: 104,
-                            height: 104,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 3.5),
-                              color: CeladonColors.primaryContainer,
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Color(0x30000000),
-                                  blurRadius: 18,
-                                  offset: Offset(0, 6),
-                                ),
-                              ],
-                            ),
-                            child: ClipOval(
-                              child: _isLoadingProfile
-                                  ? const Center(
-                                      child: SizedBox(
-                                        width: 28,
-                                        height: 28,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2.5,
-                                          color: CeladonColors.primary,
-                                        ),
-                                      ),
-                                    )
-                                  : (_currentUser.avatar != null &&
-                                          _currentUser.avatar!.isNotEmpty)
-                                      ? _buildAvatarImage(_currentUser.avatar!)
-                                      : Center(
-                                          child: Text(
-                                            displayName
-                                                .substring(0, 1)
-                                                .toUpperCase(),
-                                            style: const TextStyle(
-                                              fontSize: 40,
-                                              fontWeight: FontWeight.w800,
-                                              color: CeladonColors.primaryDark,
-                                            ),
-                                          ),
-                                        ),
-                            ),
-                          ),
-                          Positioned(
-                            bottom: 0,
-                            right: 0,
-                            child: InkWell(
-                              onTap: _handlePickProfileImage,
-                              borderRadius: BorderRadius.circular(18),
-                              child: Container(
-                                width: 34,
-                                height: 34,
-                                decoration: BoxDecoration(
-                                  color: CeladonColors.primary,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white, width: 2.2),
-                                  boxShadow: const [
-                                    BoxShadow(
-                                      color: Color(0x30000000),
-                                      blurRadius: 6,
-                                      offset: Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: const Icon(
-                                  Icons.camera_alt_rounded,
-                                  size: 17,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Employee Name
-                    Text(
-                      displayName,
+                  const Expanded(
+                    child: Text(
+                      'Profile',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
                         color: Colors.white,
-                        letterSpacing: -0.2,
-                        shadows: [
-                          Shadow(offset: Offset(0, 1), blurRadius: 4, color: Color(0x70000000)),
-                        ],
                       ),
                     ),
-                    const SizedBox(height: 6),
+                  ),
+                  IconButton(
+                    icon: const Icon(
+                      Icons.logout_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                    tooltip: 'Log Out',
+                    onPressed: () => _confirmLogout(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
 
-                    // Employee Badge
+              // Profile Avatar with Edit Badge
+              Center(
+                child: Stack(
+                  children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                      width: 104,
+                      height: 104,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.22),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 3.5),
+                        color: CeladonColors.lightGreen,
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x30000000),
+                            blurRadius: 18,
+                            offset: Offset(0, 6),
+                          ),
+                        ],
                       ),
-                      child: Text(
-                        roleName,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
+                      child: ClipOval(
+                        child: _isLoadingProfile
+                            ? const Center(
+                                child: SizedBox(
+                                  width: 28,
+                                  height: 28,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    color: CeladonColors.primary,
+                                  ),
+                                ),
+                              )
+                            : (_currentUser.avatar != null &&
+                                    _currentUser.avatar!.isNotEmpty)
+                                ? _buildAvatarImage(_currentUser.avatar!)
+                                : Center(
+                                    child: Text(
+                                      displayName
+                                          .substring(0, 1)
+                                          .toUpperCase(),
+                                      style: const TextStyle(
+                                        fontSize: 40,
+                                        fontWeight: FontWeight.w800,
+                                        color: CeladonColors.primary,
+                                      ),
+                                    ),
+                                  ),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: InkWell(
+                        onTap: _handlePickProfileImage,
+                        borderRadius: BorderRadius.circular(18),
+                        child: Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: CeladonColors.primary,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2.2),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x30000000),
+                                blurRadius: 6,
+                                offset: Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.camera_alt_rounded,
+                            size: 17,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 12),
+
+              // Employee Name
+              Text(
+                displayName,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  letterSpacing: -0.2,
+                  shadows: [
+                    Shadow(offset: Offset(0, 1), blurRadius: 4, color: Color(0x70000000)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 6),
+
+              // Employee Badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.22),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
+                ),
+                child: Text(
+                  roleName,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import '../theme/celadon_colors.dart';
 
 /// ReGen Brand Logo Emblem Widget
 ///
-/// Displays the official ReGen badge with stylized emerald 'R',
-/// matching the brand design language.
+/// Displays the official ReGen badge with crisp emerald styling,
+/// matching the global ReGen White + Charcoal + Emerald Green theme.
 class BrandLogo extends StatelessWidget {
   final double size;
   final double borderRadius;
@@ -24,51 +25,28 @@ class BrandLogo extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF0F3A2E),
-            Color(0xFF06231B),
-          ],
-        ),
+        color: backgroundColor ?? CeladonColors.primary,
         borderRadius: BorderRadius.circular(borderRadius),
         border: Border.all(
-          color: const Color(0xFF34D399).withValues(alpha: 0.35),
-          width: 1.4,
+          color: CeladonColors.border,
+          width: 1.0,
         ),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
-            color: const Color(0xFF10B981).withValues(alpha: 0.25),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
-          ),
-          const BoxShadow(
-            color: Color(0x60000000),
-            blurRadius: 12,
-            offset: Offset(0, 4),
+            color: Color(0x1015803D),
+            blurRadius: 8,
+            offset: Offset(0, 2),
           ),
         ],
       ),
       child: Center(
-        child: ShaderMask(
-          shaderCallback: (bounds) => const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF6EE7B7),
-              Color(0xFF10B981),
-              Color(0xFF059669),
-            ],
-          ).createShader(bounds),
-          child: Text(
-            'R',
-            style: TextStyle(
-              fontSize: size * 0.52,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
-              letterSpacing: -1,
-            ),
+        child: Text(
+          'R',
+          style: TextStyle(
+            fontSize: size * 0.52,
+            fontWeight: FontWeight.w900,
+            color: Colors.white,
+            letterSpacing: -1,
           ),
         ),
       ),

@@ -125,7 +125,7 @@ class _SplashScreenState extends State<SplashScreen>
                         const BrandLogo(
                           size: 110,
                           borderRadius: 28,
-                          backgroundColor: CeladonColors.primaryDark,
+                          backgroundColor: CeladonColors.primary,
                         ),
                         const SizedBox(height: 18),
 
@@ -136,7 +136,7 @@ class _SplashScreenState extends State<SplashScreen>
                             fontSize: 32,
                             fontWeight: FontWeight.w800,
                             letterSpacing: -0.5,
-                            color: CeladonColors.primaryDark,
+                            color: CeladonColors.textPrimary,
                           ),
                         ),
                         const SizedBox(height: 8),

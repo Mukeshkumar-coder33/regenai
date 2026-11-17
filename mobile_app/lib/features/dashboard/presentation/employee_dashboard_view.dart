@@ -314,7 +314,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
     final currentYear = DateTime.now().year;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7FAF8),
+      backgroundColor: CeladonColors.background,
       body: RefreshIndicator(
         onRefresh: _loadDashboardData,
         color: CeladonColors.primary,
@@ -377,7 +377,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                           style: TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF0F3A2E),
+                            color: CeladonColors.textPrimary,
                           ),
                         ),
                         InkWell(
@@ -427,7 +427,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                           style: const TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF0F3A2E),
+                            color: CeladonColors.textPrimary,
                           ),
                         ),
                         InkWell(
@@ -479,207 +479,175 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
 
     return Container(
       decoration: const BoxDecoration(
-        color: Color(0xFF0F3A2E),
+        color: CeladonColors.primary,
         borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(30),
           bottomRight: Radius.circular(30),
         ),
       ),
-      child: ClipRRect(
-        borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(30),
-          bottomRight: Radius.circular(30),
-        ),
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: Image.asset(
-                'assets/images/office_dashboard_header.png',
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
-              ),
-            ),
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      const Color(0xFF0F3A2E).withValues(alpha: 0.65),
-                      const Color(0xFF1B4332).withValues(alpha: 0.42),
-                      const Color(0xFF0F3A2E).withValues(alpha: 0.70),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Top Row: Hamburger & Notification
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      icon: const Icon(Icons.menu_rounded, color: Colors.white, size: 24),
+                      tooltip: 'Menu',
+                      onPressed: () {
+                        if (widget.onOpenDrawer != null) {
+                          widget.onOpenDrawer!();
+                        } else {
+                          Scaffold.maybeOf(context)?.openDrawer();
+                        }
+                      },
+                    ),
+                  ),
+                  Stack(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: IconButton(
+                          padding: EdgeInsets.zero,
+                          icon: const Icon(Icons.notifications_none_rounded, size: 22, color: Colors.white),
+                          onPressed: () {
+                            if (widget.onNotificationTap != null) {
+                              widget.onNotificationTap!();
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('No new announcements at this time.'),
+                                  backgroundColor: CeladonColors.primary,
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                      ),
                     ],
                   ),
-                ),
+                ],
               ),
-            ),
-            SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Top Row: Hamburger & Notification
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.16),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: IconButton(
-                            padding: EdgeInsets.zero,
-                            icon: const Icon(Icons.menu_rounded, color: Colors.white, size: 24),
-                            tooltip: 'Menu',
-                            onPressed: () {
-                              if (widget.onOpenDrawer != null) {
-                                widget.onOpenDrawer!();
-                              } else {
-                                Scaffold.maybeOf(context)?.openDrawer();
-                              }
-                            },
-                          ),
-                        ),
-                        Stack(
-                          children: [
-                            Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.16),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: IconButton(
-                                padding: EdgeInsets.zero,
-                                icon: const Icon(Icons.notifications_none_rounded, size: 22, color: Colors.white),
-                                onPressed: () {
-                                  if (widget.onNotificationTap != null) {
-                                    widget.onNotificationTap!();
-                                  } else {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('No new announcements at this time.'),
-                                        backgroundColor: CeladonColors.primary,
-                                      ),
-                                    );
-                                  }
-                                },
+              const SizedBox(height: 16),
+
+              // Greeting Row
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Circular Avatar
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2.5),
+                      color: CeladonColors.lightGreen,
+                      boxShadow: const [
+                        BoxShadow(color: Color(0x30000000), blurRadius: 10, offset: Offset(0, 3)),
+                      ],
+                    ),
+                    child: ClipOval(
+                      child: widget.user.avatar != null && widget.user.avatar!.isNotEmpty
+                          ? _buildAvatarImage(widget.user.avatar!, displayName)
+                          : Center(
+                              child: Text(
+                                displayName.isNotEmpty ? displayName.substring(0, 1).toUpperCase() : 'R',
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
+                                  color: CeladonColors.primary,
+                                ),
                               ),
                             ),
-                          ],
-                        ),
-                      ],
                     ),
-                    const SizedBox(height: 16),
+                  ),
+                  const SizedBox(width: 14),
 
-                    // Greeting Row
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
+                  // Name & Role
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Circular Avatar
-                        Container(
-                          width: 52,
-                          height: 52,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2.5),
-                            color: CeladonColors.primaryContainer,
-                            boxShadow: const [
-                              BoxShadow(color: Color(0x30000000), blurRadius: 10, offset: Offset(0, 3)),
-                            ],
-                          ),
-                          child: ClipOval(
-                            child: widget.user.avatar != null && widget.user.avatar!.isNotEmpty
-                                ? _buildAvatarImage(widget.user.avatar!, displayName)
-                                : Center(
-                                    child: Text(
-                                      displayName.isNotEmpty ? displayName.substring(0, 1).toUpperCase() : 'R',
-                                      style: const TextStyle(
-                                        fontSize: 22,
-                                        fontWeight: FontWeight.w800,
-                                        color: CeladonColors.primaryDark,
-                                      ),
-                                    ),
-                                  ),
+                        Text(
+                          'Welcome back,',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white.withValues(alpha: 0.85),
                           ),
                         ),
-                        const SizedBox(width: 14),
-
-                        // Name & Role
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                'Welcome back,',
-                                style: TextStyle(
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w600,
-                                  color: const Color(0xFFD8F3DC).withValues(alpha: 0.9),
-                                ),
-                              ),
-                              Text(
-                                displayName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: -0.2,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              Text(
-                                '$roleName • $currentYear',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                  color: Color(0xFFE2E8F0),
-                                ),
-                              ),
-                            ],
+                        Text(
+                          displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.2,
+                            color: Colors.white,
                           ),
                         ),
-
-                        // Date Chip
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.18),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: Colors.white.withValues(alpha: 0.28), width: 1.2),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.calendar_today_rounded, size: 12, color: Colors.white),
-                              const SizedBox(width: 5),
-                              Text(
-                                dateStr,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ],
+                        Text(
+                          '$roleName • $currentYear',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFFE2E8F0),
                           ),
                         ),
                       ],
                     ),
-                  ],
-                ),
+                  ),
+
+                  // Date Chip
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.28), width: 1.2),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.calendar_today_rounded, size: 12, color: Colors.white),
+                        const SizedBox(width: 5),
+                        Text(
+                          dateStr,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -863,7 +831,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
               ],
             ),
             const SizedBox(height: 6),
-            Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Color(0xFF0F3A2E))),
+            Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary)),
             const SizedBox(height: 2),
             Text(subtitle, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w500, color: Color(0xFF94A3B8)), maxLines: 1),
           ],
@@ -906,7 +874,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
               children: [
                 const Text(
                   'Office Geofence Status',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF0F3A2E)),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -914,7 +882,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                   style: TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w500,
-                    color: isPresent ? const Color(0xFF059669) : const Color(0xFF64748B),
+                    color: isPresent ? CeladonColors.primary : const Color(0xFF64748B),
                   ),
                 ),
               ],
@@ -923,7 +891,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
           ElevatedButton(
             onPressed: _handleAttendanceTap,
             style: ElevatedButton.styleFrom(
-              backgroundColor: isPresent ? const Color(0xFF0F3A2E) : const Color(0xFF10B981),
+              backgroundColor: CeladonColors.primary,
               foregroundColor: Colors.white,
               elevation: 0,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -1214,7 +1182,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                 children: [
                   Text(
                     leave.displayType,
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF0F3A2E)),
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: CeladonColors.textPrimary),
                   ),
                   Text(
                     dateRange,

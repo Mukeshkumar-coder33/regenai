@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'celadon_colors.dart';
 
-/// Central ThemeData definition for ReGen Mobile (Premium Office Theme)
+/// Central ThemeData definition for ReGen Mobile
 ///
-/// Implements Material 3 with the corporate Dark Forest Green, Light Mint,
-/// and White card design system based on the Premium Office UI specification.
+/// Implements Material 3 with the global White + Charcoal + Emerald Green
+/// color palette specified in the ReGen Visual Theme Enhancement.
 abstract final class CeladonTheme {
   static ThemeData get lightTheme {
     const textTheme = TextTheme(
@@ -81,7 +81,7 @@ abstract final class CeladonTheme {
         onPrimary: CeladonColors.textOnPrimary,
         primaryContainer: CeladonColors.primaryContainer,
         onPrimaryContainer: CeladonColors.primaryDark,
-        secondary: CeladonColors.primaryLight,
+        secondary: CeladonColors.primarySecondary,
         onSecondary: CeladonColors.textOnPrimary,
         error: CeladonColors.error,
         onError: Colors.white,
@@ -90,7 +90,7 @@ abstract final class CeladonTheme {
       ),
       textTheme: textTheme,
       appBarTheme: const AppBarTheme(
-        backgroundColor: Colors.transparent,
+        backgroundColor: CeladonColors.surface,
         foregroundColor: CeladonColors.textPrimary,
         elevation: 0,
         scrolledUnderElevation: 0,
@@ -111,7 +111,7 @@ abstract final class CeladonTheme {
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
-          side: const BorderSide(color: CeladonColors.borderLight, width: 1.2),
+          side: const BorderSide(color: CeladonColors.border, width: 1.0),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -131,8 +131,9 @@ abstract final class CeladonTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
+          backgroundColor: Colors.transparent,
           foregroundColor: CeladonColors.primary,
-          side: const BorderSide(color: CeladonColors.border, width: 1.2),
+          side: const BorderSide(color: CeladonColors.primary, width: 1.2),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -145,26 +146,26 @@ abstract final class CeladonTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.white,
+        fillColor: CeladonColors.inputBackground,
         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: CeladonColors.border, width: 1.2),
+          borderSide: const BorderSide(color: CeladonColors.inputBorder, width: 1.0),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: CeladonColors.border, width: 1.2),
+          borderSide: const BorderSide(color: CeladonColors.inputBorder, width: 1.0),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: CeladonColors.primary, width: 2),
+          borderSide: const BorderSide(color: CeladonColors.inputFocusBorder, width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: const BorderSide(color: CeladonColors.error, width: 1.2),
         ),
         hintStyle: const TextStyle(
-          color: CeladonColors.textMuted,
+          color: CeladonColors.textPlaceholder,
           fontSize: 14,
         ),
       ),

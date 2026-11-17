@@ -142,8 +142,8 @@ class _CalendarViewState extends State<CalendarView> {
             category: 'Attendance',
             description: 'Logged Attendance: $statusUpper (${(att.workMode ?? 'OFFICE').toUpperCase()})',
             icon: Icons.fingerprint_rounded,
-            color: const Color(0xFF1B5E3F),
-            bg: const Color(0xFFE8F5ED),
+            color: const Color(0xFF15803D),
+            bg: const Color(0xFFE8F5EC),
           ));
         }
       }
@@ -224,7 +224,7 @@ class _CalendarViewState extends State<CalendarView> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            backgroundColor: status == 'approved' ? const Color(0xFF1B5E3F) : const Color(0xFFDC2626),
+            backgroundColor: status == 'approved' ? const Color(0xFF15803D) : const Color(0xFFDC2626),
             content: Text('Leave request marked as ${status.toUpperCase()}'),
           ),
         );
@@ -273,10 +273,10 @@ class _CalendarViewState extends State<CalendarView> {
 
   @override
   Widget build(BuildContext context) {
-    const primaryGreen = Color(0xFF1B5E3F);
+    const primaryGreen = Color(0xFF15803D);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7FAF8),
+      backgroundColor: const Color(0xFFF5F7F8),
       floatingActionButton: FloatingActionButton(
         heroTag: 'calendar_fab_main',
         onPressed: _showActionMenu,
@@ -344,14 +344,14 @@ class _CalendarViewState extends State<CalendarView> {
                 ),
                 child: IconButton(
                   padding: EdgeInsets.zero,
-                  icon: const Icon(Icons.menu_rounded, color: Color(0xFF1B5E3F), size: 22),
+                  icon: const Icon(Icons.menu_rounded, color: Color(0xFF15803D), size: 22),
                   tooltip: 'Menu',
                   onPressed: widget.onOpenDrawer,
                 ),
               )
             else if (widget.onBack != null)
               IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: Color(0xFF1B5E3F)),
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: Color(0xFF15803D)),
                 onPressed: widget.onBack,
               ),
 
@@ -364,7 +364,7 @@ class _CalendarViewState extends State<CalendarView> {
                     fontSize: 10.5,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1.5,
-                    color: Color(0xFF718096),
+                    color: Color(0xFF64748B),
                   ),
                 ),
                 Text(
@@ -372,7 +372,7 @@ class _CalendarViewState extends State<CalendarView> {
                   style: TextStyle(
                     fontSize: 21,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF1A202C),
+                    color: Color(0xFF17212B),
                     letterSpacing: -0.3,
                   ),
                 ),
@@ -382,7 +382,7 @@ class _CalendarViewState extends State<CalendarView> {
         ),
 
         IconButton(
-          icon: const Icon(Icons.refresh_rounded, color: Color(0xFF1B5E3F), size: 22),
+          icon: const Icon(Icons.refresh_rounded, color: Color(0xFF15803D), size: 22),
           tooltip: 'Refresh',
           onPressed: _loadAllBackendData,
         ),
@@ -533,7 +533,7 @@ class _CalendarViewState extends State<CalendarView> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.chevron_left_rounded, color: Color(0xFF1B5E3F)),
+                      icon: const Icon(Icons.chevron_left_rounded, color: Color(0xFF15803D)),
                       onPressed: () {
                         setState(() {
                           _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1, 1);
@@ -542,10 +542,10 @@ class _CalendarViewState extends State<CalendarView> {
                     ),
                     Text(
                       '${_getMonthName(_currentMonth.month)} ${_currentMonth.year}',
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1B5E3F)),
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF15803D)),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.chevron_right_rounded, color: Color(0xFF1B5E3F)),
+                      icon: const Icon(Icons.chevron_right_rounded, color: Color(0xFF15803D)),
                       onPressed: () {
                         setState(() {
                           _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 1);
@@ -588,17 +588,17 @@ class _CalendarViewState extends State<CalendarView> {
           children: [
             Text(
               "${_getDayOfWeekName(_selectedDate.weekday)}, ${_selectedDate.day} ${_getMonthName(_selectedDate.month).substring(0, 3)}".toUpperCase(),
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 0.8, color: Color(0xFF1B5E3F)),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 0.8, color: Color(0xFF15803D)),
             ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: const Color(0xFFE8F5ED),
+                color: const Color(0xFFE8F5EC),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
                 '${eventsForSelected.length} event(s)',
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF1B5E3F)),
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF15803D)),
               ),
             ),
           ],
@@ -1112,7 +1112,7 @@ class _CalendarViewState extends State<CalendarView> {
             const Text('Quick Actions', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
             const SizedBox(height: 16),
             ListTile(
-              leading: const CircleAvatar(backgroundColor: Color(0xFFDEF7EC), child: Icon(Icons.beach_access, color: Color(0xFF1B5E3F))),
+              leading: const CircleAvatar(backgroundColor: Color(0xFFE8F5EC), child: Icon(Icons.beach_access, color: Color(0xFF15803D))),
               title: const Text('Apply for Leave', style: TextStyle(fontWeight: FontWeight.w700)),
               subtitle: const Text('Submit casual, sick, or earned leave request'),
               onTap: () {
@@ -1159,7 +1159,7 @@ class _CalendarViewState extends State<CalendarView> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text('Apply for Leave', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1B5E3F))),
+              const Text('Apply for Leave', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF15803D))),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 initialValue: selectedType,
@@ -1238,7 +1238,7 @@ class _CalendarViewState extends State<CalendarView> {
                     );
                     if (mounted) {
                       scaffoldMessenger.showSnackBar(
-                        const SnackBar(backgroundColor: Color(0xFF1B5E3F), content: Text('Leave request submitted successfully!')),
+                        const SnackBar(backgroundColor: Color(0xFF15803D), content: Text('Leave request submitted successfully!')),
                       );
                       _loadAllBackendData();
                     }
@@ -1249,7 +1249,7 @@ class _CalendarViewState extends State<CalendarView> {
                   }
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1B5E3F),
+                  backgroundColor: const Color(0xFF15803D),
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1323,13 +1323,13 @@ class _CalendarViewState extends State<CalendarView> {
                   );
                   if (mounted) {
                     scaffoldMessenger.showSnackBar(
-                      SnackBar(backgroundColor: const Color(0xFF1B5E3F), content: Text('Holiday "$holidayTitle" added!')),
+                      SnackBar(backgroundColor: const Color(0xFF15803D), content: Text('Holiday "$holidayTitle" added!')),
                     );
                     _loadAllBackendData();
                   }
                 } catch (_) {}
               },
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1B5E3F), foregroundColor: Colors.white),
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF15803D), foregroundColor: Colors.white),
               child: const Text('Add'),
             ),
           ],

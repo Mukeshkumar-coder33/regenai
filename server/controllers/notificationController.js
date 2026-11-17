@@ -148,6 +148,9 @@ export const getUserNotifications = async (req, res) => {
     if (req.user?.id) userIds.add(String(req.user.id));
     if (req.user?.StaffId) userIds.add(String(req.user.StaffId));
 
+    let userCompId = req.companyId;
+    let isOwnerOrAdmin = false;
+
     try {
       const isOid = mongoose.isValidObjectId(targetUserId);
       const u = await User.findOne({
@@ -157,32 +160,51 @@ export const getUserNotifications = async (req, res) => {
           { username: targetUserId },
           ...(isOid ? [{ _id: targetUserId }] : [])
         ]
-      }).select('userId StaffId username _id').lean();
+      }).select('userId StaffId username _id role companyId').lean();
 
       if (u) {
         if (u.userId) userIds.add(String(u.userId));
         if (u.StaffId) userIds.add(String(u.StaffId));
         if (u.username) userIds.add(String(u.username));
         if (u._id) userIds.add(String(u._id));
+        if (u.companyId) userCompId = u.companyId;
+        if (u.role === 'owner' || u.role === 'admin' || u.role === 'superadmin') {
+          isOwnerOrAdmin = true;
+        }
       }
     } catch (_) {}
 
-    if (req.companyId) {
+    // Check if targetUserId is a company owner or matches company
+    if (!userCompId || !isOwnerOrAdmin) {
       try {
-        const comp = await Company.findById(req.companyId).lean();
-        if (comp && comp.ownerId) {
-          const isOwnerReq = userIds.has(String(comp.ownerId)) || 
-                             req.user?.userId === comp.ownerId || 
-                             req.user?.username === comp.ownerId;
-          if (isOwnerReq) {
-            userIds.add(String(comp.ownerId));
-          }
+        const comp = await Company.findOne({
+          $or: [
+            { ownerId: targetUserId },
+            ...(mongoose.isValidObjectId(targetUserId) ? [{ _id: targetUserId }] : [])
+          ]
+        }).lean();
+        if (comp) {
+          userCompId = comp._id;
+          isOwnerOrAdmin = true;
+          if (comp.ownerId) userIds.add(String(comp.ownerId));
         }
       } catch (_) {}
     }
 
-    const filter = { userId: { $in: Array.from(userIds) } };
-    if (req.companyId) filter.companyId = req.companyId;
+    let filter;
+    if (isOwnerOrAdmin && userCompId) {
+      // Company Owner / Admin sees their personal notifications PLUS all company activities/notifications!
+      filter = {
+        $or: [
+          { userId: { $in: Array.from(userIds) } },
+          { companyId: userCompId }
+        ]
+      };
+    } else {
+      filter = { userId: { $in: Array.from(userIds) } };
+      if (userCompId) filter.companyId = userCompId;
+    }
+
     const list = await Notification.find(filter).sort({ createdAt: -1 });
     res.status(200).json(list);
   } catch (error) {
@@ -217,14 +239,66 @@ export const markNotificationRead = async (req, res) => {
 export const markAllNotificationsRead = async (req, res) => {
   try {
     const targetUserId = req.params.userId;
-    const userIds = [targetUserId];
-    if (req.user?.userId && !userIds.includes(req.user.userId)) {
-      userIds.push(req.user.userId);
+    const userIds = new Set([targetUserId]);
+    if (req.user?.userId) userIds.add(String(req.user.userId));
+    if (req.user?.id) userIds.add(String(req.user.id));
+    if (req.user?.StaffId) userIds.add(String(req.user.StaffId));
+
+    let userCompId = req.companyId;
+    let isOwnerOrAdmin = false;
+
+    try {
+      const isOid = mongoose.isValidObjectId(targetUserId);
+      const u = await User.findOne({
+        $or: [
+          { userId: targetUserId },
+          { StaffId: targetUserId },
+          { username: targetUserId },
+          ...(isOid ? [{ _id: targetUserId }] : [])
+        ]
+      }).select('userId StaffId username _id role companyId').lean();
+
+      if (u) {
+        if (u.userId) userIds.add(String(u.userId));
+        if (u.StaffId) userIds.add(String(u.StaffId));
+        if (u.username) userIds.add(String(u.username));
+        if (u._id) userIds.add(String(u._id));
+        if (u.companyId) userCompId = u.companyId;
+        if (u.role === 'owner' || u.role === 'admin' || u.role === 'superadmin') {
+          isOwnerOrAdmin = true;
+        }
+      }
+    } catch (_) {}
+
+    if (!userCompId || !isOwnerOrAdmin) {
+      try {
+        const comp = await Company.findOne({
+          $or: [
+            { ownerId: targetUserId },
+            ...(mongoose.isValidObjectId(targetUserId) ? [{ _id: targetUserId }] : [])
+          ]
+        }).lean();
+        if (comp) {
+          userCompId = comp._id;
+          isOwnerOrAdmin = true;
+          if (comp.ownerId) userIds.add(String(comp.ownerId));
+        }
+      } catch (_) {}
     }
-    if (req.user?.id && !userIds.includes(req.user.id)) {
-      userIds.push(req.user.id);
+
+    let filter;
+    if (isOwnerOrAdmin && userCompId) {
+      filter = {
+        $or: [
+          { userId: { $in: Array.from(userIds) } },
+          { companyId: userCompId }
+        ],
+        read: false
+      };
+    } else {
+      filter = { userId: { $in: Array.from(userIds) }, read: false };
     }
-    const filter = { userId: { $in: userIds }, read: false };
+
     const result = await Notification.updateMany(filter, { $set: { read: true } });
     
     userIds.forEach(uid => {
@@ -351,6 +425,9 @@ export const clearAllNotifications = async (req, res) => {
     if (authId) userIds.add(String(authId));
     if (authStaffId) userIds.add(String(authStaffId));
 
+    let userCompId = req.companyId;
+    let isOwnerOrAdmin = false;
+
     try {
       const isOid = mongoose.isValidObjectId(targetUserId);
       const u = await User.findOne({
@@ -360,43 +437,48 @@ export const clearAllNotifications = async (req, res) => {
           { username: targetUserId },
           ...(isOid ? [{ _id: targetUserId }] : [])
         ]
-      }).select('userId StaffId username _id').lean();
+      }).select('userId StaffId username _id role companyId').lean();
 
       if (u) {
         if (u.userId) userIds.add(String(u.userId));
         if (u.StaffId) userIds.add(String(u.StaffId));
         if (u.username) userIds.add(String(u.username));
         if (u._id) userIds.add(String(u._id));
+        if (u.companyId) userCompId = u.companyId;
+        if (u.role === 'owner' || u.role === 'admin' || u.role === 'superadmin') {
+          isOwnerOrAdmin = true;
+        }
       }
     } catch (_) {}
 
-    if (req.companyId) {
+    if (!userCompId || !isOwnerOrAdmin) {
       try {
-        const comp = await Company.findById(req.companyId).lean();
-        if (comp && comp.ownerId) {
-          const isOwnerReq = userIds.has(String(comp.ownerId)) || 
-                             req.user?.userId === comp.ownerId || 
-                             req.user?.username === comp.ownerId;
-          if (isOwnerReq) {
-            userIds.add(String(comp.ownerId));
-          }
+        const comp = await Company.findOne({
+          $or: [
+            { ownerId: targetUserId },
+            ...(mongoose.isValidObjectId(targetUserId) ? [{ _id: targetUserId }] : [])
+          ]
+        }).lean();
+        if (comp) {
+          userCompId = comp._id;
+          isOwnerOrAdmin = true;
+          if (comp.ownerId) userIds.add(String(comp.ownerId));
         }
       } catch (_) {}
     }
 
-    // Security check: non-param users can only clear their own notifications
-    if (req.user?.role !== 'param') {
-      const isSelf = userIds.has(String(authUserId)) || 
-                     (authId && userIds.has(String(authId))) || 
-                     (authStaffId && userIds.has(String(authStaffId))) ||
-                     (req.user?.username && userIds.has(String(req.user.username)));
-      if (!isSelf) {
-        return res.status(403).json({ message: 'You can only clear your own notifications' });
-      }
+    let filter;
+    if (isOwnerOrAdmin && userCompId) {
+      filter = {
+        $or: [
+          { userId: { $in: Array.from(userIds) } },
+          { companyId: userCompId }
+        ]
+      };
+    } else {
+      filter = { userId: { $in: Array.from(userIds) } };
+      if (userCompId) filter.companyId = userCompId;
     }
-
-    const filter = { userId: { $in: Array.from(userIds) } };
-    if (req.companyId) filter.companyId = req.companyId;
 
     const result = await Notification.deleteMany(filter);
 

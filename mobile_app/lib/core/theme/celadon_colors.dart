@@ -98,6 +98,12 @@ abstract final class CeladonColors {
   static const Color teal = Color(0xFF1DA190);
   static const Color tealLight = Color(0xFFE4F6F4);
 
+  // Coral Accent for Holidays & Non-Working / Off Days
+  static const Color coral = Color(0xFFFF6F61);
+  static const Color coralDark = Color(0xFFE0533C);
+  static const Color coralLight = Color(0xFFFFECE8);
+  static const Color coralBorder = Color(0xFFFF8A75);
+
   static const Color badgeBg = Color(0xFFEAF5EF);
   static const Color badgeText = Color(0xFF096544);
 

@@ -2036,21 +2036,15 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 _scaffoldKey.currentState?.openDrawer();
               }
             },
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: CeladonColors.inputBackground,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: CeladonColors.border),
-              ),
+            radius: 22,
+            child: Padding(
+              padding: const EdgeInsets.all(6),
               child: Icon(
                 _selectedBottomTab != 0
                     ? Icons.arrow_back_rounded
                     : Icons.menu_rounded,
                 color: CeladonColors.textPrimary,
-                size: 21,
+                size: 24,
               ),
             ),
           ),
@@ -2091,29 +2085,24 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           Row(
             children: [
               // Notification Bell (Image 3)
-              InkWell(
+              InkResponse(
                 onTap: _showNotificationsSheet,
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: CeladonColors.inputBackground,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: CeladonColors.border),
-                  ),
+                radius: 22,
+                child: Padding(
+                  padding: const EdgeInsets.all(6),
                   child: Stack(
+                    clipBehavior: Clip.none,
                     alignment: Alignment.center,
                     children: [
                       const Icon(
                         Icons.notifications_none_rounded,
                         color: CeladonColors.textPrimary,
-                        size: 21,
+                        size: 24,
                       ),
                       if (_unreadNotificationCount > 0)
                         Positioned(
-                          top: 6,
-                          right: 6,
+                          top: 0,
+                          right: 0,
                           child: Container(
                             width: 8,
                             height: 8,
@@ -3368,7 +3357,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                         color: isDayEvent
                             ? const Color(0xFF7C3AED).withValues(alpha: 0.15)
                             : (isDayLeaveOrOff
-                                  ? CeladonColors.disabledBackground
+                                  ? CeladonColors.coralLight
                                   : (isSelected
                                         ? CeladonColors.primary
                                         : CeladonColors.searchBackground)),
@@ -3377,7 +3366,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                           color: isDayEvent
                               ? const Color(0xFF8B5CF6).withValues(alpha: 0.75)
                               : (isDayLeaveOrOff
-                                    ? CeladonColors.border
+                                    ? CeladonColors.coralBorder
                                     : (isSelected
                                           ? CeladonColors.primary
                                           : CeladonColors.border)),
@@ -3399,7 +3388,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                               color: isDayEvent
                                   ? const Color(0xFF7C3AED)
                                   : (isDayLeaveOrOff
-                                        ? CeladonColors.textPlaceholder
+                                        ? CeladonColors.coralDark
                                         : (isSelected
                                               ? Colors.white
                                               : CeladonColors.textSecondary)),
@@ -3416,7 +3405,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                               color: isDayEvent
                                   ? const Color(0xFF7C3AED)
                                   : (isDayLeaveOrOff
-                                        ? CeladonColors.textPlaceholder
+                                        ? CeladonColors.coralDark
                                         : (isSelected
                                               ? Colors.white
                                               : CeladonColors.textPrimary)),
@@ -3464,7 +3453,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   color: isDayEvent
                       ? const Color(0xFF7C3AED).withValues(alpha: 0.12)
                       : (isLeaveOrOff
-                            ? CeladonColors.disabledBackground
+                            ? CeladonColors.coralLight
                             : (isFutureDate
                                   ? CeladonColors.info.withValues(alpha: 0.12)
                                   : CeladonColors.primaryLight)),
@@ -3473,7 +3462,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     color: isDayEvent
                         ? const Color(0xFF8B5CF6).withValues(alpha: 0.40)
                         : (isLeaveOrOff
-                              ? CeladonColors.border
+                              ? CeladonColors.coralBorder
                               : (isFutureDate
                                     ? CeladonColors.info.withValues(alpha: 0.35)
                                     : CeladonColors.primary.withValues(
@@ -3495,7 +3484,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     color: isDayEvent
                         ? const Color(0xFF7C3AED)
                         : (isLeaveOrOff
-                              ? CeladonColors.textMuted
+                              ? CeladonColors.coralDark
                               : (isFutureDate
                                     ? CeladonColors.info
                                     : CeladonColors.primary)),
@@ -3795,33 +3784,33 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               'present',
               isFutureDate ? 'Scheduled' : 'Present',
               presentCount,
-              isFutureDate ? const Color(0xFF38BDF8) : CeladonColors.primary,
+              isFutureDate ? const Color(0xFF0284C7) : CeladonColors.primary,
             ),
             const SizedBox(width: 6),
             _buildInteractiveTrendStatusTab(
               'absent',
               'Absent',
               absentCount,
-              const Color(0xFFFB7185),
+              const Color(0xFFDC2626),
             ),
             const SizedBox(width: 6),
             _buildInteractiveTrendStatusTab(
               'late',
               'Late',
               lateCount,
-              const Color(0xFFFCD34D),
+              const Color(0xFFD97706),
             ),
             const SizedBox(width: 6),
             _buildInteractiveTrendStatusTab(
               'leave',
               'Leave',
               leaveCount,
-              const Color(0xFF8B5CF6),
+              const Color(0xFF7C3AED),
             ),
           ],
         ),
         const SizedBox(height: 12),
-        const Divider(color: Colors.white12, height: 1),
+        const Divider(color: Color(0xFFE2E8F0), height: 1),
         const SizedBox(height: 10),
 
         // 2. Content: Either Detailed Single Employee Card (with back arrow) OR Status Filtered Roster
@@ -3867,11 +3856,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           decoration: BoxDecoration(
             color: isSelected
                 ? color.withValues(alpha: 0.16)
-                : CeladonColors.searchBackground,
+                : color.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: isSelected ? color : CeladonColors.border,
-              width: isSelected ? 1.5 : 1.0,
+              color: isSelected ? color : color.withValues(alpha: 0.35),
+              width: isSelected ? 1.6 : 1.0,
             ),
           ),
           child: Column(
@@ -3881,7 +3870,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w900,
-                  color: isSelected ? color : CeladonColors.textPrimary,
+                  color: color,
                 ),
               ),
               const SizedBox(height: 1),
@@ -3890,7 +3879,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 style: TextStyle(
                   fontSize: 9.5,
                   fontWeight: isSelected ? FontWeight.w800 : FontWeight.w700,
-                  color: isSelected ? color : CeladonColors.textSecondary,
+                  color: color,
                 ),
               ),
             ],
@@ -4874,47 +4863,6 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             const SizedBox(height: 10),
           ],
 
-          // Role-Based Filter Chips: [All] [Staff] [Intern] [Admin]
-          Builder(
-            builder: (context) {
-              final allCount = _users.length;
-              final staffCount = _users
-                  .where((u) => u.role.toLowerCase() == 'staff')
-                  .length;
-              final internCount = _users
-                  .where((u) => u.role.toLowerCase() == 'intern')
-                  .length;
-              final adminCount = _users
-                  .where((u) => u.role.toLowerCase() == 'admin')
-                  .length;
-
-              return Row(
-                children: [
-                  Expanded(
-                    child: _buildRoleSegmentChip('All', 'all', allCount),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: _buildRoleSegmentChip('Staff', 'staff', staffCount),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: _buildRoleSegmentChip(
-                      'Intern',
-                      'intern',
-                      internCount,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: _buildRoleSegmentChip('Admin', 'admin', adminCount),
-                  ),
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 14),
-
           // Employees List Cards (Image 1 Screen 3)
           Expanded(
             child: filtered.isEmpty
@@ -5745,20 +5693,14 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       roleCounts[rk] = (roleCounts[rk] ?? 0) + 1;
     }
 
-    final roleOptions =
-        [
-              {'value': 'all', 'label': 'All'},
-              {'value': 'owner', 'label': 'Owner'},
-              {'value': 'admin', 'label': 'Admin'},
-              {'value': 'staff', 'label': 'Staff'},
-              {'value': 'intern', 'label': 'Intern'},
-              {'value': 'freelancer', 'label': 'Freelancer'},
-            ]
-            .where(
-              (opt) =>
-                  opt['value'] == 'all' || (roleCounts[opt['value']] ?? 0) > 0,
-            )
-            .toList();
+    final roleOptions = const [
+      {'value': 'all', 'label': 'All'},
+      {'value': 'owner', 'label': 'Owner'},
+      {'value': 'admin', 'label': 'Admin'},
+      {'value': 'staff', 'label': 'Staff'},
+      {'value': 'intern', 'label': 'Intern'},
+      {'value': 'freelancer', 'label': 'Freelancer'},
+    ];
 
     // Unique departments from users
     final depts =
@@ -6684,16 +6626,16 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 ];
                 onTapAction = () => _showEventDetailsDialog(event);
               } else if (isHoliday) {
-                // Grey color for company holiday (tap displays holiday description)
-                bgColor = const Color(0xFF829089).withValues(alpha: 0.18);
-                borderColor = const Color(0xFF829089);
-                textColor = const Color(0xFF52615B);
+                // Coral color for company holiday (tap displays holiday description)
+                bgColor = CeladonColors.coralLight;
+                borderColor = CeladonColors.coralBorder;
+                textColor = CeladonColors.coralDark;
                 onTapAction = () => _showHolidayDetailsDialog(holiday);
               } else if (isLeaveOrOff) {
-                // Grey color for leaves & non-working days (unclickable: locked)
-                bgColor = CeladonColors.disabledBackground;
-                borderColor = CeladonColors.border;
-                textColor = CeladonColors.textPlaceholder;
+                // Soft coral for leaves & non-working days (unclickable: locked)
+                bgColor = const Color(0xFFFFF2EF);
+                borderColor = const Color(0xFFFFB5A7);
+                textColor = CeladonColors.coralDark;
                 onTapAction = null;
               } else {
                 // Regular working day
@@ -6778,7 +6720,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             children: [
               _buildCalendarLegendDot(CeladonColors.primary, 'Working Day'),
               _buildCalendarLegendDot(const Color(0xFF7C3AED), 'Event ★'),
-              _buildCalendarLegendDot(const Color(0xFF829089), 'Holiday / Off'),
+              _buildCalendarLegendDot(CeladonColors.coralDark, 'Holiday / Off'),
               _buildCalendarLegendDot(const Color(0xFFF59E0B), 'Birthday 🎂'),
             ],
           ),
@@ -6804,7 +6746,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           label,
           style: const TextStyle(
             fontSize: 10.5,
-            color: Color(0xFFBACCC3),
+            color: CeladonColors.textSecondary,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -8327,23 +8269,20 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           const Text(
             'Leave Management',
             style: TextStyle(
-              fontSize: 22,
+              fontSize: 20,
               fontWeight: FontWeight.w800,
-              color: Colors.white,
+              color: CeladonColors.textPrimary,
               letterSpacing: -0.4,
-              shadows: [
-                Shadow(
-                  offset: Offset(0, 2),
-                  blurRadius: 4,
-                  color: Colors.black45,
-                ),
-              ],
             ),
           ),
           const SizedBox(height: 2),
           const Text(
             'Search & review employee leave applications',
-            style: TextStyle(fontSize: 12, color: Color(0xFFBACCC3)),
+            style: TextStyle(
+              fontSize: 13,
+              color: CeladonColors.textMuted,
+              fontWeight: FontWeight.w500,
+            ),
           ),
           const SizedBox(height: 14),
 
@@ -8364,7 +8303,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                       child: Icon(
                         Icons.close_rounded,
                         size: 18,
-                        color: Color(0xFFBACCC3),
+                        color: Color(0xFF94A3B8),
                       ),
                     ),
                   )
@@ -9668,13 +9607,17 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               color: CeladonColors.textSecondary,
             ),
           ),
-          const Spacer(),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: CeladonColors.textPrimary,
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: CeladonColors.textPrimary,
+              ),
             ),
           ),
         ],
@@ -11559,6 +11502,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildRoleSegmentChip(String label, String roleKey, int count) {
     final isSelected = _selectedEmployeeRoleFilter == roleKey;
     return GestureDetector(
@@ -11865,7 +11809,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 style: const TextStyle(
                   fontSize: 13.5,
                   fontWeight: FontWeight.w800,
-                  color: Colors.white,
+                  color: CeladonColors.textPrimary,
                 ),
               ),
               Container(
@@ -11889,7 +11833,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             ],
           ),
           const SizedBox(height: 10),
-          const Divider(color: Colors.white12, height: 1),
+          const Divider(color: Color(0xFFE2E8F0), height: 1),
           const SizedBox(height: 8),
           if (matchingRecords.isEmpty)
             Padding(
@@ -12151,10 +12095,6 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     }
 
     final allRecords = _computeDayAttendanceRecords(_selectedCalendarDate);
-    final presentCount = allRecords.where((r) => r.status == 'present').length;
-    final lateCount = allRecords.where((r) => r.status == 'late').length;
-    final absentCount = allRecords.where((r) => r.status == 'absent').length;
-    final leaveCount = allRecords.where((r) => r.status == 'leave').length;
 
     List<_DayAttendanceRecord> filtered = allRecords;
     if (_selectedDayLogFilter == 'present') {
@@ -12204,7 +12144,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
-                    color: Colors.white,
+                    color: CeladonColors.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -12212,7 +12152,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   '${allRecords.length} employees tracked on this day',
                   style: const TextStyle(
                     fontSize: 11.5,
-                    color: Color(0xFFBACCC3),
+                    color: CeladonColors.textMuted,
                   ),
                 ),
               ],
@@ -12230,51 +12170,18 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             ),
           ],
         ),
-        const SizedBox(height: 12),
-
-        // Filter Pills: [All] [Present] [Absent] [Late] [Leave]
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
+        if (_selectedDayLogFilter != 'all') ...[
+          const SizedBox(height: 10),
+          Row(
             children: [
-              _buildDayLogFilterChip(
-                'All',
-                'all',
-                allRecords.length,
-                CeladonColors.primary,
-              ),
-              const SizedBox(width: 6),
-              _buildDayLogFilterChip(
-                'Present',
-                'present',
-                presentCount,
-                CeladonColors.primary,
-              ),
-              const SizedBox(width: 6),
-              _buildDayLogFilterChip(
-                'Absent',
-                'absent',
-                absentCount,
-                const Color(0xFFEF4444),
-              ),
-              const SizedBox(width: 6),
-              _buildDayLogFilterChip(
-                'Late',
-                'late',
-                lateCount,
-                const Color(0xFFF59E0B),
-              ),
-              const SizedBox(width: 6),
-              _buildDayLogFilterChip(
-                'Leave',
-                'leave',
-                leaveCount,
-                const Color(0xFF8B5CF6),
+              _buildActiveFilterBadge(
+                'Status: ${_selectedDayLogFilter.toUpperCase()}',
+                () => setState(() => _selectedDayLogFilter = 'all'),
               ),
             ],
           ),
-        ),
-        const SizedBox(height: 14),
+        ],
+        const SizedBox(height: 12),
 
         // 6-Employee Paginated List
         if (pagedList.isEmpty)
@@ -12297,7 +12204,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             children: [
               Text(
                 'Showing ${safePage * pageSize + 1} - ${(safePage + 1) * pageSize > filtered.length ? filtered.length : (safePage + 1) * pageSize} of ${filtered.length}',
-                style: const TextStyle(fontSize: 12, color: Color(0xFFBACCC3)),
+                style: const TextStyle(fontSize: 12, color: CeladonColors.textMuted),
               ),
               Row(
                 mainAxisSize: MainAxisSize.min,
@@ -12305,7 +12212,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   IconButton(
                     icon: const Icon(
                       Icons.chevron_left_rounded,
-                      color: Colors.white,
+                      color: CeladonColors.textPrimary,
                       size: 20,
                     ),
                     onPressed: safePage > 0
@@ -12319,13 +12226,13 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: Colors.white,
+                      color: CeladonColors.textPrimary,
                     ),
                   ),
                   IconButton(
                     icon: const Icon(
                       Icons.chevron_right_rounded,
-                      color: Colors.white,
+                      color: CeladonColors.textPrimary,
                       size: 20,
                     ),
                     onPressed: safePage < totalPages - 1
@@ -12343,6 +12250,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildDayLogFilterChip(
     String label,
     String filterKey,

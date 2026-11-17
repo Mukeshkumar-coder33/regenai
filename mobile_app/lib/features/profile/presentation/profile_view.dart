@@ -896,31 +896,37 @@ class _ProfileViewState extends State<ProfileView> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: CeladonColors.primaryContainer,
-                      borderRadius: BorderRadius.circular(10),
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: CeladonColors.primaryContainer,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.person_pin_outlined,
+                        color: CeladonColors.primary,
+                        size: 19,
+                      ),
                     ),
-                    child: const Icon(
-                      Icons.person_pin_outlined,
-                      color: CeladonColors.primary,
-                      size: 19,
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Personal Information',
+                        style: TextStyle(
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w800,
+                          color: CeladonColors.textPrimary,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'Personal Information',
-                    style: TextStyle(
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.w800,
-                      color: CeladonColors.textPrimary,
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
               InkWell(
                 onTap: _openEditProfileSheet,
                 borderRadius: BorderRadius.circular(12),
@@ -999,6 +1005,7 @@ class _ProfileViewState extends State<ProfileView> {
           Icon(icon, size: 18, color: CeladonColors.textSecondary),
           const SizedBox(width: 10),
           Expanded(
+            flex: 2,
             child: Text(
               label,
               style: const TextStyle(
@@ -1008,12 +1015,18 @@ class _ProfileViewState extends State<ProfileView> {
               ),
             ),
           ),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w700,
-              color: valueColor ?? CeladonColors.textPrimary,
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 3,
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w700,
+                color: valueColor ?? CeladonColors.textPrimary,
+              ),
             ),
           ),
         ],

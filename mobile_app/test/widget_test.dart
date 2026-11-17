@@ -612,18 +612,23 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      // Verify General Task and Projects segments
+      // Verify General Task, Overview and Projects segments
       expect(find.text('General Task'), findsOneWidget);
+      expect(find.text('Overview'), findsOneWidget);
       expect(find.text('Projects'), findsOneWidget);
 
-      // Verify 4 Metric Counters & Filter Chips
+      // Verify Search Bar with full placeholder in General Task
+      expect(find.text('Search by title, description, or assigned person...'), findsOneWidget);
+
+      // Switch to Overview segment
+      await tester.tap(find.text('Overview'));
+      await tester.pumpAndSettle();
+
+      // Verify 4 Metric Counters in Overview
       expect(find.text('Total Tasks'), findsOneWidget);
       expect(find.text('Pending'), findsOneWidget);
       expect(find.text('Incomplete'), findsWidgets);
-      expect(find.text('Completed'), findsOneWidget);
-
-      // Verify Search Bar with full placeholder
-      expect(find.text('Search by title, description, or assigned person...'), findsOneWidget);
+      expect(find.text('Completed'), findsWidgets);
 
       // Verify auto calculation function
       final calcDays = TasksView.computeEndDateTime('2026-11-03', 3, 'days');
@@ -814,13 +819,21 @@ void main() {
       expect(find.byIcon(Icons.search_rounded), findsOneWidget);
       expect(find.byIcon(Icons.filter_list_rounded), findsOneWidget);
 
-      // Add Employee button and role filter segment chips matching website
+      // Add Employee button
       expect(find.text('Add Employee'), findsOneWidget);
-      expect(find.text('All'), findsOneWidget);
+
+      // Tap filter icon in search box to open Employee Filter Sheet
+      await tester.tap(find.byIcon(Icons.filter_list_rounded).first);
+      await tester.pumpAndSettle();
+
+      // Role filter options in filter sheet
       expect(find.text('Staff'), findsWidgets);
       expect(find.text('Intern'), findsWidgets);
       expect(find.text('Admin'), findsWidgets);
-      expect(find.byIcon(Icons.more_vert_rounded), findsWidgets);
+
+      // Close filter sheet
+      await tester.tap(find.byIcon(Icons.close_rounded).first);
+      await tester.pumpAndSettle();
     });
 
     test('CompanyModel startingMonth is derived dynamically from createdAt or establishmentMonth', () {
@@ -1137,7 +1150,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Navigate to Attendance/Calender tab (tab index 2)
-      await tester.tap(find.byIcon(Icons.calendar_month_outlined));
+      await tester.tap(find.text('Calender').first);
       await tester.pumpAndSettle();
 
       expect(find.byWidgetPredicate((w) => w is Text && (w.data == 'Track employee attendance' || w.data!.contains('schedule') || w.data!.contains('attendance'))), findsWidgets);
@@ -1214,12 +1227,16 @@ void main() {
       await tester.tap(find.text('Employees').first);
       await tester.pumpAndSettle();
 
-      // Verify Role Chips exist
+      // Tap filter icon in search box to open Employee Filter Sheet
+      await tester.tap(find.byIcon(Icons.filter_list_rounded).first);
+      await tester.pumpAndSettle();
+
+      // Verify Role Options exist in Filter Sheet
       expect(find.text('Staff'), findsOneWidget);
       expect(find.text('Intern'), findsOneWidget);
       expect(find.text('Admin'), findsOneWidget);
 
-      // Tap Staff role chip
+      // Tap Staff role option
       await tester.tap(find.text('Staff'));
       await tester.pumpAndSettle();
     });
@@ -1246,15 +1263,11 @@ void main() {
       await tester.pumpAndSettle();
 
       // Navigate to Attendance/Calender tab (tab index 2)
-      await tester.tap(find.byIcon(Icons.calendar_month_outlined));
+      await tester.tap(find.text('Calender').first);
       await tester.pumpAndSettle();
 
-      // Verify single first search box and status filter chips in Attendance tab
+      // Verify single first search box in Attendance tab
       expect(find.text('Search attendance logs...'), findsOneWidget);
-      expect(find.text('Present'), findsWidgets);
-      expect(find.text('Absent'), findsWidgets);
-      expect(find.text('Late'), findsWidgets);
-      expect(find.text('Leave'), findsWidgets);
 
       // Verify tapping filter icon opens Attendance Filter Sheet with check filters
       await tester.tap(find.byIcon(Icons.filter_list_rounded).first);
@@ -1351,7 +1364,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Navigate to Attendance/Calender tab (tab index 2)
-      await tester.tap(find.byIcon(Icons.calendar_month_outlined));
+      await tester.tap(find.text('Calender').first);
       await tester.pumpAndSettle();
 
       // Verify Add Holiday and Work Policy buttons exist in header

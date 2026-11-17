@@ -478,7 +478,7 @@ class _TasksViewState extends State<TasksView> {
                 child: FloatingActionButton.extended(
                   heroTag: 'tasks_fab',
                   onPressed: () {
-                    if (_activeMainSegment == 0) {
+                    if (_activeMainSegment == 0 || _activeMainSegment == 1) {
                       _showCreateTaskSheet();
                     } else if (_selectedProjectForDetail != null) {
                       _showCreateTaskSheet(
@@ -492,7 +492,7 @@ class _TasksViewState extends State<TasksView> {
                   backgroundColor: CeladonColors.primary,
                   icon: const Icon(Icons.add_rounded, color: Colors.white, size: 22),
                   label: Text(
-                    _activeMainSegment == 0
+                    _activeMainSegment == 0 || _activeMainSegment == 1
                         ? 'Add Task'
                         : (_selectedProjectForDetail != null ? 'Add Project Task' : 'Create Project'),
                     style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white, fontSize: 13.5),
@@ -534,7 +534,9 @@ class _TasksViewState extends State<TasksView> {
                                 color: CeladonColors.primary,
                                 child: _activeMainSegment == 0
                                     ? _buildGeneralTasksTab()
-                                    : _buildProjectsTab(),
+                                    : (_activeMainSegment == 1
+                                        ? _buildOverviewTab()
+                                        : _buildProjectsTab()),
                               ),
                   ),
                 ],
@@ -726,14 +728,24 @@ class _TasksViewState extends State<TasksView> {
               onTap: () => setState(() => _activeMainSegment = 0),
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 4),
+          Expanded(
+            child: _buildSegmentPill(
+              title: 'Overview',
+              icon: Icons.dashboard_outlined,
+              isSelected: _activeMainSegment == 1,
+              badgeCount: _totalTaskCount + _projects.length,
+              onTap: () => setState(() => _activeMainSegment = 1),
+            ),
+          ),
+          const SizedBox(width: 4),
           Expanded(
             child: _buildSegmentPill(
               title: 'Projects',
               icon: Icons.folder_copy_rounded,
-              isSelected: _activeMainSegment == 1,
+              isSelected: _activeMainSegment == 2,
               badgeCount: _projects.length,
-              onTap: () => setState(() => _activeMainSegment = 1),
+              onTap: () => setState(() => _activeMainSegment = 2),
             ),
           ),
         ],
@@ -808,6 +820,351 @@ class _TasksViewState extends State<TasksView> {
   }
 
   // ===========================================================================
+  // TAB 0: OVERVIEW TAB (Executive Summary for General Tasks & Projects)
+  // ===========================================================================
+  Widget _buildOverviewTab() {
+    final completedRate = _totalTaskCount > 0
+        ? ((_completedCount / _totalTaskCount) * 100).round()
+        : 0;
+
+    final inProgressProjects = _projects
+        .where((p) => p.status.toLowerCase() != 'completed')
+        .length;
+    final completedProjects = _projects
+        .where((p) => p.status.toLowerCase() == 'completed')
+        .length;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
+      children: [
+        // 1. General Tasks Summary Section
+        _buildOverviewSectionHeader(
+          title: 'General Tasks Overview',
+          subtitle: 'Operational task assignments & progress',
+          icon: Icons.assignment_rounded,
+          actionLabel: 'View All Tasks →',
+          onAction: () => setState(() => _activeMainSegment = 1),
+        ),
+        const SizedBox(height: 10),
+
+        // 4 Metric Counter Cards (Image 3)
+        _buildTaskMetricsGrid(
+          onTapOverride: (filterIdx) {
+            setState(() {
+              _selectedTaskFilter = filterIdx;
+              _activeMainSegment = 1;
+            });
+          },
+        ),
+        const SizedBox(height: 12),
+
+        // Task Completion Rate Banner
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Task Completion Rate',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: CeladonColors.textPrimary,
+                    ),
+                  ),
+                  Text(
+                    '$completedRate%',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: CeladonColors.primary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: LinearProgressIndicator(
+                  value: _totalTaskCount > 0
+                      ? (_completedCount / _totalTaskCount)
+                      : 0.0,
+                  minHeight: 7,
+                  backgroundColor: CeladonColors.border,
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                    CeladonColors.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        // 2. Projects Overview Section
+        _buildOverviewSectionHeader(
+          title: 'Project Overview',
+          subtitle: 'Active deliverables & team allocations',
+          icon: Icons.folder_copy_rounded,
+          actionLabel: 'View Projects →',
+          onAction: () => setState(() => _activeMainSegment = 2),
+        ),
+        const SizedBox(height: 10),
+
+        // Project Metric Counters Row
+        Row(
+          children: [
+            Expanded(
+              child: _buildProjectOverviewTile(
+                title: 'Total Projects',
+                count: _projects.length,
+                icon: Icons.folder_rounded,
+                color: CeladonColors.primary,
+                onTap: () => setState(() => _activeMainSegment = 2),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildProjectOverviewTile(
+                title: 'In Progress',
+                count: inProgressProjects,
+                icon: Icons.timelapse_rounded,
+                color: const Color(0xFF0284C7),
+                onTap: () => setState(() => _activeMainSegment = 2),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildProjectOverviewTile(
+                title: 'Completed',
+                count: completedProjects,
+                icon: Icons.verified_rounded,
+                color: const Color(0xFF10B981),
+                onTap: () => setState(() => _activeMainSegment = 2),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+
+        // Recent Projects Cards Preview
+        if (_projects.isEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: const Text(
+              'No projects available',
+              style: TextStyle(fontSize: 12.5, color: CeladonColors.textMuted),
+            ),
+          )
+        else
+          ..._projects.take(3).map((proj) => _buildProjectOverviewCard(proj)),
+      ],
+    );
+  }
+
+  Widget _buildOverviewSectionHeader({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required String actionLabel,
+    required VoidCallback onAction,
+  }) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                color: CeladonColors.primaryContainer,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, size: 16, color: CeladonColors.primary),
+            ),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w800,
+                    color: CeladonColors.textPrimary,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: CeladonColors.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        InkWell(
+          onTap: onAction,
+          child: Text(
+            actionLabel,
+            style: const TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              color: CeladonColors.primary,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProjectOverviewTile({
+    required String title,
+    required int count,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, size: 20, color: color),
+            const SizedBox(height: 6),
+            Text(
+              '$count',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+                color: color,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w600,
+                color: CeladonColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProjectOverviewCard(ProjectModel proj) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  proj.name,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: CeladonColors.textPrimary,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: proj.status.toLowerCase() == 'completed'
+                      ? const Color(0xFFDEF7EC)
+                      : const Color(0xFFE0F2FE),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  proj.status.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: proj.status.toLowerCase() == 'completed'
+                        ? const Color(0xFF03543F)
+                        : const Color(0xFF0369A1),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (proj.description.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              proj.description,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                color: CeladonColors.textMuted,
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              const Icon(Icons.people_outline_rounded, size: 14, color: CeladonColors.textMuted),
+              const SizedBox(width: 4),
+              Text(
+                '${proj.assignedEmployees.length} members',
+                style: const TextStyle(fontSize: 11, color: CeladonColors.textMuted),
+              ),
+              const Spacer(),
+              if (proj.dueDate != null && proj.dueDate!.isNotEmpty) ...[
+                const Icon(Icons.event_outlined, size: 14, color: CeladonColors.textMuted),
+                const SizedBox(width: 4),
+                Text(
+                  proj.dueDate!,
+                  style: const TextStyle(fontSize: 11, color: CeladonColors.textMuted),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ===========================================================================
   // TAB 1: GENERAL TASKS TAB
   // ===========================================================================
   Widget _buildGeneralTasksTab() {
@@ -816,22 +1173,17 @@ class _TasksViewState extends State<TasksView> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
       children: [
-        // 1. Metric Counter Cards: Total Tasks, Pending, Incomplete, Completed
-        _buildTaskMetricsGrid(),
-
-        const SizedBox(height: 14),
-
-        // 2. Full Search Box: Searches by Title, Description, and Assigned Person
+        // 1. Full Search Box: Searches by Title, Description, and Assigned Person
         _buildTaskSearchBar(),
 
         const SizedBox(height: 12),
 
-        // 3. Filter Segment Tabs: [All] [Pending / Active] [Completed / Done] [Incomplete]
+        // 2. Filter Segment Tabs: [All] [Pending / Active] [Completed / Done] [Incomplete]
         _buildTaskFilterTabs(),
 
         const SizedBox(height: 14),
 
-        // 4. Tasks List
+        // 3. Tasks List
         if (tasksToDisplay.isEmpty)
           _buildEmptyTasksPlaceholder()
         else
@@ -841,7 +1193,7 @@ class _TasksViewState extends State<TasksView> {
   }
 
   // 4 Metric Counter Cards: Total Tasks, Pending, Incomplete, Completed
-  Widget _buildTaskMetricsGrid() {
+  Widget _buildTaskMetricsGrid({void Function(int filterIndex)? onTapOverride}) {
     return Row(
       children: [
         Expanded(
@@ -850,7 +1202,13 @@ class _TasksViewState extends State<TasksView> {
             count: _totalTaskCount,
             icon: Icons.assignment_rounded,
             color: CeladonColors.primary,
-            onTap: () => setState(() => _selectedTaskFilter = 0),
+            onTap: () {
+              if (onTapOverride != null) {
+                onTapOverride(0);
+              } else {
+                setState(() => _selectedTaskFilter = 0);
+              }
+            },
             isSelected: _selectedTaskFilter == 0,
           ),
         ),
@@ -861,7 +1219,13 @@ class _TasksViewState extends State<TasksView> {
             count: _pendingCount,
             icon: Icons.schedule_rounded,
             color: const Color(0xFF06B6D4),
-            onTap: () => setState(() => _selectedTaskFilter = 1),
+            onTap: () {
+              if (onTapOverride != null) {
+                onTapOverride(1);
+              } else {
+                setState(() => _selectedTaskFilter = 1);
+              }
+            },
             isSelected: _selectedTaskFilter == 1,
           ),
         ),
@@ -872,7 +1236,13 @@ class _TasksViewState extends State<TasksView> {
             count: _incompleteCount,
             icon: Icons.error_outline_rounded,
             color: const Color(0xFFEF4444),
-            onTap: () => setState(() => _selectedTaskFilter = 3),
+            onTap: () {
+              if (onTapOverride != null) {
+                onTapOverride(3);
+              } else {
+                setState(() => _selectedTaskFilter = 3);
+              }
+            },
             isSelected: _selectedTaskFilter == 3,
           ),
         ),
@@ -883,7 +1253,13 @@ class _TasksViewState extends State<TasksView> {
             count: _completedCount,
             icon: Icons.check_circle_outline_rounded,
             color: CeladonColors.primary,
-            onTap: () => setState(() => _selectedTaskFilter = 2),
+            onTap: () {
+              if (onTapOverride != null) {
+                onTapOverride(2);
+              } else {
+                setState(() => _selectedTaskFilter = 2);
+              }
+            },
             isSelected: _selectedTaskFilter == 2,
           ),
         ),

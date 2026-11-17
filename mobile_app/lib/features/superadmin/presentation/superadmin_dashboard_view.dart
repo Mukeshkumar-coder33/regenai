@@ -274,33 +274,45 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
                         ),
 
                         // Title & Badge
-                        Row(
-                          children: [
-                            const BrandLogo(size: 28, borderRadius: 8),
-                            const SizedBox(width: 8),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: const [
-                                Text(
-                                  'SUPER ADMIN',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 1.2,
-                                    color: CeladonColors.primaryLight,
-                                  ),
-                                ),
-                                Text(
-                                  'ReGen Central Console',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.white,
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: Row(
+                              children: [
+                                const BrandLogo(size: 26, borderRadius: 8),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: const [
+                                      Text(
+                                        'SUPER ADMIN',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: 1.2,
+                                          color: CeladonColors.primaryLight,
+                                        ),
+                                      ),
+                                      Text(
+                                        'ReGen Central Console',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 13.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
                             ),
-                          ],
+                          ),
                         ),
 
                         // Right actions: Refresh & Logout
@@ -983,50 +995,54 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (ctx) => Container(
         padding: const EdgeInsets.all(24),
         decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(
-                    company.name,
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: company.isActive ? const Color(0xFFDEF7EC) : const Color(0xFFFDE8E8),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    company.status.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: company.isActive ? const Color(0xFF03543F) : const Color(0xFF9B1C1C),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      company.name,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary),
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            _buildDetailRow('Owner', company.ownerName ?? company.ownerId ?? 'N/A'),
-            _buildDetailRow('City / Location', company.city ?? 'N/A'),
-            _buildDetailRow('Phone', company.phoneNumber ?? 'N/A'),
-            _buildDetailRow('Email', company.email ?? 'N/A'),
-            _buildDetailRow('Category', company.category?.toUpperCase() ?? 'GENERAL'),
-            const SizedBox(height: 16),
-          ],
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: company.isActive ? const Color(0xFFDEF7EC) : const Color(0xFFFDE8E8),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      company.status.toUpperCase(),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: company.isActive ? const Color(0xFF03543F) : const Color(0xFF9B1C1C),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              _buildDetailRow('Owner', company.ownerName ?? company.ownerId ?? 'N/A'),
+              _buildDetailRow('City / Location', company.city ?? 'N/A'),
+              _buildDetailRow('Phone', company.phoneNumber ?? 'N/A'),
+              _buildDetailRow('Email', company.email ?? 'N/A'),
+              _buildDetailRow('Category', company.category?.toUpperCase() ?? 'GENERAL'),
+              const SizedBox(height: 16),
+            ],
+          ),
         ),
       ),
     );
@@ -1039,7 +1055,15 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: const TextStyle(fontSize: 13, color: CeladonColors.textSecondary)),
-          Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: CeladonColors.textPrimary)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: CeladonColors.textPrimary),
+            ),
+          ),
         ],
       ),
     );

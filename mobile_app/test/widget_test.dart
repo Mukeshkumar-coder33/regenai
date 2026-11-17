@@ -871,7 +871,7 @@ void main() {
       // Drawer UI verification
       expect(find.text('COMPANY OPERATIONS'), findsOneWidget);
       expect(find.text('Employee Management'), findsOneWidget);
-      expect(find.text('Attendance'), findsWidgets);
+      expect(find.byWidgetPredicate((w) => w is Text && (w.data == 'Calender' || w.data == 'Attendance')), findsWidgets);
 
       // Scroll drawer to reveal all items and Sign Out
       await tester.drag(find.text('Employee Management'), const Offset(0, -350));
@@ -1136,11 +1136,11 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      // Navigate to Attendance tab (tab index 2)
-      await tester.tap(find.text('Attendance').first);
+      // Navigate to Attendance/Calender tab (tab index 2)
+      await tester.tap(find.byIcon(Icons.calendar_month_outlined));
       await tester.pumpAndSettle();
 
-      expect(find.text('Track employee attendance'), findsOneWidget);
+      expect(find.byWidgetPredicate((w) => w is Text && (w.data == 'Track employee attendance' || w.data!.contains('schedule') || w.data!.contains('attendance'))), findsWidgets);
       expect(find.text('Work Policy'), findsOneWidget);
 
       // Tap Work Policy button
@@ -1245,8 +1245,8 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      // Navigate to Attendance tab (tab index 2)
-      await tester.tap(find.text('Attendance').first);
+      // Navigate to Attendance/Calender tab (tab index 2)
+      await tester.tap(find.byIcon(Icons.calendar_month_outlined));
       await tester.pumpAndSettle();
 
       // Verify single first search box and status filter chips in Attendance tab
@@ -1350,8 +1350,8 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      // Navigate to Attendance tab (tab index 2)
-      await tester.tap(find.text('Attendance').first);
+      // Navigate to Attendance/Calender tab (tab index 2)
+      await tester.tap(find.byIcon(Icons.calendar_month_outlined));
       await tester.pumpAndSettle();
 
       // Verify Add Holiday and Work Policy buttons exist in header

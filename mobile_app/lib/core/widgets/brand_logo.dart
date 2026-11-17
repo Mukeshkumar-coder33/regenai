@@ -4,7 +4,7 @@ import '../theme/celadon_colors.dart';
 /// ReGen Brand Logo Emblem Widget
 ///
 /// Displays the official ReGen badge with crisp emerald styling,
-/// matching the global ReGen White + Charcoal + Emerald Green theme.
+/// matching the official ReGen visual design specification.
 class BrandLogo extends StatelessWidget {
   final double size;
   final double borderRadius;
@@ -25,30 +25,48 @@ class BrandLogo extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: backgroundColor ?? CeladonColors.primary,
+        gradient: backgroundColor != null
+            ? null
+            : const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: CeladonColors.primaryGradient,
+              ),
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(borderRadius),
-        border: Border.all(
-          color: CeladonColors.border,
-          width: 1.0,
-        ),
         boxShadow: const [
           BoxShadow(
-            color: CeladonColors.glow,
-            blurRadius: 8,
-            offset: Offset(0, 2),
+            color: Color(0x22075438),
+            blurRadius: 10,
+            offset: Offset(0, 4),
           ),
         ],
       ),
-      child: Center(
-        child: Text(
-          'R',
-          style: TextStyle(
-            fontSize: size * 0.52,
-            fontWeight: FontWeight.w900,
-            color: Colors.white,
-            letterSpacing: -1,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Text(
+            'R',
+            style: TextStyle(
+              fontSize: size * 0.54,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+              fontFamily: 'serif',
+              letterSpacing: -0.5,
+            ),
           ),
-        ),
+          Positioned(
+            bottom: size * 0.22,
+            child: Container(
+              width: size * 0.36,
+              height: (size * 0.04).clamp(1.5, 3.0),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.85),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -1795,49 +1795,46 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     alignment: Alignment.center,
                     children: [
                       const Icon(Icons.notifications_none_rounded, color: CeladonColors.textPrimary, size: 21),
-                      if (_unreadNotificationCount > 0)
-                        Positioned(
-                          top: 4,
-                          right: 4,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
-                            decoration: BoxDecoration(
-                              color: CeladonColors.error,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            constraints: const BoxConstraints(minWidth: 15, minHeight: 15),
-                            alignment: Alignment.center,
-                            child: Text(
-                              _unreadNotificationCount > 99 ? '99+' : '$_unreadNotificationCount',
-                              style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w800, color: Colors.white),
-                            ),
+                      Positioned(
+                        top: 6,
+                        right: 6,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: CeladonColors.primary,
+                            shape: BoxShape.circle,
                           ),
                         ),
+                      ),
                     ],
                   ),
                 ),
               ),
               const SizedBox(width: 10),
 
-              // Avatar (Tap to switch to Profile tab)
+              // Avatar (Tap to switch to Profile tab - matches image Screen 1)
               InkWell(
                 onTap: () => setState(() => _selectedBottomTab = 4),
                 borderRadius: BorderRadius.circular(18),
                 child: Container(
                   width: 36,
                   height: 36,
-                  decoration: BoxDecoration(
+                  decoration: const BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: CeladonColors.primary, width: 1.6),
-                    color: CeladonColors.primaryLight,
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: CeladonColors.primaryGradient,
+                    ),
                   ),
                   child: Center(
                     child: Text(
-                      displayName.isNotEmpty ? displayName[0].toUpperCase() : 'A',
+                      displayName.isNotEmpty ? displayName[0].toUpperCase() : 'V',
                       style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w800,
-                        color: CeladonColors.primary,
+                        color: Colors.white,
                       ),
                     ),
                   ),

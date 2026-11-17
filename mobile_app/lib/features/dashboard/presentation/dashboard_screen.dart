@@ -396,24 +396,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (isSelected) {
       return InkWell(
         onTap: () => _navigateToTab(index),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(16),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
-            color: const Color(0xFFE8F3EC),
-            borderRadius: BorderRadius.circular(24),
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: CeladonColors.primaryGradient,
+            ),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: CeladonColors.primaryDark.withValues(alpha: 0.28),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(activeIcon, size: 20, color: const Color(0xFF087A4B)),
+              Icon(activeIcon, size: 20, color: Colors.white),
               const SizedBox(width: 6),
               Text(
                 label,
                 style: const TextStyle(
-                  fontSize: 13,
+                  fontSize: 12.5,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF087A4B),
+                  color: Colors.white,
                 ),
               ),
             ],
@@ -424,7 +435,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return InkWell(
       onTap: () => _navigateToTab(index),
-      borderRadius: BorderRadius.circular(24),
+      borderRadius: BorderRadius.circular(16),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         child: Column(
@@ -433,15 +444,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Icon(
               icon,
               size: 22,
-              color: const Color(0xFF829089),
+              color: CeladonColors.textSecondary,
             ),
             const SizedBox(height: 2),
             Text(
               label,
               style: const TextStyle(
-                fontSize: 11,
+                fontSize: 10.5,
                 fontWeight: FontWeight.w500,
-                color: Color(0xFF829089),
+                color: CeladonColors.textSecondary,
               ),
             ),
           ],

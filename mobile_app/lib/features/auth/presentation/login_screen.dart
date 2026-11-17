@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/celadon_colors.dart';
+import '../../../core/widgets/brand_logo.dart';
 import '../../dashboard/presentation/dashboard_screen.dart';
 import 'auth_controller.dart';
 import '../../../app/app_config.dart';
@@ -87,80 +88,76 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: CeladonColors.background,
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // ReGen Official Branding
-                  Center(
-                    child: GestureDetector(
-                      onLongPress: _showServerUrlDialog,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Image.asset(
-                            'assets/images/logo.png',
-                            height: 48,
-                            fit: BoxFit.contain,
-                            errorBuilder: (context, error, stackTrace) =>
-                                const SizedBox.shrink(),
-                          ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            'ReGen',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 32,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.5,
-                              color: CeladonColors.textPrimary,
+      body: CustomPaint(
+        painter: const _LoginWaveBackgroundPainter(),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // ReGen Official Branding (Screen 2 Exact Match)
+                    Center(
+                      child: GestureDetector(
+                        onLongPress: _showServerUrlDialog,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            BrandLogo(size: 76, borderRadius: 22),
+                            SizedBox(height: 14),
+                            Text(
+                              'ReGen',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 32,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.5,
+                                color: CeladonColors.textPrimary,
+                              ),
                             ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+
+                    // Subtitle
+                    const Text(
+                      'Sign in to continue',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w500,
+                        color: CeladonColors.textMuted,
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+
+                    // Surface Card Container
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 22,
+                        vertical: 24,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFFFFF),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(
+                          color: CeladonColors.border,
+                          width: 1.0,
+                        ),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x100D1F17),
+                            blurRadius: 24,
+                            offset: Offset(0, 8),
                           ),
                         ],
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-
-                  // Subtitle
-                  const Text(
-                    'Sign in to continue',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w600,
-                      color: CeladonColors.textMuted,
-                    ),
-                  ),
-                  const SizedBox(height: 22),
-
-                  // Surface Card Container
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 22,
-                      vertical: 24,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFFFFF),
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(
-                        color: CeladonColors.border,
-                        width: 1.0,
-                      ),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x08000000),
-                          blurRadius: 16,
-                          offset: Offset(0, 4),
-                        ),
-                      ],
-                    ),
                     child: Form(
                       key: _formKey,
                       child: Column(
@@ -334,13 +331,17 @@ class _LoginScreenState extends State<LoginScreen> {
                             width: double.infinity,
                             height: 52,
                             decoration: BoxDecoration(
-                              color: CeladonColors.primary,
+                              gradient: const LinearGradient(
+                                begin: Alignment.centerLeft,
+                                end: Alignment.centerRight,
+                                colors: CeladonColors.primaryGradient,
+                              ),
                               borderRadius: BorderRadius.circular(16),
                               boxShadow: const [
                                 BoxShadow(
-                                  color: Color(0x20087A4B),
-                                  blurRadius: 12,
-                                  offset: Offset(0, 4),
+                                  color: Color(0x30075438),
+                                  blurRadius: 14,
+                                  offset: Offset(0, 5),
                                 ),
                               ],
                             ),
@@ -396,6 +397,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ],
               ),
             ),
+          ),
           ),
         ),
       ),
@@ -573,4 +575,111 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
+}
+
+/// Flowing emerald wave curves and fine contour lines matching Screen 2
+class _LoginWaveBackgroundPainter extends CustomPainter {
+  const _LoginWaveBackgroundPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // 1. Top-Right Wave Ribbon
+    final topPaint = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topRight,
+        end: Alignment.bottomLeft,
+        colors: [
+          Color(0xFF075438),
+          Color(0xFF0B704C),
+          Color(0xFF15803D),
+        ],
+      ).createShader(Rect.fromLTWH(size.width * 0.35, 0, size.width * 0.65, size.height * 0.32))
+      ..style = PaintingStyle.fill;
+
+    final topPath = Path()
+      ..moveTo(size.width * 0.42, 0)
+      ..quadraticBezierTo(
+        size.width * 0.60,
+        size.height * 0.07,
+        size.width * 0.76,
+        size.height * 0.10,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.90,
+        size.height * 0.13,
+        size.width,
+        size.height * 0.22,
+      )
+      ..lineTo(size.width, 0)
+      ..close();
+
+    canvas.drawPath(topPath, topPaint);
+
+    // Top-Right Contour Accent Lines
+    final linePaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0
+      ..color = const Color(0xFF096544).withValues(alpha: 0.18);
+
+    for (int i = 0; i < 4; i++) {
+      final linePath = Path()
+        ..moveTo(size.width * (0.34 + i * 0.04), 0)
+        ..quadraticBezierTo(
+          size.width * (0.54 + i * 0.04),
+          size.height * (0.06 + i * 0.02),
+          size.width,
+          size.height * (0.15 + i * 0.04),
+        );
+      canvas.drawPath(linePath, linePaint);
+    }
+
+    // 2. Bottom Wave Ribbon
+    final bottomPaint = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.bottomCenter,
+        end: Alignment.topRight,
+        colors: [
+          Color(0xFF075438),
+          Color(0xFF0B704C),
+          Color(0xFF15803D),
+        ],
+      ).createShader(Rect.fromLTWH(0, size.height * 0.72, size.width, size.height * 0.28))
+      ..style = PaintingStyle.fill;
+
+    final bottomPath = Path()
+      ..moveTo(0, size.height * 0.92)
+      ..quadraticBezierTo(
+        size.width * 0.26,
+        size.height * 0.94,
+        size.width * 0.52,
+        size.height * 0.88,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.78,
+        size.height * 0.82,
+        size.width,
+        size.height * 0.78,
+      )
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+
+    canvas.drawPath(bottomPath, bottomPaint);
+
+    // Bottom Contour Accent Lines
+    for (int i = 0; i < 4; i++) {
+      final linePath = Path()
+        ..moveTo(0, size.height * (0.86 - i * 0.025))
+        ..quadraticBezierTo(
+          size.width * 0.32,
+          size.height * (0.88 - i * 0.025),
+          size.width * 0.75,
+          size.height * (0.75 - i * 0.03),
+        );
+      canvas.drawPath(linePath, linePaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

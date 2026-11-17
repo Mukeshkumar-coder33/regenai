@@ -806,7 +806,7 @@ class _AttendanceViewState extends State<AttendanceView> {
         if (record.isLate) {
           dotColor = const Color(0xFFF4A261); // Amber
         } else if (record.isPresent) {
-          dotColor = const Color(0xFF2D6A4F); // Green
+          dotColor = const Color(0xFF087A4B); // Green
         } else if (record.isAbsent) {
           dotColor = Colors.redAccent;
         }
@@ -1019,13 +1019,13 @@ class _AttendanceViewState extends State<AttendanceView> {
 
   Widget _buildStatusPill(String status) {
     Color bg = const Color(0xFFE8F5E9);
-    Color fg = const Color(0xFF2D6A4F);
+    Color fg = const Color(0xFF087A4B);
     String label = 'Present';
 
     switch (status.toLowerCase()) {
       case 'present':
         bg = const Color(0xFFE8F5E9);
-        fg = const Color(0xFF2D6A4F);
+        fg = const Color(0xFF087A4B);
         label = 'Present';
         break;
       case 'late':

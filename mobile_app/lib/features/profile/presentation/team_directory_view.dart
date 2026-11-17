@@ -382,7 +382,7 @@ class _TeamDirectoryViewState extends State<TeamDirectoryView> {
                   icon: const Icon(Icons.close_rounded, size: 18),
                   label: const Text('Close'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF10B981),
+                    backgroundColor: CeladonColors.primary,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),

@@ -289,7 +289,7 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            backgroundColor: const Color(0xFF10B981),
+            backgroundColor: CeladonColors.primary,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             content: Row(
@@ -319,7 +319,7 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        backgroundColor: const Color(0xFFDC2626),
+        backgroundColor: const Color(0xFFDC4C4C),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         content: Row(
@@ -627,8 +627,8 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
           bytes,
           fit: BoxFit.cover,
           errorBuilder: (context, error, stackTrace) => Container(
-            color: const Color(0xFF10B981).withValues(alpha: 0.2),
-            child: const Icon(Icons.person_rounded, size: 34, color: Color(0xFF34D399)),
+            color: CeladonColors.primaryLight,
+            child: const Icon(Icons.person_rounded, size: 34, color: CeladonColors.primary),
           ),
         );
       } catch (_) {}
@@ -637,8 +637,8 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
       url,
       fit: BoxFit.cover,
       errorBuilder: (context, error, stackTrace) => Container(
-        color: const Color(0xFF10B981).withValues(alpha: 0.2),
-        child: const Icon(Icons.person_rounded, size: 34, color: Color(0xFF34D399)),
+        color: CeladonColors.primaryLight,
+        child: const Icon(Icons.person_rounded, size: 34, color: CeladonColors.primary),
       ),
     );
   }
@@ -665,7 +665,7 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              backgroundColor: const Color(0xFF10B981),
+              backgroundColor: CeladonColors.primary,
               content: Text(source == ImageSource.camera
                   ? '✓ Camera photo captured and uploaded successfully!'
                   : '✓ Profile picture uploaded successfully from device!'),
@@ -854,7 +854,7 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
             suffixWidget: isAadhaarValid
                 ? const Padding(
                     padding: EdgeInsets.only(right: 12),
-                    child: Icon(Icons.check_circle_rounded, color: Color(0xFF34D399), size: 18),
+                    child: Icon(Icons.check_circle_rounded, color: CeladonColors.primary, size: 18),
                   )
                 : null,
           ),
@@ -894,7 +894,7 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
           const SizedBox(height: 4),
           const Text(
             'Staff will use this password for initial login and can update it anytime.',
-            style: TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8)),
+            style: TextStyle(fontSize: 10.5, color: Color(0xFF829089)),
           ),
         ],
       ),

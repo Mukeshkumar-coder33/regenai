@@ -247,7 +247,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         widget.onUserUpdated?.call(updatedUser);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            backgroundColor: Color(0xFF10B981),
+            backgroundColor: CeladonColors.primary,
             content: Text('Switched to Global Super Admin Console'),
           ),
         );
@@ -272,7 +272,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            backgroundColor: status == 'approved' ? const Color(0xFF10B981) : Colors.red,
+            backgroundColor: status == 'approved' ? CeladonColors.primary : Colors.red,
             content: Text('Leave request marked as $status!'),
           ),
         );
@@ -312,7 +312,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               widget.onLogout?.call();
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFDC2626),
+              backgroundColor: const Color(0xFFDC4C4C),
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
@@ -1435,7 +1435,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFDC2626), // Solid Bright Red
+                              color: const Color(0xFFDC4C4C), // Solid Bright Red
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
                                 color: const Color(0xFFEF4444),
@@ -1443,7 +1443,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: const Color(0xFFDC2626).withValues(alpha: 0.55),
+                                  color: const Color(0xFFDC4C4C).withValues(alpha: 0.55),
                                   blurRadius: 12,
                                   offset: const Offset(0, 3),
                                 ),
@@ -1632,7 +1632,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   Navigator.pop(ctx);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      backgroundColor: Color(0xFF10B981),
+                      backgroundColor: CeladonColors.primary,
                       content: Text('Payroll batch processed & payslips generated successfully!'),
                     ),
                   );
@@ -1640,7 +1640,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 icon: const Icon(Icons.receipt_long_rounded, size: 18),
                 label: const Text('Process Monthly Payroll & Slips', style: TextStyle(fontWeight: FontWeight.w700)),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF10B981),
+                  backgroundColor: CeladonColors.primary,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 13),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -2053,8 +2053,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   value: _isCurrentYear ? '$_todayLeaveAndHalfDayCount' : '$_yearLeaveCount',
                   subtitle: _isCurrentYear ? 'Approved time off' : 'Approved in $_selectedYear',
                   icon: Icons.calendar_today_rounded,
-                  iconColor: const Color(0xFF34D399),
-                  iconBg: const Color(0xFF10B981).withValues(alpha: 0.22),
+                  iconColor: CeladonColors.primary,
+                  iconBg: CeladonColors.primary.withValues(alpha: 0.22),
                   onTap: () => setState(() => _selectedBottomTab = 3),
                 ),
               ),
@@ -2557,11 +2557,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: const [
-                      Text('100%', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8), fontWeight: FontWeight.w700)),
-                      Text('75%', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8), fontWeight: FontWeight.w700)),
-                      Text('50%', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8), fontWeight: FontWeight.w700)),
-                      Text('25%', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8), fontWeight: FontWeight.w700)),
-                      Text('0%', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8), fontWeight: FontWeight.w700)),
+                      Text('100%', style: TextStyle(fontSize: 10, color: Color(0xFF829089), fontWeight: FontWeight.w700)),
+                      Text('75%', style: TextStyle(fontSize: 10, color: Color(0xFF829089), fontWeight: FontWeight.w700)),
+                      Text('50%', style: TextStyle(fontSize: 10, color: Color(0xFF829089), fontWeight: FontWeight.w700)),
+                      Text('25%', style: TextStyle(fontSize: 10, color: Color(0xFF829089), fontWeight: FontWeight.w700)),
+                      Text('0%', style: TextStyle(fontSize: 10, color: Color(0xFF829089), fontWeight: FontWeight.w700)),
                     ],
                   ),
                 ),
@@ -3005,16 +3005,16 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF10B981).withValues(alpha: 0.18),
+                  color: CeladonColors.primary.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.35)),
+                  border: Border.all(color: CeladonColors.primary.withValues(alpha: 0.35)),
                 ),
                 child: Text(
                   '${rate.round()}% Attended',
                   style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF34D399),
+                    color: CeladonColors.primary,
                   ),
                 ),
               ),
@@ -3062,7 +3062,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               'present',
               isFutureDate ? 'Scheduled' : 'Present',
               presentCount,
-              isFutureDate ? const Color(0xFF38BDF8) : const Color(0xFF34D399),
+              isFutureDate ? const Color(0xFF38BDF8) : CeladonColors.primary,
             ),
             const SizedBox(width: 6),
             _buildInteractiveTrendStatusTab('absent', 'Absent', absentCount, const Color(0xFFFB7185)),
@@ -3339,7 +3339,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     if (_selectedTrendStatusTab == 'present') {
       currentList = presentEmployees;
       statusLabel = 'Present';
-      statusColor = const Color(0xFF34D399);
+      statusColor = CeladonColors.primary;
     } else if (_selectedTrendStatusTab == 'late') {
       currentList = lateEmployees;
       statusLabel = 'Late';
@@ -3588,16 +3588,16 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF10B981).withValues(alpha: 0.18),
+                  color: CeladonColors.primary.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.35)),
+                  border: Border.all(color: CeladonColors.primary.withValues(alpha: 0.35)),
                 ),
                 child: Text(
                   '$_yearAttendanceRate% Annual Rate',
                   style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF34D399),
+                    color: CeladonColors.primary,
                   ),
                 ),
               ),
@@ -3606,7 +3606,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           const SizedBox(height: 12),
           Row(
             children: [
-              _buildStatusCountBadge('Attended Logs', _yearAttendedCount, const Color(0xFF34D399)),
+              _buildStatusCountBadge('Attended Logs', _yearAttendedCount, CeladonColors.primary),
               const SizedBox(width: 6),
               _buildStatusCountBadge('Late Logs', _yearLateCount, const Color(0xFFFCD34D)),
               const SizedBox(width: 6),
@@ -3644,13 +3644,13 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                       height: 30,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: const Color(0xFF10B981).withValues(alpha: 0.18),
-                        border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.40)),
+                        color: CeladonColors.primary.withValues(alpha: 0.18),
+                        border: Border.all(color: CeladonColors.primary.withValues(alpha: 0.40)),
                       ),
                       alignment: Alignment.center,
                       child: Text(
                         empName.isNotEmpty ? empName[0].toUpperCase() : 'E',
-                        style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF34D399), fontSize: 12),
+                        style: const TextStyle(fontWeight: FontWeight.w800, color: CeladonColors.primary, fontSize: 12),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -3682,16 +3682,16 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                        color: CeladonColors.primary.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.35)),
+                        border: Border.all(color: CeladonColors.primary.withValues(alpha: 0.35)),
                       ),
                       child: Text(
                         '$totalAttended logs',
                         style: const TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF34D399),
+                          color: CeladonColors.primary,
                         ),
                       ),
                     ),
@@ -3875,7 +3875,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                         Icon(
                           Icons.filter_list_rounded,
                           size: 20,
-                          color: hasActiveRoleOrDept ? const Color(0xFF10B981) : const Color(0xFFCBD5E1),
+                          color: hasActiveRoleOrDept ? CeladonColors.primary : const Color(0xFFCBD5E1),
                         ),
                         if (hasActiveRoleOrDept)
                           Positioned(
@@ -3885,7 +3885,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                               width: 7,
                               height: 7,
                               decoration: const BoxDecoration(
-                                color: Color(0xFF10B981),
+                                color: CeladonColors.primary,
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -3935,7 +3935,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                         style: TextStyle(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF34D399),
+                          color: CeladonColors.primary,
                           decoration: TextDecoration.underline,
                         ),
                       ),
@@ -3986,10 +3986,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
-        color: const Color(0xFF10B981).withValues(alpha: 0.18),
+        color: CeladonColors.primary.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: const Color(0xFF34D399).withValues(alpha: 0.35),
+          color: CeladonColors.primary.withValues(alpha: 0.35),
           width: 1.0,
         ),
       ),
@@ -4085,7 +4085,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         height: size,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.35), width: 1.2),
+          border: Border.all(color: CeladonColors.primary.withValues(alpha: 0.35), width: 1.2),
         ),
         child: ClipOval(child: imageWidget),
       );
@@ -4097,14 +4097,14 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   Widget _buildAvatarFallback(String name, String initial, {double size = 44}) {
     final colorHash = name.hashCode.abs() % 4;
     final bgColors = [
-      const Color(0xFFE8F5EC),
+      const Color(0xFFE8F3EC),
       const Color(0xFFEFF6FF),
       const Color(0xFFF3E8FF),
       const Color(0xFFFEF3C7),
     ];
     final accentColors = [
-      const Color(0xFF15803D),
-      const Color(0xFF2563EB),
+      const Color(0xFF087A4B),
+      const Color(0xFF3186C8),
       const Color(0xFF7C3AED),
       const Color(0xFFD97706),
     ];
@@ -4353,7 +4353,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              backgroundColor: const Color(0xFF10B981),
+              backgroundColor: CeladonColors.primary,
               content: Text('✓ Employee "$empName" deleted and access revoked.'),
             ),
           );
@@ -4573,7 +4573,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                 if (mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
-                                      backgroundColor: const Color(0xFF10B981),
+                                      backgroundColor: CeladonColors.primary,
                                       content: Text('✓ Employee "$newName" updated successfully! Old credentials invalidated.'),
                                     ),
                                   );
@@ -4594,14 +4594,14 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                       child: Container(
                         height: 48,
                         decoration: BoxDecoration(
-                          color: const Color(0xFF10B981),
+                          color: CeladonColors.primary,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: const Color(0xFF34D399).withValues(alpha: 0.35),
+                            color: CeladonColors.primary.withValues(alpha: 0.35),
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF10B981).withValues(alpha: 0.35),
+                              color: CeladonColors.primary.withValues(alpha: 0.35),
                               blurRadius: 8,
                               offset: const Offset(0, 2),
                             ),
@@ -5124,10 +5124,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF475569),
+                          color: const Color(0xFF52615B),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                            color: const Color(0xFF64748B),
+                            color: const Color(0xFF829089),
                             width: 1.0,
                           ),
                         ),
@@ -5226,7 +5226,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                         Icon(
                           Icons.filter_list_rounded,
                           size: 20,
-                          color: _selectedDayLogFilter != 'all' ? const Color(0xFF10B981) : const Color(0xFFCBD5E1),
+                          color: _selectedDayLogFilter != 'all' ? CeladonColors.primary : const Color(0xFFCBD5E1),
                         ),
                         if (_selectedDayLogFilter != 'all')
                           Positioned(
@@ -5236,7 +5236,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                               width: 7,
                               height: 7,
                               decoration: const BoxDecoration(
-                                color: Color(0xFF10B981),
+                                color: CeladonColors.primary,
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -5480,9 +5480,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 onTapAction = () => _showEventDetailsDialog(event);
               } else if (isHoliday) {
                 // Grey color for company holiday (tap displays holiday description)
-                bgColor = const Color(0xFF64748B).withValues(alpha: 0.18);
-                borderColor = const Color(0xFF64748B);
-                textColor = const Color(0xFF475569);
+                bgColor = const Color(0xFF829089).withValues(alpha: 0.18);
+                borderColor = const Color(0xFF829089);
+                textColor = const Color(0xFF52615B);
                 onTapAction = () => _showHolidayDetailsDialog(holiday);
               } else if (isLeaveOrOff) {
                 // Grey color for leaves & non-working days (unclickable: locked)
@@ -5555,7 +5555,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             children: [
               _buildCalendarLegendDot(CeladonColors.primary, 'Working Day'),
               _buildCalendarLegendDot(const Color(0xFF7C3AED), 'Event ★'),
-              _buildCalendarLegendDot(const Color(0xFF64748B), 'Holiday / Off'),
+              _buildCalendarLegendDot(const Color(0xFF829089), 'Holiday / Off'),
               _buildCalendarLegendDot(const Color(0xFFF59E0B), 'Birthday 🎂'),
             ],
           ),
@@ -5959,10 +5959,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 width: 32,
                 height: 32,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                  color: CeladonColors.primary.withValues(alpha: 0.2),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.check_rounded, color: Color(0xFF34D399), size: 16),
+                child: const Icon(Icons.check_rounded, color: CeladonColors.primary, size: 16),
               ),
               const SizedBox(width: 10),
               Column(
@@ -5985,7 +5985,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             decoration: BoxDecoration(
               color: att.status.toLowerCase() == 'late'
                   ? const Color(0xFFF59E0B).withValues(alpha: 0.2)
-                  : const Color(0xFF10B981).withValues(alpha: 0.2),
+                  : CeladonColors.primary.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text(
@@ -5993,7 +5993,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               style: TextStyle(
                 fontSize: 10.5,
                 fontWeight: FontWeight.w800,
-                color: att.status.toLowerCase() == 'late' ? const Color(0xFFF59E0B) : const Color(0xFF34D399),
+                color: att.status.toLowerCase() == 'late' ? const Color(0xFFF59E0B) : CeladonColors.primary,
               ),
             ),
           ),
@@ -6178,7 +6178,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                         decoration: BoxDecoration(
                           color: const Color(0xFF334155),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFF64748B)),
+                          border: Border.all(color: const Color(0xFF829089)),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withValues(alpha: 0.3),
@@ -7983,7 +7983,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                     itemBuilder: (context, index) {
                                       final notif = filteredList[index];
                                       IconData iconData = Icons.notifications_active_outlined;
-                                      Color iconColor = const Color(0xFF34D399);
+                                      Color iconColor = CeladonColors.primary;
 
                                       if (notif.isCall) {
                                         iconData = Icons.phone_in_talk_rounded;
@@ -7993,7 +7993,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                         iconColor = const Color(0xFFF59E0B);
                                       } else if (notif.isTask) {
                                         iconData = Icons.assignment_rounded;
-                                        iconColor = const Color(0xFF10B981);
+                                        iconColor = CeladonColors.primary;
                                       } else if (notif.isAttendance) {
                                         iconData = Icons.event_available_rounded;
                                         iconColor = const Color(0xFFA855F7);
@@ -8002,7 +8002,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                         iconColor = const Color(0xFFFFD700);
                                       } else if (notif.isPayment) {
                                         iconData = Icons.payments_rounded;
-                                        iconColor = const Color(0xFF10B981);
+                                        iconColor = CeladonColors.primary;
                                       }
 
                                       return _buildNotificationCard(
@@ -8053,11 +8053,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                       Container(
                                         padding: const EdgeInsets.all(16),
                                         decoration: BoxDecoration(
-                                          color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                                          color: CeladonColors.primary.withValues(alpha: 0.12),
                                           shape: BoxShape.circle,
-                                          border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.3)),
+                                          border: Border.all(color: CeladonColors.primary.withValues(alpha: 0.3)),
                                         ),
-                                        child: const Icon(Icons.notifications_off_outlined, size: 40, color: Color(0xFF34D399)),
+                                        child: const Icon(Icons.notifications_off_outlined, size: 40, color: CeladonColors.primary),
                                       ),
                                       const SizedBox(height: 14),
                                       const Text(
@@ -8426,7 +8426,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
             ),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF10B981),
+              backgroundColor: CeladonColors.primary,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 11),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -8583,7 +8583,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   const SizedBox(height: 6),
                   const Text(
                     '5m Office GPS Geofence Coordinates',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF34D399)),
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: CeladonColors.primary),
                   ),
                   const SizedBox(height: 8),
                   Row(
@@ -8626,8 +8626,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                         }
                       }
                     },
-                    icon: const Icon(Icons.my_location_rounded, size: 16, color: Color(0xFF34D399)),
-                    label: const Text('Capture Current GPS Coordinates', style: TextStyle(color: Color(0xFF34D399), fontSize: 12)),
+                    icon: const Icon(Icons.my_location_rounded, size: 16, color: CeladonColors.primary),
+                    label: const Text('Capture Current GPS Coordinates', style: TextStyle(color: CeladonColors.primary, fontSize: 12)),
                   ),
                 ],
               ),
@@ -8676,7 +8676,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
 
                         nav.pop();
                         messenger.showSnackBar(
-                          const SnackBar(backgroundColor: Color(0xFF10B981), content: Text('Company details updated successfully!')),
+                          const SnackBar(backgroundColor: CeladonColors.primary, content: Text('Company details updated successfully!')),
                         );
                         if (updatedComp != null && mounted) {
                           setState(() => _company = updatedComp);
@@ -8689,7 +8689,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                         );
                       }
                     },
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981), foregroundColor: Colors.white),
+              style: ElevatedButton.styleFrom(backgroundColor: CeladonColors.primary, foregroundColor: Colors.white),
               child: isSaving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Save Changes'),
             ),
           ],
@@ -8789,7 +8789,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
 
                         nav.pop();
                         messenger.showSnackBar(
-                          const SnackBar(backgroundColor: Color(0xFF10B981), content: Text('Policy published! Notification sent to all employees.')),
+                          const SnackBar(backgroundColor: CeladonColors.primary, content: Text('Policy published! Notification sent to all employees.')),
                         );
                         if (updatedComp != null && mounted) {
                           setState(() => _company = updatedComp);
@@ -8802,7 +8802,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                         );
                       }
                     },
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981), foregroundColor: Colors.white),
+              style: ElevatedButton.styleFrom(backgroundColor: CeladonColors.primary, foregroundColor: Colors.white),
               child: isSaving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Publish Policy'),
             ),
           ],
@@ -8952,7 +8952,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.chat_bubble_outline_rounded, color: Color(0xFFDC2626), size: 14),
+                  const Icon(Icons.chat_bubble_outline_rounded, color: Color(0xFFDC4C4C), size: 14),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
@@ -8975,7 +8975,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   if (ok) {
                     messenger.showSnackBar(
                       SnackBar(
-                        backgroundColor: const Color(0xFF10B981),
+                        backgroundColor: CeladonColors.primary,
                         content: Text('Allowed ${rev.userName} to work forward! Access restored.'),
                       ),
                     );
@@ -8992,7 +8992,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 icon: const Icon(Icons.check_circle_outline_rounded, size: 15),
                 label: const Text('Allow to Work', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF10B981),
+                  backgroundColor: CeladonColors.primary,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -9404,13 +9404,13 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF10B981).withValues(alpha: 0.18),
+                  color: CeladonColors.primary.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.3)),
+                  border: Border.all(color: CeladonColors.primary.withValues(alpha: 0.3)),
                 ),
                 child: Text(
                   _formatHeaderDate(_selectedCalendarDate),
-                  style: const TextStyle(fontSize: 10.5, color: Color(0xFF34D399), fontWeight: FontWeight.w700),
+                  style: const TextStyle(fontSize: 10.5, color: CeladonColors.primary, fontWeight: FontWeight.w700),
                 ),
               ),
             ],
@@ -9455,8 +9455,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         final options = [
-          {'key': 'all', 'label': 'All Attendance Logs', 'count': allRecords.length, 'color': const Color(0xFF10B981), 'icon': Icons.list_alt_rounded},
-          {'key': 'present', 'label': 'Present Only', 'count': presentCount, 'color': const Color(0xFF10B981), 'icon': Icons.check_circle_outline_rounded},
+          {'key': 'all', 'label': 'All Attendance Logs', 'count': allRecords.length, 'color': CeladonColors.primary, 'icon': Icons.list_alt_rounded},
+          {'key': 'present', 'label': 'Present Only', 'count': presentCount, 'color': CeladonColors.primary, 'icon': Icons.check_circle_outline_rounded},
           {'key': 'absent', 'label': 'Absent Only', 'count': absentCount, 'color': const Color(0xFFEF4444), 'icon': Icons.cancel_outlined},
           {'key': 'late', 'label': 'Late Arrivals', 'count': lateCount, 'color': const Color(0xFFF59E0B), 'icon': Icons.schedule_rounded},
           {'key': 'leave', 'label': 'Approved Leaves', 'count': leaveCount, 'color': const Color(0xFF8B5CF6), 'icon': Icons.event_busy_rounded},
@@ -9670,7 +9670,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             ),
             InkWell(
               onTap: _showAttendanceRosterSheet,
-              child: const Text('View All Logs →', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF34D399))),
+              child: const Text('View All Logs →', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: CeladonColors.primary)),
             ),
           ],
         ),
@@ -9681,9 +9681,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           scrollDirection: Axis.horizontal,
           child: Row(
             children: [
-              _buildDayLogFilterChip('All', 'all', allRecords.length, const Color(0xFF10B981)),
+              _buildDayLogFilterChip('All', 'all', allRecords.length, CeladonColors.primary),
               const SizedBox(width: 6),
-              _buildDayLogFilterChip('Present', 'present', presentCount, const Color(0xFF10B981)),
+              _buildDayLogFilterChip('Present', 'present', presentCount, CeladonColors.primary),
               const SizedBox(width: 6),
               _buildDayLogFilterChip('Absent', 'absent', absentCount, const Color(0xFFEF4444)),
               const SizedBox(width: 6),
@@ -10042,7 +10042,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                       'Check-In Time',
                       r.checkIn ?? (r.status == 'present' ? '09:20 AM' : (r.status == 'late' ? '10:15 AM' : 'Not Recorded')),
                       Icons.login_rounded,
-                      r.status == 'present' ? const Color(0xFF10B981) : (r.status == 'late' ? const Color(0xFFF59E0B) : const Color(0xFF94A3B8)),
+                      r.status == 'present' ? CeladonColors.primary : (r.status == 'late' ? const Color(0xFFF59E0B) : const Color(0xFF829089)),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -10051,7 +10051,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                       'Check-Out Time',
                       r.checkOut ?? (r.status == 'present' || r.status == 'late' ? '06:30 PM' : 'Not Recorded'),
                       Icons.logout_rounded,
-                      const Color(0xFF10B981),
+                      CeladonColors.primary,
                     ),
                   ),
                 ],
@@ -10065,7 +10065,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                       'Department',
                       r.employee.department ?? 'Engineering',
                       Icons.business_rounded,
-                      const Color(0xFF34D399),
+                      CeladonColors.primary,
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -10074,7 +10074,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                       'Designation',
                       r.employee.designation ?? 'Team Member',
                       Icons.work_outline_rounded,
-                      const Color(0xFF34D399),
+                      CeladonColors.primary,
                     ),
                   ),
                 ],
@@ -10129,7 +10129,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                             style: TextStyle(
                               fontSize: 10.5,
                               fontWeight: FontWeight.w800,
-                              color: r.leave!.isApproved ? const Color(0xFF34D399) : const Color(0xFFEF4444),
+                              color: r.leave!.isApproved ? CeladonColors.primary : const Color(0xFFEF4444),
                             ),
                           ),
                         ],

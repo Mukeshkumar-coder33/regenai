@@ -392,7 +392,7 @@ class _TasksViewState extends State<TasksView> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            backgroundColor: nextCompleted ? const Color(0xFF10B981) : const Color(0xFF0284C7),
+            backgroundColor: nextCompleted ? CeladonColors.primary : const Color(0xFF3186C8),
             content: Text(nextCompleted ? 'Task marked as completed' : 'Task resumed to In Progress'),
           ),
         );
@@ -418,12 +418,12 @@ class _TasksViewState extends State<TasksView> {
         backgroundColor: const Color(0xFF042018),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: const Color(0xFF34D399).withValues(alpha: 0.3)),
+          side: BorderSide(color: CeladonColors.primary.withValues(alpha: 0.3)),
         ),
         title: const Text('Delete Task', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
         content: Text('Are you sure you want to delete "${task.title}"?', style: const TextStyle(color: Color(0xFFBACCC3))),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel', style: TextStyle(color: Color(0xFF94A3B8)))),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel', style: TextStyle(color: Color(0xFF829089)))),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444), foregroundColor: Colors.white),
@@ -526,12 +526,12 @@ class _TasksViewState extends State<TasksView> {
                   // 4. Tab Body
                   Expanded(
                     child: _isLoading
-                        ? const Center(child: CircularProgressIndicator(color: Color(0xFF10B981)))
+                        ? const Center(child: CircularProgressIndicator(color: CeladonColors.primary))
                         : _errorMessage != null
                             ? _buildErrorState()
                             : RefreshIndicator(
                                 onRefresh: _loadInitialData,
-                                color: const Color(0xFF10B981),
+                                color: CeladonColors.primary,
                                 child: _activeMainSegment == 0
                                     ? _buildGeneralTasksTab()
                                     : _buildProjectsTab(),
@@ -849,7 +849,7 @@ class _TasksViewState extends State<TasksView> {
             title: 'Total Tasks',
             count: _totalTaskCount,
             icon: Icons.assignment_rounded,
-            color: const Color(0xFF10B981),
+            color: CeladonColors.primary,
             onTap: () => setState(() => _selectedTaskFilter = 0),
             isSelected: _selectedTaskFilter == 0,
           ),
@@ -882,7 +882,7 @@ class _TasksViewState extends State<TasksView> {
             title: 'Completed',
             count: _completedCount,
             icon: Icons.check_circle_outline_rounded,
-            color: const Color(0xFF34D399),
+            color: CeladonColors.primary,
             onTap: () => setState(() => _selectedTaskFilter = 2),
             isSelected: _selectedTaskFilter == 2,
           ),
@@ -993,9 +993,9 @@ class _TasksViewState extends State<TasksView> {
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         final options = [
-          {'label': 'All Tasks', 'count': _totalTaskCount, 'idx': 0, 'color': const Color(0xFF10B981), 'icon': Icons.assignment_rounded},
+          {'label': 'All Tasks', 'count': _totalTaskCount, 'idx': 0, 'color': CeladonColors.primary, 'icon': Icons.assignment_rounded},
           {'label': 'Pending (Active)', 'count': _pendingCount, 'idx': 1, 'color': const Color(0xFF06B6D4), 'icon': Icons.schedule_rounded},
-          {'label': 'Completed (Done)', 'count': _completedCount, 'idx': 2, 'color': const Color(0xFF10B981), 'icon': Icons.check_circle_outline_rounded},
+          {'label': 'Completed (Done)', 'count': _completedCount, 'idx': 2, 'color': CeladonColors.primary, 'icon': Icons.check_circle_outline_rounded},
           {'label': 'Incomplete', 'count': _incompleteCount, 'idx': 3, 'color': const Color(0xFFEF4444), 'icon': Icons.cancel_outlined},
         ];
 
@@ -1521,7 +1521,7 @@ class _TasksViewState extends State<TasksView> {
         pColor = const Color(0xFFEF4444);
         break;
       case 'low':
-        pColor = const Color(0xFF10B981);
+        pColor = CeladonColors.primary;
         break;
       case 'medium':
       default:
@@ -1556,8 +1556,8 @@ class _TasksViewState extends State<TasksView> {
       height: 32,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: const LinearGradient(colors: [Color(0xFF10B981), Color(0xFF065F46)]),
-        border: Border.all(color: const Color(0xFF34D399), width: 1.2),
+        gradient: const LinearGradient(colors: [CeladonColors.primary, Color(0xFF065F46)]),
+        border: Border.all(color: CeladonColors.primary, width: 1.2),
       ),
       alignment: Alignment.center,
       child: Text(
@@ -1931,7 +1931,7 @@ class _TasksViewState extends State<TasksView> {
                                 }
                               },
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: isDone ? const Color(0xFF0284C7) : CeladonColors.primary,
+                                backgroundColor: isDone ? const Color(0xFF3186C8) : CeladonColors.primary,
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                               ),
                               child: Text(
@@ -2831,7 +2831,7 @@ class _TasksViewState extends State<TasksView> {
                 title: 'Total Tasks',
                 count: totalCount,
                 icon: Icons.assignment_rounded,
-                color: const Color(0xFF10B981),
+                color: CeladonColors.primary,
                 isSelected: _selectedProjectTaskFilter == 0,
                 onTap: () => setState(() => _selectedProjectTaskFilter = 0),
               ),
@@ -2853,7 +2853,7 @@ class _TasksViewState extends State<TasksView> {
                 title: 'Completed',
                 count: completedCount,
                 icon: Icons.check_circle_rounded,
-                color: const Color(0xFF34D399),
+                color: CeladonColors.primary,
                 isSelected: _selectedProjectTaskFilter == 2,
                 onTap: () => setState(() => _selectedProjectTaskFilter = 2),
               ),
@@ -2944,7 +2944,7 @@ class _TasksViewState extends State<TasksView> {
                   ElevatedButton.icon(
                     onPressed: () => _showCreateTaskSheet(defaultProjectId: proj.id, defaultProjectName: proj.name),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF10B981),
+                      backgroundColor: CeladonColors.primary,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     icon: const Icon(Icons.add_rounded, color: Colors.white, size: 18),
@@ -2961,7 +2961,7 @@ class _TasksViewState extends State<TasksView> {
             ElevatedButton.icon(
               onPressed: () => _showCreateTaskSheet(defaultProjectId: proj.id, defaultProjectName: proj.name),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF10B981),
+                backgroundColor: CeladonColors.primary,
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
@@ -2982,10 +2982,10 @@ class _TasksViewState extends State<TasksView> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF10B981) : const Color(0xFF042018).withValues(alpha: 0.60),
+          color: isSelected ? CeladonColors.primary : const Color(0xFF042018).withValues(alpha: 0.60),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isSelected ? const Color(0xFF10B981) : const Color(0xFF34D399).withValues(alpha: 0.25),
+            color: isSelected ? CeladonColors.primary : CeladonColors.primary.withValues(alpha: 0.25),
           ),
         ),
         child: Text(

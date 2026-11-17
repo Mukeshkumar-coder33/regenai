@@ -343,7 +343,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.info_outline_rounded, color: Color(0xFFDC2626), size: 18),
+                            const Icon(Icons.info_outline_rounded, color: Color(0xFFDC4C4C), size: 18),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
@@ -613,7 +613,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                           style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
-                            color: Color(0xFFE2E8F0),
+                            color: Color(0xFFE1E8E4),
                           ),
                         ),
                       ],
@@ -689,7 +689,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
             Expanded(
               child: _buildMetricTile(
                 icon: Icons.verified_user_rounded,
-                iconColor: const Color(0xFF10B981),
+                iconColor: CeladonColors.primary,
                 iconBg: const Color(0xFFD1FAE5),
                 title: 'Attendance Rate',
                 value: '$_attendanceRate%',
@@ -723,7 +723,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  border: Border.all(color: const Color(0xFFE1E8E4)),
                   boxShadow: const [
                     BoxShadow(color: Color(0x06000000), blurRadius: 10, offset: Offset(0, 3)),
                   ],
@@ -734,7 +734,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Summary', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
+                        const Text('Summary', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF829089))),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                           decoration: BoxDecoration(
@@ -746,7 +746,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w800,
-                              color: isPresent ? const Color(0xFF065F46) : const Color(0xFF64748B),
+                              color: isPresent ? const Color(0xFF065F46) : const Color(0xFF829089),
                             ),
                           ),
                         ),
@@ -756,7 +756,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        _buildTinyStat('P', '$_presentCount', const Color(0xFF10B981)),
+                        _buildTinyStat('P', '$_presentCount', CeladonColors.primary),
                         _buildTinyStat('L', '$_lateCount', const Color(0xFFF59E0B)),
                         _buildTinyStat('A', '$_absentCount', const Color(0xFFEF4444)),
                       ],
@@ -789,7 +789,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
     return Column(
       children: [
         Text(count, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: color)),
-        Text(tag, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF94A3B8))),
+        Text(tag, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF829089))),
       ],
     );
   }
@@ -811,7 +811,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
+          border: Border.all(color: const Color(0xFFE1E8E4)),
           boxShadow: const [
             BoxShadow(color: Color(0x06000000), blurRadius: 10, offset: Offset(0, 3)),
           ],
@@ -822,7 +822,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(title, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
+                Text(title, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF829089))),
                 Container(
                   padding: const EdgeInsets.all(5),
                   decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(8)),
@@ -833,7 +833,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
             const SizedBox(height: 6),
             Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary)),
             const SizedBox(height: 2),
-            Text(subtitle, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w500, color: Color(0xFF94A3B8)), maxLines: 1),
+            Text(subtitle, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w500, color: Color(0xFF829089)), maxLines: 1),
           ],
         ),
       ),
@@ -847,7 +847,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: const Color(0xFFE1E8E4)),
         boxShadow: const [
           BoxShadow(color: Color(0x06000000), blurRadius: 12, offset: Offset(0, 4)),
         ],
@@ -858,12 +858,12 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: isPresent ? const Color(0xFFD1FAE5) : const Color(0xFFE2E8F0),
+              color: isPresent ? const Color(0xFFD1FAE5) : const Color(0xFFE1E8E4),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(
               Icons.location_on_rounded,
-              color: isPresent ? const Color(0xFF059669) : const Color(0xFF64748B),
+              color: isPresent ? const Color(0xFF059669) : const Color(0xFF829089),
               size: 24,
             ),
           ),
@@ -882,7 +882,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                   style: TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w500,
-                    color: isPresent ? CeladonColors.primary : const Color(0xFF64748B),
+                    color: isPresent ? CeladonColors.primary : const Color(0xFF829089),
                   ),
                 ),
               ],
@@ -931,14 +931,14 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isRunning
-              ? const Color(0xFF10B981).withValues(alpha: 0.6)
-              : const Color(0xFFE2E8F0),
+              ? CeladonColors.primary.withValues(alpha: 0.6)
+              : const Color(0xFFE1E8E4),
           width: isRunning ? 1.5 : 1.0,
         ),
         boxShadow: [
           BoxShadow(
             color: isRunning
-                ? const Color(0xFF10B981).withValues(alpha: 0.10)
+                ? CeladonColors.primary.withValues(alpha: 0.10)
                 : const Color(0x04000000),
             blurRadius: 8,
             offset: const Offset(0, 2),
@@ -960,16 +960,16 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                   height: 24,
                   decoration: BoxDecoration(
                     color: isDone
-                        ? const Color(0xFF10B981)
+                        ? CeladonColors.primary
                         : (isRunning
-                            ? const Color(0xFF10B981).withValues(alpha: 0.15)
+                            ? CeladonColors.primary.withValues(alpha: 0.15)
                             : (isIncomplete ? const Color(0xFFEF4444).withValues(alpha: 0.15) : Colors.transparent)),
                     borderRadius: BorderRadius.circular(7),
                     border: Border.all(
                       color: isDone
-                          ? const Color(0xFF10B981)
+                          ? CeladonColors.primary
                           : (isRunning
-                              ? const Color(0xFF10B981)
+                              ? CeladonColors.primary
                               : (isIncomplete ? const Color(0xFFEF4444) : const Color(0xFFCBD5E1))),
                       width: 1.8,
                     ),
@@ -977,7 +977,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                   child: isDone
                       ? const Icon(Icons.check, size: 16, color: Colors.white)
                       : (isRunning
-                          ? const Icon(Icons.timer_outlined, size: 14, color: Color(0xFF10B981))
+                          ? const Icon(Icons.timer_outlined, size: 14, color: CeladonColors.primary)
                           : (isIncomplete ? const Icon(Icons.close, size: 14, color: Color(0xFFEF4444)) : null)),
                 ),
               ),
@@ -993,7 +993,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
-                        color: isDone ? const Color(0xFF94A3B8) : const Color(0xFF1E293B),
+                        color: isDone ? const Color(0xFF829089) : const Color(0xFF1E293B),
                         decoration: isDone ? TextDecoration.lineThrough : null,
                       ),
                     ),
@@ -1009,7 +1009,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                             ),
                             child: Text(
                               task.projectName!,
-                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
+                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF52615B)),
                             ),
                           ),
                           const SizedBox(width: 6),
@@ -1018,7 +1018,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                           task.dueDate != null && task.dueDate!.isNotEmpty
                               ? 'Due: ${task.dueDate!.split('T').first}'
                               : (task.description?.isNotEmpty == true ? task.description! : 'In Progress'),
-                          style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                          style: const TextStyle(fontSize: 11, color: Color(0xFF829089)),
                         ),
                       ],
                     ),
@@ -1050,7 +1050,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                 icon: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 16),
                 label: const Text('Start Task', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Colors.white)),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF10B981),
+                  backgroundColor: CeladonColors.primary,
                   elevation: 0,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -1065,18 +1065,18 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                    color: CeladonColors.primary.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4)),
+                    border: Border.all(color: CeladonColors.primary.withValues(alpha: 0.4)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.timer_rounded, size: 14, color: Color(0xFF10B981)),
+                      const Icon(Icons.timer_rounded, size: 14, color: CeladonColors.primary),
                       const SizedBox(width: 5),
                       Text(
                         _formatTaskElapsedTime(task),
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF10B981)),
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: CeladonColors.primary),
                       ),
                     ],
                   ),
@@ -1087,7 +1087,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                   icon: const Icon(Icons.check_rounded, color: Colors.white, size: 15),
                   label: const Text('Complete', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Colors.white)),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF10B981),
+                    backgroundColor: CeladonColors.primary,
                     elevation: 0,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1111,11 +1111,11 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
           ] else if (isDone) ...[
             Row(
               children: [
-                const Icon(Icons.check_circle_rounded, size: 14, color: Color(0xFF10B981)),
+                const Icon(Icons.check_circle_rounded, size: 14, color: CeladonColors.primary),
                 const SizedBox(width: 5),
                 Text(
                   'Completed${task.completionTime != null ? ' at ${task.completionTime}' : ''}',
-                  style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF10B981)),
+                  style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: CeladonColors.primary),
                 ),
               ],
             ),
@@ -1147,7 +1147,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
       statusBg = const Color(0xFFD1FAE5);
       statusText = 'Approved';
     } else if (leave.status.toLowerCase() == 'rejected') {
-      statusColor = const Color(0xFFDC2626);
+      statusColor = const Color(0xFFDC4C4C);
       statusBg = const Color(0xFFFEE2E2);
       statusText = 'Rejected';
     }
@@ -1160,7 +1160,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: const Color(0xFFE1E8E4)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1186,7 +1186,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                   ),
                   Text(
                     dateRange,
-                    style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF829089)),
                   ),
                 ],
               ),
@@ -1214,16 +1214,16 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: const Color(0xFFE1E8E4)),
       ),
       child: Row(
         children: [
-          Icon(icon, color: const Color(0xFF10B981), size: 22),
+          Icon(icon, color: CeladonColors.primary, size: 22),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFF64748B)),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFF829089)),
             ),
           ),
         ],

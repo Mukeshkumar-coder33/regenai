@@ -146,7 +146,7 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
               widget.onLogout!();
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFDC2626),
+              backgroundColor: const Color(0xFFDC4C4C),
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
@@ -564,7 +564,7 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
               child: _buildMetricTile(
                 icon: Icons.domain_verification_rounded,
                 iconBg: const Color(0xFFDCFCE7),
-                iconColor: const Color(0xFF15803D),
+                iconColor: const Color(0xFF087A4B),
                 count: '$activeCompaniesCount',
                 label: 'Active Tenants',
                 subtitle: 'Operational cluster',
@@ -579,7 +579,7 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
               child: _buildMetricTile(
                 icon: Icons.people_alt_outlined,
                 iconBg: const Color(0xFFE0F2FE),
-                iconColor: const Color(0xFF0284C7),
+                iconColor: const Color(0xFF3186C8),
                 count: '${_users.length}',
                 label: 'Global Users',
                 subtitle: 'Platform-wide accounts',
@@ -731,7 +731,7 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
                     color: const Color(0xFFFEE2E2),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.logout_rounded, color: Color(0xFFDC2626), size: 22),
+                  child: const Icon(Icons.logout_rounded, color: Color(0xFFDC4C4C), size: 22),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -752,7 +752,7 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
                 ElevatedButton(
                   onPressed: _confirmLogout,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFDC2626),
+                    backgroundColor: const Color(0xFFDC4C4C),
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),

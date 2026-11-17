@@ -86,7 +86,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7F8),
+      backgroundColor: CeladonColors.background,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -119,7 +119,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               fontSize: 32,
                               fontWeight: FontWeight.w800,
                               letterSpacing: -0.5,
-                              color: Color(0xFF17212B),
+                              color: CeladonColors.textPrimary,
                             ),
                           ),
                         ],
@@ -135,7 +135,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: TextStyle(
                       fontSize: 14.5,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF64748B),
+                      color: CeladonColors.textMuted,
                     ),
                   ),
                   const SizedBox(height: 22),
@@ -150,7 +150,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       color: const Color(0xFFFFFFFF),
                       borderRadius: BorderRadius.circular(24),
                       border: Border.all(
-                        color: const Color(0xFFE2E8F0),
+                        color: CeladonColors.border,
                         width: 1.0,
                       ),
                       boxShadow: const [
@@ -177,7 +177,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 color: const Color(0xFFFEF2F2),
                                 borderRadius: BorderRadius.circular(14),
                                 border: Border.all(
-                                  color: const Color(0xFFDC2626),
+                                  color: const Color(0xFFDC4C4C),
                                   width: 1.0,
                                 ),
                               ),
@@ -186,7 +186,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   const Icon(
                                     Icons.error_outline_rounded,
                                     size: 18,
-                                    color: Color(0xFFDC2626),
+                                    color: Color(0xFFDC4C4C),
                                   ),
                                   const SizedBox(width: 10),
                                   Expanded(
@@ -194,7 +194,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                       _authController.errorMessage!,
                                       style: const TextStyle(
                                         fontSize: 12.5,
-                                        color: Color(0xFFDC2626),
+                                        color: Color(0xFFDC4C4C),
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
@@ -236,7 +236,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     ? Icons.visibility_off_outlined
                                     : Icons.visibility_outlined,
                                 size: 20,
-                                color: const Color(0xFF64748B),
+                                color: CeladonColors.textMuted,
                               ),
                               onPressed: () {
                                 setState(() {
@@ -267,14 +267,14 @@ class _LoginScreenState extends State<LoginScreen> {
                                       height: 20,
                                       child: Checkbox(
                                         value: _rememberMe,
-                                        activeColor: const Color(0xFF15803D),
+                                        activeColor: CeladonColors.primary,
                                         checkColor: Colors.white,
                                         shape: RoundedRectangleBorder(
                                           borderRadius:
                                               BorderRadius.circular(4),
                                         ),
                                         side: const BorderSide(
-                                          color: Color(0xFFE2E8F0),
+                                          color: CeladonColors.border,
                                           width: 1.4,
                                         ),
                                         onChanged: (val) {
@@ -291,7 +291,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                         style: TextStyle(
                                           fontSize: 12.5,
                                           fontWeight: FontWeight.w500,
-                                          color: Color(0xFF475569),
+                                          color: CeladonColors.textSecondary,
                                         ),
                                       ),
                                     ),
@@ -321,7 +321,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   style: TextStyle(
                                     fontSize: 12.5,
                                     fontWeight: FontWeight.w700,
-                                    color: Color(0xFF15803D),
+                                    color: CeladonColors.primary,
                                   ),
                                 ),
                               ),
@@ -334,11 +334,11 @@ class _LoginScreenState extends State<LoginScreen> {
                             width: double.infinity,
                             height: 52,
                             decoration: BoxDecoration(
-                              color: const Color(0xFF15803D),
+                              color: CeladonColors.primary,
                               borderRadius: BorderRadius.circular(16),
                               boxShadow: const [
                                 BoxShadow(
-                                  color: Color(0x2015803D),
+                                  color: Color(0x20087A4B),
                                   blurRadius: 12,
                                   offset: Offset(0, 4),
                                 ),
@@ -416,10 +416,10 @@ class _LoginScreenState extends State<LoginScreen> {
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: CeladonColors.inputBackground,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: const Color(0xFFE2E8F0),
+          color: CeladonColors.border,
           width: 1.0,
         ),
       ),
@@ -432,7 +432,7 @@ class _LoginScreenState extends State<LoginScreen> {
         validator: validator,
         style: const TextStyle(
           fontSize: 14.5,
-          color: Color(0xFF17212B),
+          color: CeladonColors.textPrimary,
           fontWeight: FontWeight.w600,
         ),
         decoration: InputDecoration(
@@ -442,7 +442,7 @@ class _LoginScreenState extends State<LoginScreen> {
           hintText: hintText,
           hintStyle: const TextStyle(
             fontSize: 14,
-            color: Color(0xFF94A3B8),
+            color: CeladonColors.textPlaceholder,
             fontWeight: FontWeight.w400,
           ),
           prefixIcon: Padding(
@@ -450,7 +450,7 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Icon(
               prefixIcon,
               size: 20,
-              color: const Color(0xFF64748B),
+              color: CeladonColors.textMuted,
             ),
           ),
           prefixIconConstraints:
@@ -476,15 +476,15 @@ class _LoginScreenState extends State<LoginScreen> {
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: Color(0xFFE2E8F0)),
+          side: const BorderSide(color: CeladonColors.border),
         ),
         title: Row(
           children: const [
-            Icon(Icons.dns_rounded, color: Color(0xFF15803D), size: 20),
+            Icon(Icons.dns_rounded, color: CeladonColors.primary, size: 20),
             SizedBox(width: 8),
             Text(
               'Server Configuration',
-              style: TextStyle(color: Color(0xFF17212B), fontSize: 16, fontWeight: FontWeight.w700),
+              style: TextStyle(color: CeladonColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w700),
             ),
           ],
         ),
@@ -494,25 +494,25 @@ class _LoginScreenState extends State<LoginScreen> {
           children: [
             const Text(
               'Connect your mobile device to the ReGen backend API server:',
-              style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+              style: TextStyle(color: CeladonColors.textMuted, fontSize: 12),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: ctrl,
-              style: const TextStyle(color: Color(0xFF17212B), fontSize: 13),
+              style: const TextStyle(color: CeladonColors.textPrimary, fontSize: 13),
               decoration: InputDecoration(
                 filled: true,
-                fillColor: const Color(0xFFF8FAFC),
+                fillColor: CeladonColors.inputBackground,
                 labelText: 'Backend Base URL',
-                labelStyle: const TextStyle(color: Color(0xFF15803D), fontSize: 12),
+                labelStyle: const TextStyle(color: CeladonColors.primary, fontSize: 12),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                  borderSide: const BorderSide(color: CeladonColors.border),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Color(0xFF15803D)),
+                  borderSide: const BorderSide(color: CeladonColors.primary),
                 ),
               ),
             ),
@@ -531,7 +531,7 @@ class _LoginScreenState extends State<LoginScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B))),
+            child: const Text('Cancel', style: TextStyle(color: CeladonColors.textMuted)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -543,12 +543,12 @@ class _LoginScreenState extends State<LoginScreen> {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text('Server connected to ${AppConfig.activeBaseUrl}'),
-                  backgroundColor: const Color(0xFF15803D),
+                  backgroundColor: CeladonColors.primary,
                 ),
               );
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF15803D),
+              backgroundColor: CeladonColors.primary,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
@@ -565,11 +565,11 @@ class _LoginScreenState extends State<LoginScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
-          color: const Color(0xFFE8F5EC),
+          color: const Color(0xFFE8F3EC),
           borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
+          border: Border.all(color: CeladonColors.border),
         ),
-        child: Text(label, style: const TextStyle(fontSize: 10, color: Color(0xFF15803D), fontWeight: FontWeight.w600)),
+        child: Text(label, style: const TextStyle(fontSize: 10, color: CeladonColors.primary, fontWeight: FontWeight.w600)),
       ),
     );
   }

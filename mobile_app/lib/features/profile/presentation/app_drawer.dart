@@ -330,13 +330,13 @@ class AppDrawer extends StatelessWidget {
     bool isDestructive = false,
   }) {
     final textColor = isDestructive
-        ? const Color(0xFFEF4444)
-        : (isSelected ? CeladonColors.primary : const Color(0xFF334155));
+        ? CeladonColors.error
+        : (isSelected ? CeladonColors.primary : CeladonColors.textSecondary);
     final bgColor = isDestructive
-        ? const Color(0xFFFEF2F2)
+        ? CeladonColors.logoutBg
         : (isSelected ? CeladonColors.primaryContainer : Colors.transparent);
     final iconColor =
-        isDestructive ? const Color(0xFFEF4444) : CeladonColors.primary;
+        isDestructive ? CeladonColors.error : CeladonColors.primary;
     final borderSide = isSelected
         ? BorderSide(
             color: CeladonColors.primaryLight.withValues(alpha: 0.5), width: 1.2)
@@ -376,7 +376,7 @@ class AppDrawer extends StatelessWidget {
               : Icon(
                   Icons.chevron_right_rounded,
                   color:
-                      isSelected ? CeladonColors.primary : const Color(0xFF94A3B8),
+                      isSelected ? CeladonColors.primary : const Color(0xFF829089),
                   size: 18,
                 ),
         ),

@@ -103,7 +103,7 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
 
   @override
   Widget build(BuildContext context) {
-    const primaryGreen = Color(0xFF1B5E3F);
+    const primaryGreen = CeladonColors.primary;
 
     return Scaffold(
       backgroundColor: CeladonColors.background,
@@ -166,7 +166,7 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
                       children: [
                         const Text(
                           'Apply for Leave',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1B5E3F)),
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: CeladonColors.primary),
                         ),
                         const SizedBox(height: 14),
 
@@ -176,7 +176,7 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
                           decoration: InputDecoration(
                             labelText: 'Leave Type',
                             filled: true,
-                            fillColor: const Color(0xFFF8FAFC),
+                            fillColor: const Color(0xFFF8FAF9),
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                           ),
                           items: const [
@@ -241,7 +241,7 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
                             labelText: 'Reason for Leave *',
                             hintText: 'Provide brief explanation...',
                             filled: true,
-                            fillColor: const Color(0xFFF8FAFC),
+                            fillColor: const Color(0xFFF8FAF9),
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                           ),
                           validator: (val) {
@@ -311,10 +311,10 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
     Color statusBg = const Color(0xFFFEF3C7);
 
     if (leave.isApproved) {
-      statusColor = const Color(0xFF15803D);
+      statusColor = const Color(0xFF087A4B);
       statusBg = const Color(0xFFDEF7EC);
     } else if (leave.isRejected) {
-      statusColor = const Color(0xFFDC2626);
+      statusColor = const Color(0xFFDC4C4C);
       statusBg = const Color(0xFFFEE2E2);
     }
 

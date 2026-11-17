@@ -163,7 +163,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         decoration: const BoxDecoration(
           color: Colors.white,
           border: Border(
-            top: BorderSide(color: Color(0xFFE2E8F0), width: 1.0),
+            top: BorderSide(color: Color(0xFFE1E8E4), width: 1.0),
           ),
           boxShadow: [
             BoxShadow(
@@ -266,7 +266,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE2E8F0), width: 1.0),
+              border: Border.all(color: const Color(0xFFE1E8E4), width: 1.0),
               boxShadow: const [
                 BoxShadow(
                   color: Color(0x06000000),
@@ -284,12 +284,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 9),
                       decoration: BoxDecoration(
-                        color: !_showAttendanceSubScreen ? const Color(0xFF15803D) : Colors.transparent,
+                        color: !_showAttendanceSubScreen ? const Color(0xFF087A4B) : Colors.transparent,
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: !_showAttendanceSubScreen
                             ? [
                                 BoxShadow(
-                                  color: const Color(0xFF15803D).withValues(alpha: 0.25),
+                                  color: const Color(0xFF087A4B).withValues(alpha: 0.25),
                                   blurRadius: 4,
                                   offset: const Offset(0, 2),
                                 )
@@ -303,7 +303,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           Icon(
                             Icons.calendar_month_rounded,
                             size: 16,
-                            color: !_showAttendanceSubScreen ? Colors.white : const Color(0xFF64748B),
+                            color: !_showAttendanceSubScreen ? Colors.white : const Color(0xFF829089),
                           ),
                           const SizedBox(width: 6),
                           Text(
@@ -311,7 +311,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
-                              color: !_showAttendanceSubScreen ? Colors.white : const Color(0xFF64748B),
+                              color: !_showAttendanceSubScreen ? Colors.white : const Color(0xFF829089),
                             ),
                           ),
                         ],
@@ -326,12 +326,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 9),
                       decoration: BoxDecoration(
-                        color: _showAttendanceSubScreen ? const Color(0xFF15803D) : Colors.transparent,
+                        color: _showAttendanceSubScreen ? const Color(0xFF087A4B) : Colors.transparent,
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: _showAttendanceSubScreen
                             ? [
                                 BoxShadow(
-                                  color: const Color(0xFF15803D).withValues(alpha: 0.25),
+                                  color: const Color(0xFF087A4B).withValues(alpha: 0.25),
                                   blurRadius: 4,
                                   offset: const Offset(0, 2),
                                 )
@@ -345,7 +345,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           Icon(
                             Icons.fingerprint_rounded,
                             size: 17,
-                            color: _showAttendanceSubScreen ? Colors.white : const Color(0xFF64748B),
+                            color: _showAttendanceSubScreen ? Colors.white : const Color(0xFF829089),
                           ),
                           const SizedBox(width: 6),
                           Text(
@@ -353,7 +353,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
-                              color: _showAttendanceSubScreen ? Colors.white : const Color(0xFF64748B),
+                              color: _showAttendanceSubScreen ? Colors.white : const Color(0xFF829089),
                             ),
                           ),
                         ],
@@ -400,20 +400,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
-            color: const Color(0xFFE8F5EC),
+            color: const Color(0xFFE8F3EC),
             borderRadius: BorderRadius.circular(24),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(activeIcon, size: 20, color: const Color(0xFF15803D)),
+              Icon(activeIcon, size: 20, color: const Color(0xFF087A4B)),
               const SizedBox(width: 6),
               Text(
                 label,
                 style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF15803D),
+                  color: Color(0xFF087A4B),
                 ),
               ),
             ],
@@ -433,7 +433,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Icon(
               icon,
               size: 22,
-              color: const Color(0xFF64748B),
+              color: const Color(0xFF829089),
             ),
             const SizedBox(height: 2),
             Text(
@@ -441,7 +441,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               style: const TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w500,
-                color: Color(0xFF64748B),
+                color: Color(0xFF829089),
               ),
             ),
           ],
@@ -472,7 +472,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final policyId = (pendingItem?['policyId'] ?? blockedItem?['policyId'] ?? '').toString();
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7F8),
+      backgroundColor: const Color(0xFFF5F7F6),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -486,16 +486,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     width: 72,
                     height: 72,
                     decoration: BoxDecoration(
-                      color: isBlocked ? const Color(0xFFFEF2F2) : const Color(0xFFE8F5EC),
+                      color: isBlocked ? const Color(0xFFFEF2F2) : const Color(0xFFE8F3EC),
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: isBlocked ? const Color(0xFFDC2626) : const Color(0xFF15803D),
+                        color: isBlocked ? const Color(0xFFDC4C4C) : const Color(0xFF087A4B),
                         width: 1.5,
                       ),
                     ),
                     child: Icon(
                       isBlocked ? Icons.lock_clock_rounded : Icons.gavel_rounded,
-                      color: isBlocked ? const Color(0xFFDC2626) : const Color(0xFF15803D),
+                      color: isBlocked ? const Color(0xFFDC4C4C) : const Color(0xFF087A4B),
                       size: 34,
                     ),
                   ),
@@ -508,7 +508,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF17212B),
+                    color: Color(0xFF17231F),
                     letterSpacing: -0.3,
                   ),
                 ),
@@ -519,7 +519,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ? 'Your work access is paused pending management review.'
                       : 'Please review and acknowledge the organizational policy to continue working.',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 13, color: Color(0xFF64748B), height: 1.4),
+                  style: const TextStyle(fontSize: 13, color: Color(0xFF829089), height: 1.4),
                 ),
                 const SizedBox(height: 24),
 
@@ -528,7 +528,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    border: Border.all(color: const Color(0xFFE1E8E4)),
                     boxShadow: const [
                       BoxShadow(
                         color: Color(0x06000000),
@@ -546,19 +546,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           Expanded(
                             child: Text(
                               policyTitle,
-                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF17212B)),
+                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF17231F)),
                             ),
                           ),
                           if (effectiveDate.isNotEmpty)
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFE8F5EC),
+                                color: const Color(0xFFE8F3EC),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
                                 effectiveDate,
-                                style: const TextStyle(color: Color(0xFF15803D), fontSize: 10.5, fontWeight: FontWeight.w600),
+                                style: const TextStyle(color: Color(0xFF087A4B), fontSize: 10.5, fontWeight: FontWeight.w600),
                               ),
                             ),
                         ],
@@ -570,7 +570,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           child: SingleChildScrollView(
                             child: Text(
                               policyContent,
-                              style: const TextStyle(fontSize: 12.5, color: Color(0xFF475569), height: 1.45),
+                              style: const TextStyle(fontSize: 12.5, color: Color(0xFF52615B), height: 1.45),
                             ),
                           ),
                         ),
@@ -582,14 +582,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           decoration: BoxDecoration(
                             color: const Color(0xFFFEF2F2),
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: const Color(0xFFDC2626)),
+                            border: Border.all(color: const Color(0xFFDC4C4C)),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text(
                                 'Submitted Decline Reason:',
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFFDC2626)),
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFFDC4C4C)),
                               ),
                               const SizedBox(height: 4),
                               Text(
@@ -613,7 +613,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         : const Icon(Icons.refresh_rounded, size: 18),
                     label: const Text('Check Approval Status', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF15803D),
+                      backgroundColor: const Color(0xFF087A4B),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -623,10 +623,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   const SizedBox(height: 12),
                   OutlinedButton.icon(
                     onPressed: _handleLogout,
-                    icon: const Icon(Icons.logout_rounded, size: 18, color: Color(0xFFDC2626)),
-                    label: const Text('Sign Out', style: TextStyle(color: Color(0xFFDC2626), fontSize: 13, fontWeight: FontWeight.w600)),
+                    icon: const Icon(Icons.logout_rounded, size: 18, color: Color(0xFFDC4C4C)),
+                    label: const Text('Sign Out', style: TextStyle(color: Color(0xFFDC4C4C), fontSize: 13, fontWeight: FontWeight.w600)),
                     style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFFE2E8F0)),
+                      side: const BorderSide(color: Color(0xFFE1E8E4)),
                       backgroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -643,12 +643,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               setState(() => _isPolicySubmitting = false);
                               if (ok) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(backgroundColor: Color(0xFF15803D), content: Text('Policy accepted. Workspace unlocked!')),
+                                  const SnackBar(backgroundColor: Color(0xFF087A4B), content: Text('Policy accepted. Workspace unlocked!')),
                                 );
                                 _checkPolicyStatus();
                               } else {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(backgroundColor: Color(0xFFDC2626), content: Text('Failed to accept policy. Please try again.')),
+                                  const SnackBar(backgroundColor: Color(0xFFDC4C4C), content: Text('Failed to accept policy. Please try again.')),
                                 );
                               }
                             }
@@ -658,7 +658,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         : const Icon(Icons.check_circle_outline_rounded, size: 18),
                     label: const Text('Allow & Continue to Work', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF15803D),
+                      backgroundColor: const Color(0xFF087A4B),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -668,10 +668,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   const SizedBox(height: 12),
                   OutlinedButton.icon(
                     onPressed: _isPolicySubmitting ? null : () => _showDeclineReasonDialog(policyId),
-                    icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFFDC2626)),
-                    label: const Text('Decline with Reason', style: TextStyle(color: Color(0xFFDC2626), fontSize: 13, fontWeight: FontWeight.w600)),
+                    icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFFDC4C4C)),
+                    label: const Text('Decline with Reason', style: TextStyle(color: Color(0xFFDC4C4C), fontSize: 13, fontWeight: FontWeight.w600)),
                     style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFFE2E8F0)),
+                      side: const BorderSide(color: Color(0xFFE1E8E4)),
                       backgroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -680,8 +680,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   const SizedBox(height: 12),
                   TextButton.icon(
                     onPressed: _handleLogout,
-                    icon: const Icon(Icons.logout_rounded, size: 16, color: Color(0xFF64748B)),
-                    label: const Text('Sign Out', style: TextStyle(color: Color(0xFF64748B), fontSize: 12.5)),
+                    icon: const Icon(Icons.logout_rounded, size: 16, color: Color(0xFF829089)),
+                    label: const Text('Sign Out', style: TextStyle(color: Color(0xFF829089), fontSize: 12.5)),
                   ),
                 ],
               ],
@@ -704,13 +704,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
           backgroundColor: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
-            side: const BorderSide(color: Color(0xFFE2E8F0)),
+            side: const BorderSide(color: Color(0xFFE1E8E4)),
           ),
           title: const Row(
             children: [
-              Icon(Icons.report_problem_rounded, color: Color(0xFFDC2626), size: 22),
+              Icon(Icons.report_problem_rounded, color: Color(0xFFDC4C4C), size: 22),
               SizedBox(width: 8),
-              Text('Decline Policy Reason', style: TextStyle(color: Color(0xFF17212B), fontWeight: FontWeight.w800, fontSize: 16)),
+              Text('Decline Policy Reason', style: TextStyle(color: Color(0xFF17231F), fontWeight: FontWeight.w800, fontSize: 16)),
             ],
           ),
           content: Column(
@@ -719,26 +719,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               const Text(
                 'Please explain why you are declining this policy. Your reason will be submitted to the company owner for review, and your work access will be paused until approved.',
-                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                style: TextStyle(fontSize: 12, color: Color(0xFF829089)),
               ),
               const SizedBox(height: 14),
               TextField(
                 controller: reasonCtrl,
                 maxLines: 4,
-                cursorColor: const Color(0xFF15803D),
-                style: const TextStyle(color: Color(0xFF17212B), fontSize: 13),
+                cursorColor: const Color(0xFF087A4B),
+                style: const TextStyle(color: Color(0xFF17231F), fontSize: 13),
                 decoration: InputDecoration(
                   hintText: 'Enter your reason here...',
-                  hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12.5),
+                  hintStyle: const TextStyle(color: Color(0xFF829089), fontSize: 12.5),
                   filled: true,
-                  fillColor: const Color(0xFFF8FAFC),
+                  fillColor: const Color(0xFFF8FAF9),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                    borderSide: const BorderSide(color: Color(0xFFE1E8E4)),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFF15803D)),
+                    borderSide: const BorderSide(color: Color(0xFF087A4B)),
                   ),
                 ),
               ),
@@ -747,7 +747,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B))),
+              child: const Text('Cancel', style: TextStyle(color: Color(0xFF829089))),
             ),
             ElevatedButton(
               onPressed: isSending
@@ -781,7 +781,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         }
                       }
                     },
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDC2626), foregroundColor: Colors.white),
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDC4C4C), foregroundColor: Colors.white),
               child: isSending
                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                   : const Text('Submit Reason'),

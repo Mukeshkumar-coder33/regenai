@@ -33,7 +33,7 @@ class BrandLogo extends StatelessWidget {
         ),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x1015803D),
+            color: CeladonColors.glow,
             blurRadius: 8,
             offset: Offset(0, 2),
           ),

@@ -255,7 +255,7 @@ export default function StaffProfileModule({ userProfile }) {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="absolute -bottom-1 -right-1 h-7 w-7 rounded-xl bg-primary text-white flex items-center justify-center shadow-md hover:bg-[#0F766E] transition-colors border-2 border-card"
+              className="absolute -bottom-1 -right-1 h-7 w-7 rounded-xl bg-primary text-white flex items-center justify-center shadow-md hover:bg-[#07563B] transition-colors border-2 border-card"
               title="Upload Photo"
             >
               <Upload className="h-3.5 w-3.5" />
@@ -548,7 +548,7 @@ export default function StaffProfileModule({ userProfile }) {
                 <div className="pt-2 flex justify-end">
                   <Button 
                     type="submit" 
-                    className="h-10 px-6 rounded-xl bg-[#0D9488] hover:bg-[#0F766E] text-white font-semibold shadow-xs transition-all w-full sm:w-auto" 
+                    className="h-10 px-6 rounded-xl bg-[#087A4B] hover:bg-[#07563B] text-white font-semibold shadow-xs transition-all w-full sm:w-auto" 
                     disabled={saveProfile.isPending}
                   >
                     {saveProfile.isPending ? (

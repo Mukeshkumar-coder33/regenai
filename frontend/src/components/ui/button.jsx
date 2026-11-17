@@ -9,14 +9,14 @@ const buttonVariants = cva(
     {
         variants: {
             variant: {
-                default: 'bg-primary text-white shadow-xs hover:bg-[#0f766e] hover:shadow-sm focus-visible:ring-primary/40',
+                default: 'bg-[#087A4B] text-white shadow-xs hover:bg-[#07563B] active:bg-[#06452F] hover:shadow-sm focus-visible:ring-[#087A4B]/40',
                 destructive:
-                    'bg-rose-600 text-white shadow-xs hover:bg-rose-700 focus-visible:ring-rose-500/30 dark:bg-rose-600 dark:hover:bg-rose-700',
+                    'bg-[#DC4C4C] text-white shadow-xs hover:bg-[#C53B3B] focus-visible:ring-[#DC4C4C]/30',
                 outline:
-                    'border border-border/80 bg-background/80 shadow-2xs hover:bg-teal-50/70 dark:hover:bg-teal-950/40 hover:border-teal-500/50 hover:text-teal-700 dark:hover:text-teal-300 text-foreground',
-                secondary: 'bg-secondary text-secondary-foreground shadow-2xs hover:bg-secondary/80 hover:text-foreground border border-border/50',
-                ghost: 'hover:bg-teal-50/70 dark:hover:bg-teal-950/40 hover:text-teal-700 dark:hover:text-teal-300 text-foreground/90',
-                link: 'text-primary underline-offset-4 hover:underline hover:text-teal-700 dark:hover:text-teal-300'
+                    'border border-[#E1E8E4] bg-white shadow-2xs hover:bg-[#F1F7F3] hover:border-[#087A4B] hover:text-[#087A4B] text-[#17231F]',
+                secondary: 'bg-white text-[#17231F] shadow-2xs hover:bg-[#F1F7F3] hover:text-[#087A4B] border border-[#E1E8E4]',
+                ghost: 'hover:bg-[#E8F3EC] hover:text-[#087A4B] text-[#17231F]',
+                link: 'text-[#087A4B] underline-offset-4 hover:underline hover:text-[#07563B]'
             },
             size: {
                 default: 'h-9 sm:h-10 lg:h-10.5 px-3.5 sm:px-4.5 lg:px-5 py-2 text-xs sm:text-sm font-medium has-[>svg]:px-3 sm:has-[>svg]:px-3.5 lg:has-[>svg]:px-4',

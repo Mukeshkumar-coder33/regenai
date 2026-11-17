@@ -638,7 +638,7 @@ export default function ReportsModule({ userProfile }) {
       {/* 1. Page Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-[#DFE8EC] dark:border-[#2A3D48]">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-[#0D9488]/10 text-[#0D9488] dark:text-[#14B8A6] flex items-center justify-center shrink-0 shadow-2xs border border-[#0D9488]/20">
+          <div className="w-12 h-12 rounded-2xl bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] flex items-center justify-center shrink-0 shadow-2xs border border-[#C9DED1]">
             <FileBarChart className="w-6 h-6" />
           </div>
           <div>
@@ -646,7 +646,7 @@ export default function ReportsModule({ userProfile }) {
               <h1 className="text-2xl font-bold tracking-tight text-[#172B3A] dark:text-[#E8F0F4]">
                 Company Reports & Analytics
               </h1>
-              <Badge variant="outline" className="text-xs bg-[#0D9488]/10 text-[#0D9488] border-[#0D9488]/30">
+              <Badge variant="outline" className="text-xs bg-[#E8F3EC] text-[#087A4B] border-[#C9DED1]">
                 Official Audit
               </Badge>
             </div>
@@ -665,7 +665,7 @@ export default function ReportsModule({ userProfile }) {
             disabled={isRefreshing}
             className="rounded-xl text-xs h-9 border-[#DFE8EC] dark:border-[#2A3D48] text-[#172B3A] dark:text-[#E8F0F4] hover:bg-[#F4F8FA] dark:hover:bg-[#1D303B] shadow-2xs gap-1.5"
           >
-            <RefreshCw className={cn('w-3.5 h-3.5', isRefreshing && 'animate-spin text-[#0D9488]')} />
+            <RefreshCw className={cn('w-3.5 h-3.5', isRefreshing && 'animate-spin text-[#087A4B]')} />
             <span className="hidden sm:inline">Refresh</span>
           </Button>
 
@@ -692,7 +692,7 @@ export default function ReportsModule({ userProfile }) {
           <Button
             size="sm"
             onClick={handleDownloadCsv}
-            className="rounded-xl text-xs h-9 bg-[#0D9488] hover:bg-[#0B7A70] text-white shadow-sm gap-1.5"
+            className="rounded-xl text-xs h-9 bg-[#087A4B] hover:bg-[#07563B] text-white shadow-sm gap-1.5"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Export CSV</span>
@@ -708,14 +708,14 @@ export default function ReportsModule({ userProfile }) {
             className={cn(
               'flex items-center justify-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all',
               isAttendanceActive
-                ? 'bg-white dark:bg-[#1D303B] text-[#0D9488] dark:text-[#14B8A6] shadow-sm border border-[#DFE8EC]/80 dark:border-[#2A3D48]'
+                ? 'bg-white dark:bg-[#1D303B] text-[#087A4B] dark:text-[#14B8A6] shadow-sm border border-[#DFE8EC]/80 dark:border-[#2A3D48]'
                 : 'text-[#64748B] dark:text-[#A6B5C0] hover:text-[#172B3A] dark:hover:text-[#E8F0F4]'
             )}
           >
             <Clock className="w-4 h-4 shrink-0" />
             <span>Attendance Report</span>
             {attendanceReport?.totalRecords !== undefined && (
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-[#0D9488]/10 text-[#0D9488] font-bold">
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-[#E8F3EC] text-[#087A4B] font-bold">
                 {attendanceReport.totalRecords}
               </span>
             )}
@@ -726,7 +726,7 @@ export default function ReportsModule({ userProfile }) {
             className={cn(
               'flex items-center justify-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all',
               isPaymentsActive
-                ? 'bg-white dark:bg-[#1D303B] text-[#0D9488] dark:text-[#14B8A6] shadow-sm border border-[#DFE8EC]/80 dark:border-[#2A3D48]'
+                ? 'bg-white dark:bg-[#1D303B] text-[#087A4B] dark:text-[#14B8A6] shadow-sm border border-[#DFE8EC]/80 dark:border-[#2A3D48]'
                 : 'text-[#64748B] dark:text-[#A6B5C0] hover:text-[#172B3A] dark:hover:text-[#E8F0F4]'
             )}
           >
@@ -744,7 +744,7 @@ export default function ReportsModule({ userProfile }) {
             className={cn(
               'flex items-center justify-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all',
               isSchedulesActive
-                ? 'bg-white dark:bg-[#1D303B] text-[#0D9488] dark:text-[#14B8A6] shadow-sm border border-[#DFE8EC]/80 dark:border-[#2A3D48]'
+                ? 'bg-white dark:bg-[#1D303B] text-[#087A4B] dark:text-[#14B8A6] shadow-sm border border-[#DFE8EC]/80 dark:border-[#2A3D48]'
                 : 'text-[#64748B] dark:text-[#A6B5C0] hover:text-[#172B3A] dark:hover:text-[#E8F0F4]'
             )}
           >
@@ -762,7 +762,7 @@ export default function ReportsModule({ userProfile }) {
             className={cn(
               'flex items-center justify-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all',
               isProjectsActive
-                ? 'bg-white dark:bg-[#1D303B] text-[#0D9488] dark:text-[#14B8A6] shadow-sm border border-[#DFE8EC]/80 dark:border-[#2A3D48]'
+                ? 'bg-white dark:bg-[#1D303B] text-[#087A4B] dark:text-[#14B8A6] shadow-sm border border-[#DFE8EC]/80 dark:border-[#2A3D48]'
                 : 'text-[#64748B] dark:text-[#A6B5C0] hover:text-[#172B3A] dark:hover:text-[#E8F0F4]'
             )}
           >
@@ -777,7 +777,7 @@ export default function ReportsModule({ userProfile }) {
         </div>
 
         {/* Current Active Period Indicator Badge */}
-        <div className="flex items-center justify-center sm:justify-end px-3 py-1 text-xs font-semibold text-[#0D9488] dark:text-[#14B8A6]">
+        <div className="flex items-center justify-center sm:justify-end px-3 py-1 text-xs font-semibold text-[#087A4B] dark:text-[#14B8A6]">
           <Calendar className="w-3.5 h-3.5 mr-1.5 shrink-0" />
           <span>Active Period: {activePeriodLabel}</span>
         </div>
@@ -799,7 +799,7 @@ export default function ReportsModule({ userProfile }) {
                   className={cn(
                     'px-3 sm:px-4 py-1.5 rounded-lg text-xs font-semibold transition-all',
                     period === 'day'
-                      ? 'bg-white dark:bg-[#15232D] text-[#0D9488] shadow-2xs font-bold'
+                      ? 'bg-white dark:bg-[#15232D] text-[#087A4B] shadow-2xs font-bold'
                       : 'text-[#64748B] dark:text-[#A6B5C0] hover:text-[#172B3A] dark:hover:text-[#E8F0F4]'
                   )}
                 >
@@ -811,7 +811,7 @@ export default function ReportsModule({ userProfile }) {
                   className={cn(
                     'px-3 sm:px-4 py-1.5 rounded-lg text-xs font-semibold transition-all',
                     period === 'week'
-                      ? 'bg-white dark:bg-[#15232D] text-[#0D9488] shadow-2xs font-bold'
+                      ? 'bg-white dark:bg-[#15232D] text-[#087A4B] shadow-2xs font-bold'
                       : 'text-[#64748B] dark:text-[#A6B5C0] hover:text-[#172B3A] dark:hover:text-[#E8F0F4]'
                   )}
                 >
@@ -823,7 +823,7 @@ export default function ReportsModule({ userProfile }) {
                   className={cn(
                     'px-3 sm:px-4 py-1.5 rounded-lg text-xs font-semibold transition-all',
                     period === 'month'
-                      ? 'bg-white dark:bg-[#15232D] text-[#0D9488] shadow-2xs font-bold'
+                      ? 'bg-white dark:bg-[#15232D] text-[#087A4B] shadow-2xs font-bold'
                       : 'text-[#64748B] dark:text-[#A6B5C0] hover:text-[#172B3A] dark:hover:text-[#E8F0F4]'
                   )}
                 >
@@ -835,7 +835,7 @@ export default function ReportsModule({ userProfile }) {
                   className={cn(
                     'px-3 sm:px-4 py-1.5 rounded-lg text-xs font-semibold transition-all',
                     period === 'year'
-                      ? 'bg-white dark:bg-[#15232D] text-[#0D9488] shadow-2xs font-bold'
+                      ? 'bg-white dark:bg-[#15232D] text-[#087A4B] shadow-2xs font-bold'
                       : 'text-[#64748B] dark:text-[#A6B5C0] hover:text-[#172B3A] dark:hover:text-[#E8F0F4]'
                   )}
                 >
@@ -1004,7 +1004,7 @@ export default function ReportsModule({ userProfile }) {
             <p className="text-2xl font-bold text-[#172B3A] dark:text-[#E8F0F4] mt-1">
               {attendanceReport?.totalRecords ?? (attendanceLoading ? '...' : 0)}
             </p>
-            <span className="text-[11px] text-[#0D9488] font-medium">Logged Attendances</span>
+            <span className="text-[11px] text-[#087A4B] font-medium">Logged Attendances</span>
           </Card>
 
           <Card className="rounded-2xl border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] p-4 shadow-2xs">
@@ -1025,7 +1025,7 @@ export default function ReportsModule({ userProfile }) {
 
           <Card className="rounded-2xl border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] p-4 shadow-2xs">
             <p className="text-xs font-semibold text-[#64748B] dark:text-[#A6B5C0]">Total Hours Worked</p>
-            <p className="text-2xl font-bold text-[#0D9488] dark:text-[#14B8A6] mt-1">
+            <p className="text-2xl font-bold text-[#087A4B] dark:text-[#14B8A6] mt-1">
               {attendanceReport?.totalWorkingHours !== undefined
                 ? `${attendanceReport.totalWorkingHours}h`
                 : attendanceLoading
@@ -1100,7 +1100,7 @@ export default function ReportsModule({ userProfile }) {
             <p className="text-2xl font-bold text-[#172B3A] dark:text-[#E8F0F4] mt-1">
               {schedulesReport?.totalTasks ?? (schedulesLoading ? '...' : 0)}
             </p>
-            <span className="text-[11px] text-[#0D9488] font-medium">
+            <span className="text-[11px] text-[#087A4B] font-medium">
               Across {schedulesReport?.employeesWithTasks || 0} active assignees
             </span>
           </Card>
@@ -1149,7 +1149,7 @@ export default function ReportsModule({ userProfile }) {
             <p className="text-2xl font-bold text-[#172B3A] dark:text-[#E8F0F4] mt-1">
               {projectReportMetrics.total}
             </p>
-            <span className="text-[11px] text-[#0D9488] font-medium">Assigned company projects</span>
+            <span className="text-[11px] text-[#087A4B] font-medium">Assigned company projects</span>
           </Card>
 
           <Card className="rounded-2xl border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] p-4 shadow-2xs">
@@ -1194,7 +1194,7 @@ export default function ReportsModule({ userProfile }) {
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-base font-bold text-[#172B3A] dark:text-[#E8F0F4] flex items-center gap-2">
-                <User className="w-4 h-4 text-[#0D9488]" />
+                <User className="w-4 h-4 text-[#087A4B]" />
                 <span>Every Employee Task Completion Audit</span>
               </h2>
               <p className="text-xs text-[#64748B] dark:text-[#A6B5C0]">
@@ -1223,7 +1223,7 @@ export default function ReportsModule({ userProfile }) {
 
           {schedulesLoading ? (
             <div className="p-8 text-center bg-white dark:bg-[#15232D] rounded-2xl border border-[#DFE8EC] dark:border-[#2A3D48]">
-              <RefreshCw className="w-6 h-6 animate-spin mx-auto text-[#0D9488] mb-2" />
+              <RefreshCw className="w-6 h-6 animate-spin mx-auto text-[#087A4B] mb-2" />
               <p className="text-xs text-[#64748B] dark:text-[#A6B5C0]">Loading employee schedule audit records...</p>
             </div>
           ) : !schedulesReport?.employees || schedulesReport.employees.length === 0 ? (
@@ -1245,7 +1245,7 @@ export default function ReportsModule({ userProfile }) {
                     <div className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
                       {/* Employee Meta */}
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-[#0D9488]/10 text-[#0D9488] flex items-center justify-center font-bold text-sm shrink-0 border border-[#0D9488]/20">
+                        <div className="w-10 h-10 rounded-full bg-[#E8F3EC] text-[#087A4B] flex items-center justify-center font-bold text-sm shrink-0 border border-[#C9DED1]">
                           {(emp.name || 'E').slice(0, 1).toUpperCase()}
                         </div>
                         <div>
@@ -1307,7 +1307,7 @@ export default function ReportsModule({ userProfile }) {
                           variant="ghost"
                           size="sm"
                           onClick={() => toggleEmployeeExpanded(emp.userId)}
-                          className="h-8 px-2.5 text-xs text-[#0D9488] hover:text-[#0D9488] hover:bg-[#0D9488]/10 rounded-xl flex items-center gap-1"
+                          className="h-8 px-2.5 text-xs text-[#087A4B] hover:text-[#087A4B] hover:bg-[#E8F3EC] rounded-xl flex items-center gap-1"
                         >
                           <span>{isExpanded ? 'Hide Tasks' : `View Tasks (${emp.tasks.length})`}</span>
                           {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -1320,7 +1320,7 @@ export default function ReportsModule({ userProfile }) {
                       <div className="border-t border-[#DFE8EC] dark:border-[#2A3D48] bg-[#F4F8FA]/60 dark:bg-[#1D303B]/30 p-4 space-y-3">
                         <div className="flex items-center justify-between text-xs font-semibold text-[#172B3A] dark:text-[#E8F0F4]">
                           <span className="flex items-center gap-1.5">
-                            <CheckSquare className="w-3.5 h-3.5 text-[#0D9488]" />
+                            <CheckSquare className="w-3.5 h-3.5 text-[#087A4B]" />
                             <span>Tasks Assigned to {emp.name} in this period:</span>
                           </span>
                           <span className="text-[11px] text-muted-foreground">
@@ -1459,7 +1459,7 @@ export default function ReportsModule({ userProfile }) {
                 </span>
               </CardTitle>
             </div>
-            <Badge variant="outline" className="text-xs font-semibold uppercase tracking-wider text-[#0D9488] border-[#0D9488]/30">
+            <Badge variant="outline" className="text-xs font-semibold uppercase tracking-wider text-[#087A4B] border-[#C9DED1]">
               {period} view
             </Badge>
           </CardHeader>
@@ -1484,7 +1484,7 @@ export default function ReportsModule({ userProfile }) {
                     {attendanceLoading ? (
                       <TableRow>
                         <TableCell colSpan={8} className="py-12 text-center text-sm text-[#64748B] dark:text-[#A6B5C0]">
-                          <RefreshCw className="w-5 h-5 animate-spin mx-auto text-[#0D9488] mb-2" />
+                          <RefreshCw className="w-5 h-5 animate-spin mx-auto text-[#087A4B] mb-2" />
                           Loading attendance audit data...
                         </TableCell>
                       </TableRow>
@@ -1507,7 +1507,7 @@ export default function ReportsModule({ userProfile }) {
                           <TableCell className="text-xs font-mono text-[#172B3A] dark:text-[#E8F0F4]">
                             {row.checkOutDisplay || row.checkOut || '--'}
                           </TableCell>
-                          <TableCell className="text-xs font-semibold text-[#0D9488] dark:text-[#14B8A6]">
+                          <TableCell className="text-xs font-semibold text-[#087A4B] dark:text-[#14B8A6]">
                             {row.workedHours !== undefined ? `${row.workedHours} hrs` : '--'}
                           </TableCell>
                           <TableCell className="text-right">
@@ -1550,7 +1550,7 @@ export default function ReportsModule({ userProfile }) {
                     {payrollLoading ? (
                       <TableRow>
                         <TableCell colSpan={9} className="py-12 text-center text-sm text-[#64748B] dark:text-[#A6B5C0]">
-                          <RefreshCw className="w-5 h-5 animate-spin mx-auto text-[#0D9488] mb-2" />
+                          <RefreshCw className="w-5 h-5 animate-spin mx-auto text-[#087A4B] mb-2" />
                           Loading payroll report data...
                         </TableCell>
                       </TableRow>
@@ -1618,7 +1618,7 @@ export default function ReportsModule({ userProfile }) {
                     {schedulesLoading ? (
                       <TableRow>
                         <TableCell colSpan={9} className="py-12 text-center text-sm text-[#64748B] dark:text-[#A6B5C0]">
-                          <RefreshCw className="w-5 h-5 animate-spin mx-auto text-[#0D9488] mb-2" />
+                          <RefreshCw className="w-5 h-5 animate-spin mx-auto text-[#087A4B] mb-2" />
                           Loading schedules report data...
                         </TableCell>
                       </TableRow>
@@ -1688,7 +1688,7 @@ export default function ReportsModule({ userProfile }) {
         <div className="space-y-6">
           {filteredProjectsReport.length === 0 ? (
             <Card className="rounded-2xl border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] p-12 text-center shadow-xs">
-              <div className="w-14 h-14 rounded-2xl bg-[#0D9488]/10 text-[#0D9488] mx-auto flex items-center justify-center mb-4">
+              <div className="w-14 h-14 rounded-2xl bg-[#E8F3EC] text-[#087A4B] mx-auto flex items-center justify-center mb-4">
                 <FolderKanban className="w-7 h-7" />
               </div>
               <h3 className="text-lg font-bold text-[#172B3A] dark:text-[#E8F0F4]">No Projects Found in Report</h3>
@@ -1730,17 +1730,17 @@ export default function ReportsModule({ userProfile }) {
                         setSelectedReportProjectEmployeeFilter('all');
                         setProjectTaskStatusFilter('all');
                       }}
-                      className="p-4 rounded-2xl border border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] hover:border-[#0D9488] hover:shadow-sm transition-all text-left flex items-center justify-between group shadow-2xs cursor-pointer"
+                      className="p-4 rounded-2xl border border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] hover:border-[#087A4B] hover:shadow-sm transition-all text-left flex items-center justify-between group shadow-2xs cursor-pointer"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-9 h-9 rounded-xl bg-[#0D9488]/10 text-[#0D9488] flex items-center justify-center shrink-0 group-hover:bg-[#0D9488] group-hover:text-white transition-colors">
+                        <div className="w-9 h-9 rounded-xl bg-[#E8F3EC] text-[#087A4B] flex items-center justify-center shrink-0 group-hover:bg-[#087A4B] group-hover:text-white transition-colors">
                           <FolderKanban className="w-4.5 h-4.5" />
                         </div>
-                        <span className="text-sm font-bold text-[#172B3A] dark:text-[#E8F0F4] group-hover:text-[#0D9488] transition-colors truncate">
+                        <span className="text-sm font-bold text-[#172B3A] dark:text-[#E8F0F4] group-hover:text-[#087A4B] transition-colors truncate">
                           {p.name}
                         </span>
                       </div>
-                      <ChevronRight className="w-4 h-4 text-[#64748B] group-hover:text-[#0D9488] group-hover:translate-x-0.5 transition-all shrink-0 ml-2" />
+                      <ChevronRight className="w-4 h-4 text-[#64748B] group-hover:text-[#087A4B] group-hover:translate-x-0.5 transition-all shrink-0 ml-2" />
                     </button>
                   );
                 })}
@@ -1791,7 +1791,7 @@ export default function ReportsModule({ userProfile }) {
                                   {activeReportProject.priority} Priority
                                 </Badge>
                               )}
-                              <Badge variant="outline" className="text-xs bg-[#0D9488]/10 text-[#0D9488] border-[#0D9488]/30">
+                              <Badge variant="outline" className="text-xs bg-[#E8F3EC] text-[#087A4B] border-[#C9DED1]">
                                 Filter: {activePeriodLabel}
                               </Badge>
                             </div>
@@ -1801,7 +1801,7 @@ export default function ReportsModule({ userProfile }) {
                           <div className="flex items-center gap-2 text-xs text-[#64748B] dark:text-[#A6B5C0]">
                             {activeReportProject.startDate && (
                               <span className="inline-flex items-center gap-1 bg-card px-2.5 py-1 rounded-xl border border-[#DFE8EC] dark:border-[#2A3D48]">
-                                <Calendar className="w-3.5 h-3.5 text-[#0D9488]" />
+                                <Calendar className="w-3.5 h-3.5 text-[#087A4B]" />
                                 Start: {format(new Date(activeReportProject.startDate), 'MMM d, yyyy')}
                               </span>
                             )}
@@ -1833,7 +1833,7 @@ export default function ReportsModule({ userProfile }) {
                     <Card className="rounded-2xl border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] shadow-xs">
                       <CardHeader className="p-4 sm:p-5 border-b border-[#DFE8EC] dark:border-[#2A3D48] flex flex-row items-center justify-between">
                         <div className="flex items-center gap-2.5">
-                          <div className="p-2 rounded-xl bg-[#0D9488]/10 text-[#0D9488]">
+                          <div className="p-2 rounded-xl bg-[#E8F3EC] text-[#087A4B]">
                             <Users className="w-4 h-4" />
                           </div>
                           <div>
@@ -1845,7 +1845,7 @@ export default function ReportsModule({ userProfile }) {
                             </p>
                           </div>
                         </div>
-                        <Badge className="bg-[#0D9488]/10 text-[#0D9488] border-[#0D9488]/20 font-bold px-3 py-1">
+                        <Badge className="bg-[#E8F3EC] text-[#087A4B] border-[#C9DED1] font-bold px-3 py-1">
                           {activeProjectEmployees.length} Employees Working
                         </Badge>
                       </CardHeader>
@@ -1862,8 +1862,8 @@ export default function ReportsModule({ userProfile }) {
                                 onClick={() => setSelectedReportProjectEmployeeFilter('all')}
                                 className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border ${
                                   selectedReportProjectEmployeeFilter === 'all'
-                                    ? 'bg-[#0D9488] text-white border-[#0D9488] shadow-xs'
-                                    : 'bg-[#F4F8FA] dark:bg-[#1D303B] text-[#64748B] dark:text-[#A6B5C0] border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#0D9488]/40'
+                                    ? 'bg-[#087A4B] text-white border-[#087A4B] shadow-xs'
+                                    : 'bg-[#F4F8FA] dark:bg-[#1D303B] text-[#64748B] dark:text-[#A6B5C0] border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#087A4B]/40'
                                 }`}
                               >
                                 All Team Members ({activeProjectEmployees.length})
@@ -1893,11 +1893,11 @@ export default function ReportsModule({ userProfile }) {
                                     onClick={() => setSelectedReportProjectEmployeeFilter(isEmpActive ? 'all' : eId)}
                                     className={`p-3 rounded-xl border flex items-center gap-3 transition-all cursor-pointer ${
                                       isEmpActive
-                                        ? 'bg-[#0D9488]/15 border-[#0D9488] ring-1 ring-[#0D9488]/30'
-                                        : 'bg-[#F4F8FA]/50 dark:bg-[#1D303B]/30 border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#0D9488]/30'
+                                        ? 'bg-[#E8F3EC] border-[#087A4B] ring-1 ring-[#087A4B]/30'
+                                        : 'bg-[#F4F8FA]/50 dark:bg-[#1D303B]/30 border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#C9DED1]'
                                     }`}
                                   >
-                                    <div className="w-10 h-10 rounded-full bg-[#0D9488]/15 text-[#0D9488] flex items-center justify-center font-bold text-sm shrink-0 overflow-hidden">
+                                    <div className="w-10 h-10 rounded-full bg-[#E8F3EC] text-[#087A4B] flex items-center justify-center font-bold text-sm shrink-0 overflow-hidden">
                                       {emp.avatar ? (
                                         <img src={emp.avatar} alt={emp.name} className="w-full h-full object-cover" />
                                       ) : (
@@ -1909,7 +1909,7 @@ export default function ReportsModule({ userProfile }) {
                                       <p className="text-[11px] text-[#64748B] dark:text-[#A6B5C0] truncate capitalize">
                                         {emp.role || 'Staff'} • {emp.department}
                                       </p>
-                                      <div className="mt-1 flex items-center gap-1.5 text-[10px] font-semibold text-[#0D9488]">
+                                      <div className="mt-1 flex items-center gap-1.5 text-[10px] font-semibold text-[#087A4B]">
                                         <span>{empTasks.length} Tasks ({period})</span>
                                         <span>•</span>
                                         <span className="text-emerald-600 dark:text-emerald-400">{empCompleted} Done</span>
@@ -1928,7 +1928,7 @@ export default function ReportsModule({ userProfile }) {
                     <Card className="rounded-2xl border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] shadow-xs">
                       <CardHeader className="p-4 sm:p-5 border-b border-[#DFE8EC] dark:border-[#2A3D48] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-2.5">
-                          <div className="p-2 rounded-xl bg-[#0D9488]/10 text-[#0D9488]">
+                          <div className="p-2 rounded-xl bg-[#E8F3EC] text-[#087A4B]">
                             <Briefcase className="w-4 h-4" />
                           </div>
                           <div>
@@ -1965,7 +1965,7 @@ export default function ReportsModule({ userProfile }) {
                               onClick={() => setProjectTaskStatusFilter(tab.key)}
                               className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
                                 projectTaskStatusFilter === tab.key
-                                  ? 'bg-[#0D9488] text-white shadow-xs'
+                                  ? 'bg-[#087A4B] text-white shadow-xs'
                                   : 'text-[#64748B] dark:text-[#A6B5C0] hover:text-[#172B3A] dark:hover:text-[#E8F0F4]'
                               }`}
                             >
@@ -2080,7 +2080,7 @@ export default function ReportsModule({ userProfile }) {
                                               key={idx}
                                               className="inline-flex items-center gap-1 text-[11px] font-medium bg-[#F4F8FA] dark:bg-[#1D303B] px-2 py-0.5 rounded-lg border border-[#DFE8EC] dark:border-[#2A3D48]"
                                             >
-                                              <User className="w-3 h-3 text-[#0D9488]" />
+                                              <User className="w-3 h-3 text-[#087A4B]" />
                                               {aName}
                                             </span>
                                           );
@@ -2131,7 +2131,7 @@ export default function ReportsModule({ userProfile }) {
         <DialogContent className="rounded-2xl border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] text-foreground max-w-md">
           <DialogHeader>
             <DialogTitle className="text-lg font-bold text-[#172B3A] dark:text-[#E8F0F4] flex items-center gap-2">
-              <Mail className="w-5 h-5 text-[#0D9488] dark:text-[#14B8A6]" />
+              <Mail className="w-5 h-5 text-[#087A4B] dark:text-[#14B8A6]" />
               <span>
                 Email{' '}
                 {isAttendanceActive
@@ -2181,7 +2181,7 @@ export default function ReportsModule({ userProfile }) {
                 onChange={(e) => setEmailNotes(e.target.value)}
                 placeholder="Add custom review notes or context for the leadership team..."
                 rows={3}
-                className="w-full rounded-xl text-xs p-2.5 bg-card border border-[#DFE8EC] dark:border-[#2A3D48] text-foreground focus:outline-none focus:ring-1 focus:ring-[#0D9488]"
+                className="w-full rounded-xl text-xs p-2.5 bg-card border border-[#DFE8EC] dark:border-[#2A3D48] text-foreground focus:outline-none focus:ring-1 focus:ring-[#087A4B]"
               />
             </div>
 
@@ -2203,7 +2203,7 @@ export default function ReportsModule({ userProfile }) {
                   sendPayrollMutation.isPending ||
                   sendSchedulesMutation.isPending
                 }
-                className="rounded-xl text-xs h-9 bg-[#0D9488] hover:bg-[#0B7A70] text-white gap-1.5 shadow-sm"
+                className="rounded-xl text-xs h-9 bg-[#087A4B] hover:bg-[#07563B] text-white gap-1.5 shadow-sm"
               >
                 <Send className="w-3.5 h-3.5" />
                 <span>

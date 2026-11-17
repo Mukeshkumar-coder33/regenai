@@ -608,7 +608,7 @@ export default function ScrumModule({ userProfile }) {
       {/* 1. Header Section */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-[#DFE8EC] dark:border-[#2A3D48]">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-[#0D9488]/10 text-[#0D9488] dark:text-[#14B8A6] flex items-center justify-center shrink-0 shadow-2xs">
+          <div className="w-11 h-11 rounded-2xl bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] flex items-center justify-center shrink-0 shadow-2xs">
             <ListTodo className="h-5 w-5" />
           </div>
           <div>
@@ -630,7 +630,7 @@ export default function ScrumModule({ userProfile }) {
               <p className="text-xs font-medium text-[#64748B] dark:text-[#A6B5C0] truncate">Total Scrum Updates</p>
               <h3 className="text-2xl sm:text-3xl font-semibold tracking-normal text-[#172B3A] dark:text-[#E8F0F4] mt-1">{metrics.total}</h3>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-[#0D9488]/10 text-[#0D9488] dark:text-[#14B8A6] flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] flex items-center justify-center shrink-0">
               <ListTodo className="w-5 h-5" />
             </div>
           </div>
@@ -684,7 +684,7 @@ export default function ScrumModule({ userProfile }) {
               </p>
             </div>
             <div className="flex items-center gap-1.5 text-xs text-[#64748B] dark:text-[#A6B5C0] bg-[#F4F8FA] dark:bg-[#1D303B] border border-[#DFE8EC] dark:border-[#2A3D48] px-3 py-1.5 rounded-xl font-mono shrink-0">
-              <Clock className="h-3.5 w-3.5 text-[#0D9488] dark:text-[#14B8A6]" />
+              <Clock className="h-3.5 w-3.5 text-[#087A4B] dark:text-[#14B8A6]" />
               <span>
                 {formatScrumDateTime(editingScrum ? editingScrum.createdAt : BigInt(Date.now() * 1000000))}
               </span>
@@ -715,7 +715,7 @@ export default function ScrumModule({ userProfile }) {
                     value={scrumForm.taskDetails}
                     onValueChange={(value) => setScrumForm({ ...scrumForm, taskDetails: value })}
                   >
-                    <SelectTrigger id="scrum-task" className="h-10 text-xs sm:text-sm rounded-xl bg-[#F4F8FA] dark:bg-[#1D303B] border-[#DFE8EC] dark:border-[#2A3D48] text-[#172B3A] dark:text-[#E8F0F4] focus:border-[#0D9488]">
+                    <SelectTrigger id="scrum-task" className="h-10 text-xs sm:text-sm rounded-xl bg-[#F4F8FA] dark:bg-[#1D303B] border-[#DFE8EC] dark:border-[#2A3D48] text-[#172B3A] dark:text-[#E8F0F4] focus:border-[#087A4B]">
                       <SelectValue placeholder="Choose a task from your assigned backlog..." />
                     </SelectTrigger>
                     <SelectContent className="rounded-xl border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D]">
@@ -754,7 +754,7 @@ export default function ScrumModule({ userProfile }) {
                     value={scrumForm.status}
                     onValueChange={value => setScrumForm({ ...scrumForm, status: value })}
                   >
-                    <SelectTrigger id="scrum-status" className="h-10 text-xs sm:text-sm rounded-xl bg-[#F4F8FA] dark:bg-[#1D303B] border-[#DFE8EC] dark:border-[#2A3D48] text-[#172B3A] dark:text-[#E8F0F4] focus:border-[#0D9488]">
+                    <SelectTrigger id="scrum-status" className="h-10 text-xs sm:text-sm rounded-xl bg-[#F4F8FA] dark:bg-[#1D303B] border-[#DFE8EC] dark:border-[#2A3D48] text-[#172B3A] dark:text-[#E8F0F4] focus:border-[#087A4B]">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="rounded-xl border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D]">
@@ -778,7 +778,7 @@ export default function ScrumModule({ userProfile }) {
                   onChange={e => setScrumForm({ ...scrumForm, taskDetails: e.target.value })}
                   placeholder="Describe your planned deliverables, key focus, or task details here..."
                   rows={3}
-                  className="min-h-[105px] resize-y text-xs sm:text-sm rounded-xl bg-[#F4F8FA] dark:bg-[#1D303B] border-[#DFE8EC] dark:border-[#2A3D48] text-[#172B3A] dark:text-[#E8F0F4] p-3 focus:border-[#0D9488] focus:ring-1 focus:ring-[#0D9488]/30 transition-all"
+                  className="min-h-[105px] resize-y text-xs sm:text-sm rounded-xl bg-[#F4F8FA] dark:bg-[#1D303B] border-[#DFE8EC] dark:border-[#2A3D48] text-[#172B3A] dark:text-[#E8F0F4] p-3 focus:border-[#087A4B] focus:ring-1 focus:ring-[#087A4B]/30 transition-all"
                 />
               </div>
 
@@ -835,7 +835,7 @@ export default function ScrumModule({ userProfile }) {
                         "h-10 px-6 rounded-xl font-semibold shadow-xs transition-all w-full sm:w-auto flex items-center justify-center gap-2",
                         isTaskBlockedDueToExpiry 
                           ? "bg-rose-600 hover:bg-rose-700 text-white cursor-not-allowed opacity-80"
-                          : "bg-[#0D9488] hover:bg-[#0F766E] text-white shadow-xs"
+                          : "bg-[#087A4B] hover:bg-[#07563B] text-white shadow-xs"
                       )}
                       disabled={addScrumNote.isPending || updateScrumNote.isPending || isTaskBlockedDueToExpiry}
                     >
@@ -881,7 +881,7 @@ export default function ScrumModule({ userProfile }) {
           <div className="flex flex-wrap items-center gap-2.5">
             {/* Date Filter */}
             <div className="flex items-center gap-1.5 bg-[#F4F8FA] dark:bg-[#1D303B] border border-[#DFE8EC] dark:border-[#2A3D48] rounded-xl px-2.5 py-1 shadow-2xs">
-              <Calendar className="h-3.5 w-3.5 text-[#0D9488] dark:text-[#14B8A6] shrink-0" />
+              <Calendar className="h-3.5 w-3.5 text-[#087A4B] dark:text-[#14B8A6] shrink-0" />
               <input
                 type="date"
                 className="h-7 text-xs bg-transparent border-0 text-[#172B3A] dark:text-[#E8F0F4] focus:outline-none focus:ring-0 w-32 cursor-pointer font-medium"
@@ -922,7 +922,7 @@ export default function ScrumModule({ userProfile }) {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-9 px-2.5 text-xs text-[#0D9488] dark:text-[#14B8A6] hover:bg-[#0D9488]/10 rounded-xl font-medium"
+                className="h-9 px-2.5 text-xs text-[#087A4B] dark:text-[#14B8A6] hover:bg-[#E8F3EC] rounded-xl font-medium"
                 onClick={() => {
                   setHistoryDateFilter(null);
                   setHistoryStaffFilter('all');
@@ -937,7 +937,7 @@ export default function ScrumModule({ userProfile }) {
         {/* History Cards List */}
         {visibleScrumNotes.length === 0 ? (
           <Card className="border border-dashed border-[#DFE8EC] dark:border-[#2A3D48] bg-[#F4F8FA]/60 dark:bg-[#1D303B]/40 text-foreground rounded-2xl p-10 text-center space-y-2">
-            <div className="w-12 h-12 rounded-2xl bg-[#0D9488]/10 text-[#0D9488] dark:text-[#14B8A6] flex items-center justify-center mx-auto">
+            <div className="w-12 h-12 rounded-2xl bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] flex items-center justify-center mx-auto">
               <ListTodo className="w-6 h-6" />
             </div>
             <h4 className="text-sm font-semibold text-[#172B3A] dark:text-[#E8F0F4]">No Scrum Entries Found</h4>
@@ -965,7 +965,7 @@ export default function ScrumModule({ userProfile }) {
                 <Card 
                   key={note.id}
                   className={cn(
-                    "border border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] text-foreground rounded-2xl shadow-xs p-4 sm:p-5 transition-all hover:border-[#0D9488]/40 hover:shadow-xs",
+                    "border border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] text-foreground rounded-2xl shadow-xs p-4 sm:p-5 transition-all hover:border-[#C9DED1] hover:shadow-xs",
                     isTaskNotCompleted 
                       ? "border-rose-300 dark:border-rose-900/60 bg-rose-50/30 dark:bg-rose-950/20"
                       : ""
@@ -977,7 +977,7 @@ export default function ScrumModule({ userProfile }) {
                       <div className="flex flex-wrap items-center gap-2">
                         {/* Timestamp */}
                         <div className="flex items-center gap-1.5 text-xs text-[#64748B] dark:text-[#A6B5C0] font-mono">
-                          <Clock className="h-3.5 w-3.5 text-[#0D9488] dark:text-[#14B8A6]" />
+                          <Clock className="h-3.5 w-3.5 text-[#087A4B] dark:text-[#14B8A6]" />
                           <span>{formatScrumDateTime(applied.createdAt)}</span>
                         </div>
 
@@ -997,7 +997,7 @@ export default function ScrumModule({ userProfile }) {
                             : applied.status === 'completed'
                             ? "bg-[#D1FAE5] text-[#065F46] border-[#059669]/30 dark:bg-emerald-950/80 dark:text-emerald-200 dark:border-emerald-600/60"
                             : applied.status === 'in_progress'
-                            ? "bg-[#CCFBF1] text-[#115E59] border-[#0D9488]/30 dark:bg-teal-950/80 dark:text-teal-200 dark:border-teal-600/60"
+                            ? "bg-[#E8F3EC] text-[#087A4B] border-[#C9DED1] dark:bg-teal-950/80 dark:text-teal-200 dark:border-teal-600/60"
                             : applied.status === 'paused'
                             ? "bg-[#FEF3C7] text-[#92400E] border-[#D97706]/30 dark:bg-amber-950/80 dark:text-amber-200 dark:border-amber-600/60"
                             : "bg-[#FFE4E6] text-[#9F1239] border-[#E11D48]/30 dark:bg-rose-950/80 dark:text-rose-200 dark:border-rose-600/60"
@@ -1159,7 +1159,7 @@ export default function ScrumModule({ userProfile }) {
               <DialogTrigger asChild>
                 <Button 
                   onClick={() => handleOpenDialog()} 
-                  className="h-9 px-3.5 rounded-xl bg-[#0D9488] hover:bg-[#0F766E] text-white text-xs sm:text-sm font-semibold shadow-xs flex items-center gap-1.5"
+                  className="h-9 px-3.5 rounded-xl bg-[#087A4B] hover:bg-[#07563B] text-white text-xs sm:text-sm font-semibold shadow-xs flex items-center gap-1.5"
                 >
                   <Plus className="h-4 w-4" />
                   <span>Add Meeting Note</span>
@@ -1197,7 +1197,7 @@ export default function ScrumModule({ userProfile }) {
                   </div>
                   <Button
                     type="submit"
-                    className="w-full h-10 rounded-xl bg-[#0D9488] hover:bg-[#0F766E] text-white font-semibold"
+                    className="w-full h-10 rounded-xl bg-[#087A4B] hover:bg-[#07563B] text-white font-semibold"
                     disabled={addNote.isPending || updateNote.isPending}
                   >
                     {addNote.isPending || updateNote.isPending ? 'Saving Note...' : 'Save Meeting Note'}
@@ -1216,7 +1216,7 @@ export default function ScrumModule({ userProfile }) {
             </Card>
           ) : notes.length === 0 ? (
             <Card className="col-span-full border border-dashed border-[#DFE8EC] dark:border-[#2A3D48] bg-[#F4F8FA]/60 dark:bg-[#1D303B]/40 text-foreground rounded-2xl p-10 text-center space-y-2">
-              <div className="w-12 h-12 rounded-2xl bg-[#0D9488]/10 text-[#0D9488] dark:text-[#14B8A6] flex items-center justify-center mx-auto">
+              <div className="w-12 h-12 rounded-2xl bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] flex items-center justify-center mx-auto">
                 <FileText className="w-6 h-6" />
               </div>
               <h4 className="text-sm font-semibold text-[#172B3A] dark:text-[#E8F0F4]">No Meeting Notes Recorded</h4>
@@ -1226,13 +1226,13 @@ export default function ScrumModule({ userProfile }) {
             </Card>
           ) : (
             notes.map(note => (
-              <Card key={note.id} className="border border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] text-foreground rounded-2xl shadow-xs overflow-hidden flex flex-col justify-between hover:border-[#0D9488]/40 transition-all">
+              <Card key={note.id} className="border border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] text-foreground rounded-2xl shadow-xs overflow-hidden flex flex-col justify-between hover:border-[#C9DED1] transition-all">
                 <CardHeader className="p-4 sm:p-5 border-b border-[#DFE8EC]/70 dark:border-[#2A3D48]/70 bg-[#F4F8FA]/60 dark:bg-[#1D303B]/40 pb-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <h4 className="text-base font-bold text-[#172B3A] dark:text-[#E8F0F4] truncate">{note.title}</h4>
                       <p className="text-xs text-[#64748B] dark:text-[#A6B5C0] mt-0.5 flex items-center gap-1.5 font-mono">
-                        <Calendar className="h-3 w-3 text-[#0D9488] dark:text-[#14B8A6]" />
+                        <Calendar className="h-3 w-3 text-[#087A4B] dark:text-[#14B8A6]" />
                         {formatDate(note.timestamp)}
                       </p>
                     </div>

@@ -1074,7 +1074,7 @@ export default function AttendanceModule({ userProfile }) {
         {/* Top Metric & Status Cards (Full-Width Responsive 4-Column Grid) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Clock & Date Card */}
-          <Card className="border border-border bg-gradient-to-br from-[#0D9488] to-[#0F766E] text-white rounded-2xl shadow-sm p-3.5 sm:p-5 relative overflow-hidden flex flex-col justify-between">
+          <Card className="border border-border bg-gradient-to-br from-[#087A4B] to-[#07563B] text-white rounded-2xl shadow-sm p-3.5 sm:p-5 relative overflow-hidden flex flex-col justify-between">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-emerald-100 uppercase tracking-wider">{format(currentTime, 'EEEE')}</span>
               <div className="flex items-center gap-1 text-[11px] text-emerald-100 bg-white/10 px-2 py-0.5 rounded-full backdrop-blur-xs">

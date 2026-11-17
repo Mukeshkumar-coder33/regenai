@@ -155,7 +155,7 @@ export default function App() {
   // Show loading state while initializing
   if (isInitializing) {
     return (
-      <ThemeProvider attribute="class" forcedTheme={!hasToken ? 'dark' : undefined} defaultTheme="system" enableSystem>
+      <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
         <div className="flex h-screen items-center justify-center bg-background">
           <div className="text-center">
             <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" />
@@ -169,7 +169,7 @@ export default function App() {
 
   if (resetToken) {
     return (
-      <ThemeProvider attribute="class" forcedTheme="dark">
+      <ThemeProvider attribute="class" defaultTheme="light">
         <Suspense fallback={<PageLoader message="Loading..." />}>
           <LoginPage resetToken={resetToken} />
         </Suspense>
@@ -178,10 +178,10 @@ export default function App() {
     );
   }
 
-  // Show login page if not authenticated (always in dark theme)
+  // Show login page if not authenticated
   if (!isAuthenticated) {
     return (
-      <ThemeProvider attribute="class" forcedTheme="dark">
+      <ThemeProvider attribute="class" defaultTheme="light">
         <Suspense fallback={<PageLoader message="Loading..." />}>
           <LoginPage />
         </Suspense>

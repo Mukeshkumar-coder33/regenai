@@ -51,7 +51,7 @@ export default function UsersModule({ userProfile }) {
   const roleBadgeStyles = {
     param:      'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25 font-semibold',
     owner:      'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/25 font-semibold',
-    admin:      'bg-[#0D9488]/10 text-[#0D9488] dark:text-[#14B8A6] border-[#0D9488]/25 font-semibold',
+    admin:      'bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] border-[#C9DED1] font-semibold',
     staff:      'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25 font-semibold',
     intern:     'bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/25 font-semibold',
     freelancer: 'bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-500/25 font-semibold',
@@ -387,7 +387,7 @@ export default function UsersModule({ userProfile }) {
       {/* 1. Staff Management Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-[#DFE8EC] dark:border-[#2A3D48]">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-[#0D9488]/10 text-[#0D9488] dark:text-[#14B8A6] flex items-center justify-center shrink-0 shadow-2xs">
+          <div className="w-11 h-11 rounded-2xl bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] flex items-center justify-center shrink-0 shadow-2xs">
             <Users className="h-5 w-5" />
           </div>
           <div>
@@ -403,7 +403,7 @@ export default function UsersModule({ userProfile }) {
           <DialogTrigger asChild>
             <Button 
               onClick={() => handleOpenDialog()} 
-              className="bg-[#0D9488] hover:bg-[#0F766E] text-white font-medium text-xs sm:text-sm rounded-xl px-4 h-9 sm:h-10 shadow-xs transition-all flex items-center justify-center gap-2 w-full sm:w-auto shrink-0"
+              className="bg-[#087A4B] hover:bg-[#07563B] text-white font-medium text-xs sm:text-sm rounded-xl px-4 h-9 sm:h-10 shadow-xs transition-all flex items-center justify-center gap-2 w-full sm:w-auto shrink-0"
             >
               <Plus className="h-4 w-4" />
               <span>{isOwner ? 'Add Employee' : 'Add User'}</span>
@@ -647,7 +647,7 @@ export default function UsersModule({ userProfile }) {
                   />
                 </div>
               </div>
-              <Button type="submit" tabIndex={16} className="w-full bg-primary hover:bg-[#0F766E] text-white font-semibold rounded-xl h-11 transition-all shadow-sm" disabled={createUser.isPending || updateUser.isPending}>
+              <Button type="submit" tabIndex={16} className="w-full bg-primary hover:bg-[#07563B] text-white font-semibold rounded-xl h-11 transition-all shadow-sm" disabled={createUser.isPending || updateUser.isPending}>
                 {(createUser.isPending || updateUser.isPending) ? 'Saving...' : 'Save User Profile'}
               </Button>
             </form>
@@ -658,7 +658,7 @@ export default function UsersModule({ userProfile }) {
       {/* 2. Role Filter Chips */}
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex items-center gap-1.5 text-xs font-semibold text-[#64748B] dark:text-[#A6B5C0] mr-1">
-          <Filter className="h-3.5 w-3.5 text-[#0D9488] dark:text-[#14B8A6]" />
+          <Filter className="h-3.5 w-3.5 text-[#087A4B] dark:text-[#14B8A6]" />
           <span>Filter:</span>
         </div>
         <div className="flex items-center gap-1.5 flex-wrap">
@@ -671,7 +671,7 @@ export default function UsersModule({ userProfile }) {
                 className={cn(
                   "inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-medium border transition-all cursor-pointer",
                   active
-                    ? "bg-[#0D9488] text-white border-[#0D9488] shadow-xs font-semibold"
+                    ? "bg-[#087A4B] text-white border-[#087A4B] shadow-xs font-semibold"
                     : "bg-white dark:bg-[#15232D] border-[#DFE8EC] dark:border-[#2A3D48] text-[#64748B] dark:text-[#A6B5C0] hover:text-[#172B3A] dark:hover:text-[#E8F0F4] hover:bg-[#F4F8FA] dark:hover:bg-[#1D303B]"
                 )}
               >
@@ -695,7 +695,7 @@ export default function UsersModule({ userProfile }) {
         <CardHeader className="border-b border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] px-6 py-4 flex flex-row items-center justify-between">
           <CardTitle className="text-base font-medium flex items-center gap-2.5 text-[#172B3A] dark:text-[#E8F0F4]">
             <span>{isOwner ? 'Staff Roster' : 'All Registered Users'}</span>
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#0D9488]/10 text-[#0D9488] dark:text-[#14B8A6]">
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6]">
               {totalUsersCount} total
             </span>
           </CardTitle>
@@ -765,7 +765,7 @@ export default function UsersModule({ userProfile }) {
                               onClick={() => handleGenerateResetLink(user)} 
                               title="Reset Password" 
                               aria-label="Reset Password"
-                              className="h-8 w-8 text-[#64748B] hover:text-[#0D9488] dark:hover:text-[#14B8A6] hover:bg-[#0D9488]/10 rounded-lg"
+                              className="h-8 w-8 text-[#64748B] hover:text-[#087A4B] dark:hover:text-[#14B8A6] hover:bg-[#E8F3EC] rounded-lg"
                             >
                               <KeyRound className="h-4 w-4" />
                             </Button>
@@ -775,7 +775,7 @@ export default function UsersModule({ userProfile }) {
                               onClick={() => handleOpenDialog(user)} 
                               title="Edit Profile"
                               aria-label="Edit Profile"
-                              className="h-8 w-8 text-[#64748B] hover:text-[#0D9488] dark:hover:text-[#14B8A6] hover:bg-[#0D9488]/10 rounded-lg"
+                              className="h-8 w-8 text-[#64748B] hover:text-[#087A4B] dark:hover:text-[#14B8A6] hover:bg-[#E8F3EC] rounded-lg"
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
@@ -883,7 +883,7 @@ export default function UsersModule({ userProfile }) {
                               onClick={() => handleGenerateResetLink(user)}
                               title="Reset Password"
                               aria-label="Reset Password"
-                              className="hover:bg-[#0D9488]/10 text-[#64748B] hover:text-[#0D9488] dark:hover:text-[#14B8A6] rounded-lg h-7 w-7 transition-colors"
+                              className="hover:bg-[#E8F3EC] text-[#64748B] hover:text-[#087A4B] dark:hover:text-[#14B8A6] rounded-lg h-7 w-7 transition-colors"
                             >
                               <KeyRound className="h-3.5 w-3.5" />
                             </Button>
@@ -893,7 +893,7 @@ export default function UsersModule({ userProfile }) {
                               onClick={() => handleOpenDialog(user)}
                               title="Edit User"
                               aria-label="Edit User"
-                              className="hover:bg-[#0D9488]/10 text-[#64748B] hover:text-[#0D9488] dark:hover:text-[#14B8A6] rounded-lg h-7 w-7 transition-colors"
+                              className="hover:bg-[#E8F3EC] text-[#64748B] hover:text-[#087A4B] dark:hover:text-[#14B8A6] rounded-lg h-7 w-7 transition-colors"
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>

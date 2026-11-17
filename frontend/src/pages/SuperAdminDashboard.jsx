@@ -663,7 +663,7 @@ function SuperAdminContent({ isAuthenticated, setIsAuthenticated }) {
                 const TabIcon = config.icon;
                 return (
                   <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-2xl bg-[#15966A]/10 text-[#15966A] dark:text-[#14B8A6] flex items-center justify-center shrink-0 shadow-2xs">
+                    <div className="w-11 h-11 rounded-2xl bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] flex items-center justify-center shrink-0 shadow-2xs">
                       <TabIcon className="h-5 w-5" />
                     </div>
                     <div className="min-w-0">
@@ -1204,7 +1204,7 @@ function TabDashboard({
         <div className="flex items-center shrink-0 w-full lg:w-auto">
           {/* Search input container */}
           <div ref={searchContainerRef} className="relative w-full sm:w-[420px] md:w-[460px] lg:w-[500px] xl:w-[540px]">
-            <div className="h-11 sm:h-12 flex items-center bg-[#F8FAF9] dark:bg-[#091E24] border border-[#D5E5D7] dark:border-[#203A42] rounded-xl transition-all focus-within:border-[#15966A] dark:focus-within:border-[#36BEB0] focus-within:ring-1 focus-within:ring-[#15966A]/25 dark:focus-within:ring-[#36BEB0]/25 shadow-2xs">
+            <div className="h-11 sm:h-12 flex items-center bg-[#F8FAF9] dark:bg-[#091E24] border border-[#E1E8E4] dark:border-[#203A42] rounded-xl transition-all focus-within:border-[#087A4B] dark:focus-within:border-[#36BEB0] focus-within:ring-1 focus-within:ring-[#087A4B]/25 dark:focus-within:ring-[#36BEB0]/25 shadow-2xs">
               <Search className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-muted-foreground dark:text-[#688A84] shrink-0 ml-3.5 sm:ml-4" />
               <input
                 type="text"
@@ -1467,15 +1467,15 @@ function TabDashboard({
               <AreaChart data={revenueTrendsData}>
                 <defs>
                   <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0D9488" stopOpacity={0.35}/>
-                    <stop offset="95%" stopColor="#0D9488" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#087A4B" stopOpacity={0.35}/>
+                    <stop offset="95%" stopColor="#087A4B" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#2A3D48" opacity={0.4} vertical={false} />
                 <XAxis dataKey="month" stroke="#A6B5C0" fontSize={12} />
                 <YAxis stroke="#A6B5C0" fontSize={12} tickFormatter={(v) => `$${v}`} />
                 <Tooltip 
-                  cursor={{ stroke: '#0D9488', strokeWidth: 1.5, strokeDasharray: '4 4' }}
+                  cursor={{ stroke: '#087A4B', strokeWidth: 1.5, strokeDasharray: '4 4' }}
                   content={({ active, payload, label }) => {
                     if (active && payload && payload.length) {
                       const item = payload[0].payload;
@@ -1486,7 +1486,7 @@ function TabDashboard({
                             {label}
                             {item?.companies !== undefined ? ` — ${item.companies} Companies, ${item.activeUsers || 0} Users` : ''}
                           </p>
-                          <p style={{ color: '#0D9488', fontWeight: 700, fontSize: '15px', margin: 0 }}>
+                          <p style={{ color: '#087A4B', fontWeight: 700, fontSize: '15px', margin: 0 }}>
                             Monthly Revenue: ${Number(val || 0).toLocaleString()}
                           </p>
                           {item?.growth !== undefined && (
@@ -1500,7 +1500,7 @@ function TabDashboard({
                     return null;
                   }}
                 />
-                <Area type="monotone" dataKey="revenue" stroke="#0D9488" fillOpacity={1} fill="url(#colorRev)" strokeWidth={2.5} />
+                <Area type="monotone" dataKey="revenue" stroke="#087A4B" fillOpacity={1} fill="url(#colorRev)" strokeWidth={2.5} />
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>
@@ -1551,7 +1551,7 @@ function TabDashboard({
                     return null;
                   }}
                 />
-                <Bar dataKey="active" fill="#0D9488" radius={[6, 6, 0, 0]} barSize={24} />
+                <Bar dataKey="active" fill="#087A4B" radius={[6, 6, 0, 0]} barSize={24} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -2166,7 +2166,7 @@ function TabCompanies({ dbCompanies, searchTerm, onRefresh }) {
           </span>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="h-10 px-4 bg-primary hover:bg-[#0f766e] text-white font-medium text-sm rounded-lg shadow-sm shadow-primary/20 flex items-center gap-2 transition-all cursor-pointer">
+              <Button className="h-10 px-4 bg-primary hover:bg-[#07563B] text-white font-medium text-sm rounded-lg shadow-sm shadow-primary/20 flex items-center gap-2 transition-all cursor-pointer">
                 <Plus className="w-4 h-4" />
                 <span>Add Company</span>
               </Button>
@@ -2190,7 +2190,7 @@ function TabCompanies({ dbCompanies, searchTerm, onRefresh }) {
                   <Button variant="outline" onClick={(e) => handleSubmit(e, true)} className="h-10 border-border/80 bg-background/60 text-foreground font-medium text-sm rounded-lg hover:bg-muted">
                     Add & Continue
                   </Button>
-                  <Button onClick={(e) => handleSubmit(e, false)} className="h-10 px-5 bg-primary text-white hover:bg-[#0f766e] font-semibold text-sm rounded-lg shadow-sm shadow-primary/20 transition-all">
+                  <Button onClick={(e) => handleSubmit(e, false)} className="h-10 px-5 bg-primary text-white hover:bg-[#07563B] font-semibold text-sm rounded-lg shadow-sm shadow-primary/20 transition-all">
                     Register Company
                   </Button>
                 </div>
@@ -2218,7 +2218,7 @@ function TabCompanies({ dbCompanies, searchTerm, onRefresh }) {
               <Button variant="ghost" onClick={() => setEditDialogOpen(false)} className="h-10 rounded-lg text-muted-foreground hover:bg-muted font-medium text-sm">
                 Cancel
               </Button>
-              <Button onClick={handleEditSubmit} className="h-10 px-5 bg-primary text-white hover:bg-[#0f766e] font-semibold text-sm rounded-lg shadow-sm shadow-primary/20 transition-all">
+              <Button onClick={handleEditSubmit} className="h-10 px-5 bg-primary text-white hover:bg-[#07563B] font-semibold text-sm rounded-lg shadow-sm shadow-primary/20 transition-all">
                 Save Changes
               </Button>
             </div>
@@ -2460,7 +2460,7 @@ function TabCompanies({ dbCompanies, searchTerm, onRefresh }) {
                   <span>{credentialResult.emailSent ? `Credentials dispatched to ${credentialResult.email}` : (credentialResult.emailNote || 'Email notification pending')}</span>
                 </div>
                 <p className="text-[10px] text-muted-foreground text-center">The owner must change this initial password upon first sign-in.</p>
-                <Button onClick={() => setCredDialogOpen(false)} className="w-full h-10 bg-primary text-white hover:bg-[#0f766e] font-semibold text-sm rounded-lg mt-2 shadow-sm shadow-primary/20">
+                <Button onClick={() => setCredDialogOpen(false)} className="w-full h-10 bg-primary text-white hover:bg-[#07563B] font-semibold text-sm rounded-lg mt-2 shadow-sm shadow-primary/20">
                   Dismiss
                 </Button>
               </div>
@@ -2505,7 +2505,7 @@ function TabCompanies({ dbCompanies, searchTerm, onRefresh }) {
               <Button
                 onClick={handleToggleStatus}
                 disabled={otpLoading || otpCode.length !== 6}
-                className={`h-10 font-semibold text-sm rounded-lg ${otpTarget?.status === 'blocked' ? 'bg-primary hover:bg-[#0f766e] text-white shadow-sm shadow-primary/20' : 'bg-amber-600 hover:bg-amber-700 text-white'}`}
+                className={`h-10 font-semibold text-sm rounded-lg ${otpTarget?.status === 'blocked' ? 'bg-primary hover:bg-[#07563B] text-white shadow-sm shadow-primary/20' : 'bg-amber-600 hover:bg-amber-700 text-white'}`}
               >
                 {otpLoading ? 'Verifying…' : otpTarget?.status === 'blocked' ? 'Unblock' : 'Confirm Block'}
               </Button>
@@ -2579,7 +2579,7 @@ function TabCompanies({ dbCompanies, searchTerm, onRefresh }) {
                       ))}
                     </div>
                   )}
-                  <Button onClick={() => { setDeleteDialogOpen(false); setDeleteResult(null); }} className="w-full h-10 bg-primary text-white hover:bg-[#0f766e] font-semibold text-sm rounded-lg mt-2 shadow-sm shadow-primary/20">
+                  <Button onClick={() => { setDeleteDialogOpen(false); setDeleteResult(null); }} className="w-full h-10 bg-primary text-white hover:bg-[#07563B] font-semibold text-sm rounded-lg mt-2 shadow-sm shadow-primary/20">
                     Done
                   </Button>
                 </div>
@@ -2725,7 +2725,7 @@ function TabCompanies({ dbCompanies, searchTerm, onRefresh }) {
                 disabled={backupActionLoading || backupActionOtp.length !== 6}
                 className={`h-10 font-semibold text-sm rounded-lg text-white ${
                   backupActionType === 'download' ? 'bg-sky-600 hover:bg-sky-700' :
-                  backupActionType === 'restore' ? 'bg-primary hover:bg-[#0f766e] shadow-sm shadow-primary/20' :
+                  backupActionType === 'restore' ? 'bg-primary hover:bg-[#07563B] shadow-sm shadow-primary/20' :
                   'bg-rose-600 hover:bg-rose-700'
                 }`}
               >
@@ -3816,7 +3816,7 @@ function TabUsers({ dbUsers = [], dbCompanies = [], searchTerm = '', onRefresh }
                 <Button
                   type="submit"
                   disabled={editSaving}
-                  className="h-10 px-5 bg-primary hover:bg-[#0f766e] text-white font-semibold text-xs rounded-lg shadow-sm shadow-primary/20 transition-all flex items-center gap-2"
+                  className="h-10 px-5 bg-primary hover:bg-[#07563B] text-white font-semibold text-xs rounded-lg shadow-sm shadow-primary/20 transition-all flex items-center gap-2"
                 >
                   {editSaving ? 'Saving Changes…' : 'Save Changes'}
                 </Button>
@@ -3977,7 +3977,7 @@ function TabUsers({ dbUsers = [], dbCompanies = [], searchTerm = '', onRefresh }
                   type="button"
                   onClick={handleSaveReplace}
                   disabled={replaceSaving}
-                  className="h-10 px-5 bg-primary hover:bg-[#0f766e] text-white font-semibold text-xs rounded-lg shadow-sm shadow-primary/20 transition-all flex items-center gap-2"
+                  className="h-10 px-5 bg-primary hover:bg-[#07563B] text-white font-semibold text-xs rounded-lg shadow-sm shadow-primary/20 transition-all flex items-center gap-2"
                 >
                   {replaceSaving ? 'Processing Replace…' : 'Confirm Replacement'}
                 </Button>
@@ -4934,7 +4934,7 @@ function TabAnalytics({ dbCompanies = [], dbUsers = [], dbAttendance = [], dbTas
                 Growth Metrics (Companies & Users)
               </CardTitle>
               <div className="flex items-center gap-3 text-xs">
-                <span className="flex items-center gap-1.5 text-muted-foreground"><span className="w-2.5 h-2.5 rounded-full bg-[#0D9488]"></span> Companies</span>
+                <span className="flex items-center gap-1.5 text-muted-foreground"><span className="w-2.5 h-2.5 rounded-full bg-[#087A4B]"></span> Companies</span>
                 <span className="flex items-center gap-1.5 text-muted-foreground"><span className="w-2.5 h-2.5 rounded-full bg-[#0284c7]"></span> Users</span>
               </div>
             </div>
@@ -4962,7 +4962,7 @@ function TabAnalytics({ dbCompanies = [], dbUsers = [], dbAttendance = [], dbTas
                           <div className="space-y-2">
                             <div className="flex items-center justify-between gap-4">
                               <div className="flex items-center gap-2">
-                                <span className="w-2.5 h-2.5 rounded-full bg-[#0D9488] shrink-0" />
+                                <span className="w-2.5 h-2.5 rounded-full bg-[#087A4B] shrink-0" />
                                 <span className="text-slate-300 font-medium">Companies:</span>
                               </div>
                               <span className="font-bold text-slate-100 font-mono text-sm">
@@ -4985,7 +4985,7 @@ function TabAnalytics({ dbCompanies = [], dbUsers = [], dbAttendance = [], dbTas
                     return null;
                   }}
                 />
-                <Line type="monotone" dataKey="companies" stroke="#0D9488" strokeWidth={3} dot={{ r: 4, fill: '#0D9488' }} />
+                <Line type="monotone" dataKey="companies" stroke="#087A4B" strokeWidth={3} dot={{ r: 4, fill: '#087A4B' }} />
                 <Line type="monotone" dataKey="users" stroke="#0284c7" strokeWidth={3} dot={{ r: 4, fill: '#0284c7' }} />
               </LineChart>
             </ResponsiveContainer>
@@ -5007,8 +5007,8 @@ function TabAnalytics({ dbCompanies = [], dbUsers = [], dbAttendance = [], dbTas
               <AreaChart data={operationalIntensityData}>
                 <defs>
                   <linearGradient id="colorIntensity" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0D9488" stopOpacity={0.4}/>
-                    <stop offset="95%" stopColor="#0D9488" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#087A4B" stopOpacity={0.4}/>
+                    <stop offset="95%" stopColor="#087A4B" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#2A3D48" opacity={0.4} vertical={false} />
@@ -5052,7 +5052,7 @@ function TabAnalytics({ dbCompanies = [], dbUsers = [], dbAttendance = [], dbTas
                     return null;
                   }}
                 />
-                <Area type="monotone" dataKey="intensity" stroke="#0D9488" fillOpacity={1} fill="url(#colorIntensity)" strokeWidth={2.5} />
+                <Area type="monotone" dataKey="intensity" stroke="#087A4B" fillOpacity={1} fill="url(#colorIntensity)" strokeWidth={2.5} />
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>

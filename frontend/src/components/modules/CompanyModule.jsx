@@ -1106,7 +1106,7 @@ export default function CompanyModule({ userProfile }) {
                     <MapPin className="w-4 h-4 text-emerald-500 shrink-0" />
                     <span>Set Office Location</span>
                   </Button>
-                  <Button onClick={handleSubmit} disabled={updateCompany.isPending} size="sm" className="bg-primary hover:bg-[#0F766E] text-white font-semibold rounded-xl shadow-xs px-4 h-9 transition-all w-full sm:w-auto">
+                  <Button onClick={handleSubmit} disabled={updateCompany.isPending} size="sm" className="bg-primary hover:bg-[#07563B] text-white font-semibold rounded-xl shadow-xs px-4 h-9 transition-all w-full sm:w-auto">
                     {updateCompany.isPending ? 'Saving...' : 'Update Company'}
                   </Button>
                 </div>
@@ -1345,7 +1345,7 @@ export default function CompanyModule({ userProfile }) {
                 <p className="text-xs text-muted-foreground">Internal policies, guidelines, and compliance documents</p>
               </div>
               {(isAdmin || isOwner) && (
-                <Button size="sm" className="bg-primary hover:bg-[#0F766E] text-white font-semibold rounded-xl shadow-xs px-4 h-9 transition-all" onClick={() => setPolicyForm({ title: '', content: '', effectiveDate: new Date().toISOString().slice(0, 10) })}>
+                <Button size="sm" className="bg-primary hover:bg-[#07563B] text-white font-semibold rounded-xl shadow-xs px-4 h-9 transition-all" onClick={() => setPolicyForm({ title: '', content: '', effectiveDate: new Date().toISOString().slice(0, 10) })}>
                     <Plus className="h-4 w-4 mr-2" />
                     Add New Policy
                 </Button>
@@ -1377,7 +1377,7 @@ export default function CompanyModule({ userProfile }) {
                   <Button variant="ghost" size="sm" onClick={() => { setPolicyForm(null); setEditingPolicyIdx(null); }} className="rounded-xl hover:bg-secondary">
                     <X className="h-4 w-4 mr-1" /> Cancel
                   </Button>
-                  <Button size="sm" onClick={handleSavePolicy} disabled={savingPolicy} className="bg-primary hover:bg-[#0F766E] text-white font-semibold rounded-xl shadow-xs px-4 h-9">
+                  <Button size="sm" onClick={handleSavePolicy} disabled={savingPolicy} className="bg-primary hover:bg-[#07563B] text-white font-semibold rounded-xl shadow-xs px-4 h-9">
                     <Save className="h-4 w-4 mr-1" /> {savingPolicy ? 'Saving...' : 'Save Policy'}
                   </Button>
                 </div>
@@ -1517,7 +1517,7 @@ export default function CompanyModule({ userProfile }) {
                                     size="sm"
                                     onClick={() => handleAllowEmployee(ack._id, ack.userName)}
                                     disabled={allowMutation.isPending}
-                                    className="bg-primary hover:bg-[#0F766E] text-white text-xs h-8 px-3 rounded-xl shadow-xs gap-1"
+                                    className="bg-primary hover:bg-[#07563B] text-white text-xs h-8 px-3 rounded-xl shadow-xs gap-1"
                                   >
                                     <Check className="w-3.5 h-3.5" />
                                     <span>Allow to Work</span>

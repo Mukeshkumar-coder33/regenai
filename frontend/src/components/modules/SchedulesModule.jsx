@@ -1153,7 +1153,7 @@ export default function SchedulesModule({ userProfile }) {
       {/* 1. Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-3 border-b border-[#DFE8EC] dark:border-[#2A3D48]">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-[#0D9488]/10 text-[#0D9488] dark:text-[#14B8A6] flex items-center justify-center shrink-0 shadow-2xs">
+          <div className="w-11 h-11 rounded-2xl bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] flex items-center justify-center shrink-0 shadow-2xs">
             <ClipboardList className="h-5 w-5" />
           </div>
           <div>
@@ -1172,7 +1172,7 @@ export default function SchedulesModule({ userProfile }) {
                 <DialogTrigger asChild>
                   <Button 
                     onClick={() => handleOpenDialog()} 
-                    className="bg-[#0D9488] hover:bg-[#0F766E] text-white shadow-sm font-medium transition-all px-4 py-2 h-10 rounded-lg flex items-center justify-center gap-2 w-full sm:w-auto shrink-0"
+                    className="bg-[#087A4B] hover:bg-[#07563B] text-white shadow-sm font-medium transition-all px-4 py-2 h-10 rounded-lg flex items-center justify-center gap-2 w-full sm:w-auto shrink-0"
                   >
                     <Plus className="h-4 w-4" />
                     <span>Add Task</span>
@@ -1272,7 +1272,7 @@ export default function SchedulesModule({ userProfile }) {
                             </SelectContent>
                           </Select>
                         </div>
-                        <p className="text-xs text-[#0D9488] font-medium flex items-center gap-1">
+                        <p className="text-xs text-[#087A4B] font-medium flex items-center gap-1">
                           <Sparkles className="w-3 h-3" /> End Date & End Time auto-fill automatically
                         </p>
                       </div>
@@ -1319,7 +1319,7 @@ export default function SchedulesModule({ userProfile }) {
                         <p className="text-[11px] text-muted-foreground">Auto-calculated cutoff time</p>
                       </div>
                     </div>
-                    <Button type="submit" className="w-full bg-[#0D9488] hover:bg-[#0F766E] text-white" disabled={createTask.isPending || updateTask.isPending}>
+                    <Button type="submit" className="w-full bg-[#087A4B] hover:bg-[#07563B] text-white" disabled={createTask.isPending || updateTask.isPending}>
                       {(createTask.isPending || updateTask.isPending) ? 'Saving...' : 'Save Task'}
                     </Button>
                   </form>
@@ -1338,14 +1338,14 @@ export default function SchedulesModule({ userProfile }) {
             onClick={() => setActiveSegment('projects')}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs md:text-sm font-semibold transition-all ${
               activeSegment === 'projects'
-                ? 'bg-white dark:bg-[#1D303B] text-[#0D9488] dark:text-[#14B8A6] shadow-xs'
+                ? 'bg-white dark:bg-[#1D303B] text-[#087A4B] dark:text-[#14B8A6] shadow-xs'
                 : 'text-[#64748B] dark:text-[#A6B5C0] hover:text-[#172B3A] dark:hover:text-white'
             }`}
           >
             <FolderKanban className="w-4 h-4" />
             <span>Projects</span>
             <Badge variant="outline" className={`ml-1 text-[10px] h-4.5 px-1.5 ${
-              activeSegment === 'projects' ? 'border-[#0D9488]/30 bg-[#0D9488]/10 text-[#0D9488]' : 'text-muted-foreground'
+              activeSegment === 'projects' ? 'border-[#C9DED1] bg-[#E8F3EC] text-[#087A4B]' : 'text-muted-foreground'
             }`}>
               {projects.length}
             </Badge>
@@ -1356,14 +1356,14 @@ export default function SchedulesModule({ userProfile }) {
             onClick={() => setActiveSegment('general')}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs md:text-sm font-semibold transition-all ${
               activeSegment === 'general'
-                ? 'bg-white dark:bg-[#1D303B] text-[#0D9488] dark:text-[#14B8A6] shadow-xs'
+                ? 'bg-white dark:bg-[#1D303B] text-[#087A4B] dark:text-[#14B8A6] shadow-xs'
                 : 'text-[#64748B] dark:text-[#A6B5C0] hover:text-[#172B3A] dark:hover:text-white'
             }`}
           >
             <ClipboardList className="w-4 h-4" />
             <span>General Tasks</span>
             <Badge variant="outline" className={`ml-1 text-[10px] h-4.5 px-1.5 ${
-              activeSegment === 'general' ? 'border-[#0D9488]/30 bg-[#0D9488]/10 text-[#0D9488]' : 'text-muted-foreground'
+              activeSegment === 'general' ? 'border-[#C9DED1] bg-[#E8F3EC] text-[#087A4B]' : 'text-muted-foreground'
             }`}>
               {taskMetrics.total}
             </Badge>
@@ -1389,7 +1389,7 @@ export default function SchedulesModule({ userProfile }) {
             <p className="text-xs font-medium text-[#64748B] dark:text-[#A6B5C0]">Total Tasks</p>
             <p className="text-2xl font-semibold text-[#172B3A] dark:text-[#E8F0F4]">{taskMetrics.total}</p>
           </div>
-          <div className="w-10 h-10 rounded-lg bg-[#0D9488]/10 text-[#0D9488] dark:text-[#14B8A6] flex items-center justify-center">
+          <div className="w-10 h-10 rounded-lg bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] flex items-center justify-center">
             <Layers className="w-5 h-5" />
           </div>
         </div>
@@ -1436,7 +1436,7 @@ export default function SchedulesModule({ userProfile }) {
               placeholder="Search tasks by title, description, or assignee..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 h-9 text-xs md:text-sm bg-[#F4F8FA] dark:bg-[#1D303B] border-[#DFE8EC] dark:border-[#2A3D48] rounded-lg focus-visible:ring-1 focus-visible:ring-[#0D9488]"
+              className="pl-9 h-9 text-xs md:text-sm bg-[#F4F8FA] dark:bg-[#1D303B] border-[#DFE8EC] dark:border-[#2A3D48] rounded-lg focus-visible:ring-1 focus-visible:ring-[#087A4B]"
             />
             {searchQuery && (
               <button
@@ -1500,7 +1500,7 @@ export default function SchedulesModule({ userProfile }) {
                 variant="ghost"
                 size="sm"
                 onClick={handleClearFilters}
-                className="h-9 px-2.5 text-xs text-[#64748B] hover:text-[#0D9488] dark:hover:text-[#14B8A6] flex items-center gap-1.5"
+                className="h-9 px-2.5 text-xs text-[#64748B] hover:text-[#087A4B] dark:hover:text-[#14B8A6] flex items-center gap-1.5"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Reset</span>
@@ -1573,7 +1573,7 @@ export default function SchedulesModule({ userProfile }) {
           ))
         ) : filteredAndSortedTasks.length === 0 ? (
           <div className="col-span-full bg-white dark:bg-[#15232D] border border-dashed border-[#DFE8EC] dark:border-[#2A3D48] rounded-2xl p-8 md:p-12 text-center space-y-4">
-            <div className="w-14 h-14 mx-auto rounded-full bg-[#0D9488]/10 text-[#0D9488] dark:text-[#14B8A6] flex items-center justify-center">
+            <div className="w-14 h-14 mx-auto rounded-full bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] flex items-center justify-center">
               <CalendarCheck className="w-7 h-7" />
             </div>
             <div className="space-y-1 max-w-md mx-auto">
@@ -1598,7 +1598,7 @@ export default function SchedulesModule({ userProfile }) {
             ) : canManage && (
               <Button 
                 onClick={() => handleOpenDialog()}
-                className="bg-[#0D9488] hover:bg-[#0F766E] text-white text-xs h-9"
+                className="bg-[#087A4B] hover:bg-[#07563B] text-white text-xs h-9"
               >
                 <Plus className="w-3.5 h-3.5 mr-1.5" />
                 Create First Task
@@ -1623,7 +1623,7 @@ export default function SchedulesModule({ userProfile }) {
                     ? 'bg-emerald-50/20 dark:bg-emerald-950/10 border-emerald-500/25 dark:border-emerald-900/40 hover:border-emerald-500/50 hover:shadow-md'
                     : isExpired
                     ? 'bg-rose-50/20 dark:bg-rose-950/10 border-rose-500/30 dark:border-rose-900/40 hover:border-rose-500/50 hover:shadow-md'
-                    : 'bg-white dark:bg-[#15232D] border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#0D9488]/40 dark:hover:border-[#14B8A6]/40 hover:shadow-md'
+                    : 'bg-white dark:bg-[#15232D] border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#C9DED1] dark:hover:border-[#14B8A6]/40 hover:shadow-md'
                 }`}
               >
                 {/* Status top accent stripe */}
@@ -1631,7 +1631,7 @@ export default function SchedulesModule({ userProfile }) {
                   isCompleted ? 'bg-emerald-500' :
                   isExpired ? 'bg-rose-500' :
                   isInProgress ? 'bg-teal-500' :
-                  'bg-[#0D9488]/40'
+                  'bg-[#C9DED1]'
                 }`} />
 
                 <CardHeader className="p-5 pb-3 space-y-3">
@@ -1685,7 +1685,7 @@ export default function SchedulesModule({ userProfile }) {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7 text-[#64748B] hover:text-[#0D9488] dark:hover:text-[#14B8A6] rounded-md"
+                          className="h-7 w-7 text-[#64748B] hover:text-[#087A4B] dark:hover:text-[#14B8A6] rounded-md"
                           onClick={() => handleOpenDialog(task)}
                           title="Edit Task"
                         >
@@ -1707,7 +1707,7 @@ export default function SchedulesModule({ userProfile }) {
                   {/* Task Title & Assignor Attribution */}
                   <div className="space-y-1">
                     <h3
-                      className="text-base font-medium text-[#172B3A] dark:text-[#E8F0F4] group-hover:text-[#0D9488] dark:group-hover:text-[#14B8A6] transition-colors cursor-pointer line-clamp-1"
+                      className="text-base font-medium text-[#172B3A] dark:text-[#E8F0F4] group-hover:text-[#087A4B] dark:group-hover:text-[#14B8A6] transition-colors cursor-pointer line-clamp-1"
                       onClick={() => setSelectedTask(task)}
                       title="Click to view details"
                     >
@@ -1736,7 +1736,7 @@ export default function SchedulesModule({ userProfile }) {
                         Assignee:
                       </span>
                       <div className="flex items-center gap-1.5 font-medium text-[#172B3A] dark:text-[#E8F0F4] truncate max-w-[65%]">
-                        <span className="w-4 h-4 rounded-full bg-[#0D9488]/15 text-[#0D9488] dark:text-[#14B8A6] flex items-center justify-center text-[9px] font-bold flex-shrink-0">
+                        <span className="w-4 h-4 rounded-full bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] flex items-center justify-center text-[9px] font-bold flex-shrink-0">
                           {assigneeInitials}
                         </span>
                         <span className="truncate" title={assigneeDisplayName}>
@@ -1806,7 +1806,7 @@ export default function SchedulesModule({ userProfile }) {
                           )}
                           <Button
                             size="sm"
-                            className="bg-[#0D9488] hover:bg-[#0F766E] text-white text-xs h-7 px-2.5 rounded-md shadow-sm flex items-center gap-1"
+                            className="bg-[#087A4B] hover:bg-[#07563B] text-white text-xs h-7 px-2.5 rounded-md shadow-sm flex items-center gap-1"
                             onClick={() => handleMarkCompleted(task)}
                             disabled={updateTask.isPending}
                           >
@@ -1828,7 +1828,7 @@ export default function SchedulesModule({ userProfile }) {
                     <button
                       type="button"
                       onClick={() => setSelectedTask(task)}
-                      className="text-xs font-medium text-[#0D9488] dark:text-[#14B8A6] hover:text-[#0F766E] transition-colors flex items-center gap-1 ml-auto"
+                      className="text-xs font-medium text-[#087A4B] dark:text-[#14B8A6] hover:text-[#07563B] transition-colors flex items-center gap-1 ml-auto"
                     >
                       <span>Details & Updates</span>
                       <ChevronRight className="w-3.5 h-3.5" />
@@ -1899,7 +1899,7 @@ export default function SchedulesModule({ userProfile }) {
                   placeholder="Search projects by name, description, or team member..."
                   value={projectSearch}
                   onChange={(e) => setProjectSearch(e.target.value)}
-                  className="pl-9 h-9 text-xs md:text-sm bg-[#F4F8FA] dark:bg-[#1D303B] border-[#DFE8EC] dark:border-[#2A3D48] rounded-lg focus-visible:ring-1 focus-visible:ring-[#0D9488]"
+                  className="pl-9 h-9 text-xs md:text-sm bg-[#F4F8FA] dark:bg-[#1D303B] border-[#DFE8EC] dark:border-[#2A3D48] rounded-lg focus-visible:ring-1 focus-visible:ring-[#087A4B]"
                 />
                 {projectSearch && (
                   <button
@@ -1932,7 +1932,7 @@ export default function SchedulesModule({ userProfile }) {
                       setProjectSearch('');
                       setProjectStatusFilter('all');
                     }}
-                    className="h-9 px-2.5 text-xs text-[#64748B] hover:text-[#0D9488] flex items-center gap-1.5"
+                    className="h-9 px-2.5 text-xs text-[#64748B] hover:text-[#087A4B] flex items-center gap-1.5"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
                     <span>Reset</span>
@@ -1945,7 +1945,7 @@ export default function SchedulesModule({ userProfile }) {
           {/* Projects View */}
           {visibleProjects.length === 0 ? (
             <div className="bg-white dark:bg-[#15232D] border border-dashed border-[#DFE8EC] dark:border-[#2A3D48] rounded-2xl p-10 text-center space-y-3">
-              <div className="w-14 h-14 mx-auto rounded-full bg-[#0D9488]/10 text-[#0D9488] dark:text-[#14B8A6] flex items-center justify-center">
+              <div className="w-14 h-14 mx-auto rounded-full bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] flex items-center justify-center">
                 <FolderKanban className="w-7 h-7" />
               </div>
               <div className="space-y-1 max-w-md mx-auto">
@@ -1982,17 +1982,17 @@ export default function SchedulesModule({ userProfile }) {
                       setSelectedScheduleProjectId(p.id);
                       setSelectedProjectEmployeeFilter('all');
                     }}
-                    className="p-4 rounded-2xl border border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] hover:border-[#0D9488] hover:shadow-sm transition-all text-left flex items-center justify-between group shadow-2xs cursor-pointer"
+                    className="p-4 rounded-2xl border border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] hover:border-[#087A4B] hover:shadow-sm transition-all text-left flex items-center justify-between group shadow-2xs cursor-pointer"
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-9 h-9 rounded-xl bg-[#0D9488]/10 text-[#0D9488] flex items-center justify-center shrink-0 group-hover:bg-[#0D9488] group-hover:text-white transition-colors">
+                      <div className="w-9 h-9 rounded-xl bg-[#E8F3EC] text-[#087A4B] flex items-center justify-center shrink-0 group-hover:bg-[#087A4B] group-hover:text-white transition-colors">
                         <FolderKanban className="w-4 h-4" />
                       </div>
-                      <span className="text-sm font-bold text-[#172B3A] dark:text-[#E8F0F4] group-hover:text-[#0D9488] transition-colors truncate">
+                      <span className="text-sm font-bold text-[#172B3A] dark:text-[#E8F0F4] group-hover:text-[#087A4B] transition-colors truncate">
                         {p.name}
                       </span>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-[#64748B] group-hover:text-[#0D9488] group-hover:translate-x-0.5 transition-all shrink-0 ml-2" />
+                    <ChevronRight className="w-4 h-4 text-[#64748B] group-hover:text-[#087A4B] group-hover:translate-x-0.5 transition-all shrink-0 ml-2" />
                   </button>
                 ))}
               </div>
@@ -2049,7 +2049,7 @@ export default function SchedulesModule({ userProfile }) {
                               <Button
                                 size="sm"
                                 onClick={() => handleOpenAddProjectTask(activeSelectedProject)}
-                                className="bg-[#0D9488] hover:bg-[#0F766E] text-white text-xs h-9 px-3.5 rounded-xl shadow-xs gap-1.5"
+                                className="bg-[#087A4B] hover:bg-[#07563B] text-white text-xs h-9 px-3.5 rounded-xl shadow-xs gap-1.5"
                               >
                                 <Plus className="w-4 h-4" />
                                 <span>Add Project Task</span>
@@ -2062,7 +2062,7 @@ export default function SchedulesModule({ userProfile }) {
                         <div className="flex flex-wrap items-center gap-3 text-xs text-[#64748B] dark:text-[#A6B5C0] mt-3">
                           {activeSelectedProject.startDate && (
                             <span className="inline-flex items-center gap-1 bg-card px-2.5 py-1 rounded-xl border border-[#DFE8EC] dark:border-[#2A3D48]">
-                              <Calendar className="w-3.5 h-3.5 text-[#0D9488]" />
+                              <Calendar className="w-3.5 h-3.5 text-[#087A4B]" />
                               Start: {formatDisplayDate(activeSelectedProject.startDate)}
                             </span>
                           )}
@@ -2093,7 +2093,7 @@ export default function SchedulesModule({ userProfile }) {
                     <Card className="rounded-2xl border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] shadow-xs">
                       <CardHeader className="p-4 sm:p-5 border-b border-[#DFE8EC] dark:border-[#2A3D48] flex flex-row items-center justify-between">
                         <div className="flex items-center gap-2.5">
-                          <div className="p-2 rounded-xl bg-[#0D9488]/10 text-[#0D9488]">
+                          <div className="p-2 rounded-xl bg-[#E8F3EC] text-[#087A4B]">
                             <Users className="w-4 h-4" />
                           </div>
                           <div>
@@ -2105,7 +2105,7 @@ export default function SchedulesModule({ userProfile }) {
                             </p>
                           </div>
                         </div>
-                        <Badge className="bg-[#0D9488]/10 text-[#0D9488] border-[#0D9488]/20 font-bold px-3 py-1">
+                        <Badge className="bg-[#E8F3EC] text-[#087A4B] border-[#087A4B]/20 font-bold px-3 py-1">
                           {activeSelectedProjectEmployees.length} Working
                         </Badge>
                       </CardHeader>
@@ -2122,7 +2122,7 @@ export default function SchedulesModule({ userProfile }) {
                                 onClick={() => setSelectedProjectEmployeeFilter('all')}
                                 className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border ${
                                   selectedProjectEmployeeFilter === 'all'
-                                    ? 'bg-[#0D9488] text-white border-[#0D9488] shadow-xs'
+                                    ? 'bg-[#087A4B] text-white border-[#087A4B] shadow-xs'
                                     : 'bg-[#F4F8FA] dark:bg-[#1D303B] text-[#64748B] dark:text-[#A6B5C0] border-[#DFE8EC] dark:border-[#2A3D48]'
                                 }`}
                               >
@@ -2147,11 +2147,11 @@ export default function SchedulesModule({ userProfile }) {
                                     onClick={() => setSelectedProjectEmployeeFilter(isEmpActive ? 'all' : eId)}
                                     className={`p-3 rounded-xl border flex items-center gap-3 transition-all cursor-pointer ${
                                       isEmpActive
-                                        ? 'bg-[#0D9488]/15 border-[#0D9488] ring-1 ring-[#0D9488]/30'
-                                        : 'bg-[#F4F8FA]/60 dark:bg-[#1D303B]/40 border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#0D9488]/40'
+                                        ? 'bg-[#E8F3EC] border-[#087A4B] ring-1 ring-[#087A4B]/30'
+                                        : 'bg-[#F4F8FA]/60 dark:bg-[#1D303B]/40 border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#C9DED1]'
                                     }`}
                                   >
-                                    <div className="w-10 h-10 rounded-full bg-[#0D9488]/15 text-[#0D9488] flex items-center justify-center font-bold text-sm shrink-0 overflow-hidden">
+                                    <div className="w-10 h-10 rounded-full bg-[#E8F3EC] text-[#087A4B] flex items-center justify-center font-bold text-sm shrink-0 overflow-hidden">
                                       {emp.avatar ? (
                                         <img src={emp.avatar} alt={emp.name} className="w-full h-full object-cover" />
                                       ) : (
@@ -2163,7 +2163,7 @@ export default function SchedulesModule({ userProfile }) {
                                       <p className="text-[11px] text-[#64748B] dark:text-[#A6B5C0] truncate capitalize">
                                         {emp.role || 'Staff'}
                                       </p>
-                                      <div className="mt-1 flex items-center gap-1.5 text-[10px] font-semibold text-[#0D9488]">
+                                      <div className="mt-1 flex items-center gap-1.5 text-[10px] font-semibold text-[#087A4B]">
                                         <span>{empTasks.length} Tasks</span>
                                         <span>•</span>
                                         <span className="text-emerald-600 dark:text-emerald-400">{empCompleted} Done</span>
@@ -2182,7 +2182,7 @@ export default function SchedulesModule({ userProfile }) {
                     <Card className="rounded-2xl border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] shadow-xs">
                       <CardHeader className="p-4 sm:p-5 border-b border-[#DFE8EC] dark:border-[#2A3D48] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-2.5">
-                          <div className="p-2 rounded-xl bg-[#0D9488]/10 text-[#0D9488]">
+                          <div className="p-2 rounded-xl bg-[#E8F3EC] text-[#087A4B]">
                             <Briefcase className="w-4 h-4" />
                           </div>
                           <div>
@@ -2211,7 +2211,7 @@ export default function SchedulesModule({ userProfile }) {
                               onClick={() => setSelectedProjectTaskStatusFilter(tab.key)}
                               className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
                                 selectedProjectTaskStatusFilter === tab.key
-                                  ? 'bg-[#0D9488] text-white shadow-xs'
+                                  ? 'bg-[#087A4B] text-white shadow-xs'
                                   : 'text-[#64748B] dark:text-[#A6B5C0] hover:text-[#172B3A] dark:hover:text-[#E8F0F4]'
                               }`}
                             >
@@ -2257,7 +2257,7 @@ export default function SchedulesModule({ userProfile }) {
                                       <div className="flex items-center gap-2 flex-wrap">
                                         <h5 
                                           onClick={() => setSelectedTask(task)}
-                                          className="text-sm font-bold text-[#172B3A] dark:text-[#E8F0F4] hover:text-[#0D9488] cursor-pointer"
+                                          className="text-sm font-bold text-[#172B3A] dark:text-[#E8F0F4] hover:text-[#087A4B] cursor-pointer"
                                         >
                                           {task.title}
                                         </h5>
@@ -2316,7 +2316,7 @@ export default function SchedulesModule({ userProfile }) {
                                     <div className="flex items-center gap-2 flex-wrap">
                                       <span className="text-[11px] font-medium text-[#64748B] dark:text-[#A6B5C0]">Assigned to:</span>
                                       <span className="inline-flex items-center gap-1 text-[11px] font-medium bg-[#F4F8FA] dark:bg-[#1D303B] px-2 py-0.5 rounded-lg border border-[#DFE8EC] dark:border-[#2A3D48]">
-                                        <User className="w-3 h-3 text-[#0D9488]" />
+                                        <User className="w-3 h-3 text-[#087A4B]" />
                                         {assigneeName}
                                       </span>
                                     </div>
@@ -2372,7 +2372,7 @@ export default function SchedulesModule({ userProfile }) {
                                             <Button
                                               size="sm"
                                               onClick={() => handleStartTask(task)}
-                                              className="h-7 px-2.5 bg-[#0D9488] hover:bg-[#0F766E] text-white text-[11px] gap-1"
+                                              className="h-7 px-2.5 bg-[#087A4B] hover:bg-[#07563B] text-white text-[11px] gap-1"
                                             >
                                               <Play className="w-3 h-3" />
                                               <span>Start</span>
@@ -2408,7 +2408,7 @@ export default function SchedulesModule({ userProfile }) {
         <DialogContent className="w-[95vw] max-w-2xl bg-white dark:bg-[#15232D] border-[#DFE8EC] dark:border-[#2A3D48] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-base md:text-lg text-[#172B3A] dark:text-[#E8F0F4] flex items-center gap-2">
-              <FolderKanban className="w-5 h-5 text-[#0D9488]" />
+              <FolderKanban className="w-5 h-5 text-[#087A4B]" />
               <span>{editingProject ? 'Edit Project' : 'Create New Project'}</span>
             </DialogTitle>
           </DialogHeader>
@@ -2539,13 +2539,13 @@ export default function SchedulesModule({ userProfile }) {
                         onClick={() => handleToggleProjectMember(user)}
                         className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all text-xs border ${
                           isSelected
-                            ? 'bg-[#0D9488]/10 border-[#0D9488]/40 text-[#0D9488] font-medium'
+                            ? 'bg-[#E8F3EC] border-[#087A4B]/40 text-[#087A4B] font-medium'
                             : 'bg-white dark:bg-[#15232D] border-transparent hover:border-[#DFE8EC] dark:hover:border-[#2A3D48] text-foreground'
                         }`}
                       >
                         <div className="flex items-center gap-2">
                           <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                            isSelected ? 'bg-[#0D9488] text-white' : 'bg-muted text-muted-foreground'
+                            isSelected ? 'bg-[#087A4B] text-white' : 'bg-muted text-muted-foreground'
                           }`}>
                             {(user.name || user.username || 'U').slice(0, 1).toUpperCase()}
                           </div>
@@ -2556,7 +2556,7 @@ export default function SchedulesModule({ userProfile }) {
                         </div>
 
                         <div className={`w-4 h-4 rounded border flex items-center justify-center ${
-                          isSelected ? 'bg-[#0D9488] border-[#0D9488] text-white' : 'border-muted-foreground'
+                          isSelected ? 'bg-[#087A4B] border-[#087A4B] text-white' : 'border-muted-foreground'
                         }`}>
                           {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
                         </div>
@@ -2571,7 +2571,7 @@ export default function SchedulesModule({ userProfile }) {
 
             <Button
               type="submit"
-              className="w-full bg-[#0D9488] hover:bg-[#0F766E] text-white mt-4"
+              className="w-full bg-[#087A4B] hover:bg-[#07563B] text-white mt-4"
               disabled={createProjectMutation.isPending || updateProjectMutation.isPending}
             >
               {(createProjectMutation.isPending || updateProjectMutation.isPending) ? 'Saving Project...' : editingProject ? 'Update Project' : 'Create Project'}
@@ -2585,7 +2585,7 @@ export default function SchedulesModule({ userProfile }) {
         <DialogContent className="w-[95vw] max-w-2xl bg-white dark:bg-[#15232D] border-[#DFE8EC] dark:border-[#2A3D48] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-base md:text-lg text-[#172B3A] dark:text-[#E8F0F4] flex items-center gap-2">
-              <FolderKanban className="w-5 h-5 text-[#0D9488]" />
+              <FolderKanban className="w-5 h-5 text-[#087A4B]" />
               <span>Add Task: {selectedProjectForTask?.name}</span>
             </DialogTitle>
           </DialogHeader>
@@ -2630,12 +2630,12 @@ export default function SchedulesModule({ userProfile }) {
                   onClick={() => setProjectTaskFormData({ ...projectTaskFormData, assignToAll: true })}
                   className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
                     projectTaskFormData.assignToAll
-                      ? 'bg-[#0D9488]/10 border-[#0D9488] ring-1 ring-[#0D9488]'
-                      : 'bg-[#F4F8FA] dark:bg-[#1D303B] border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#0D9488]/40'
+                      ? 'bg-[#E8F3EC] border-[#087A4B] ring-1 ring-[#087A4B]'
+                      : 'bg-[#F4F8FA] dark:bg-[#1D303B] border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#C9DED1]'
                   }`}
                 >
                   <div className="flex items-center gap-2 font-medium text-xs md:text-sm text-[#172B3A] dark:text-[#E8F0F4]">
-                    <Users className="w-4 h-4 text-[#0D9488]" />
+                    <Users className="w-4 h-4 text-[#087A4B]" />
                     <span>All Employees in Project</span>
                   </div>
                   <p className="text-[11px] text-[#64748B] dark:text-[#A6B5C0] mt-1">
@@ -2647,12 +2647,12 @@ export default function SchedulesModule({ userProfile }) {
                   onClick={() => setProjectTaskFormData({ ...projectTaskFormData, assignToAll: false })}
                   className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
                     !projectTaskFormData.assignToAll
-                      ? 'bg-[#0D9488]/10 border-[#0D9488] ring-1 ring-[#0D9488]'
-                      : 'bg-[#F4F8FA] dark:bg-[#1D303B] border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#0D9488]/40'
+                      ? 'bg-[#E8F3EC] border-[#087A4B] ring-1 ring-[#087A4B]'
+                      : 'bg-[#F4F8FA] dark:bg-[#1D303B] border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#C9DED1]'
                   }`}
                 >
                   <div className="flex items-center gap-2 font-medium text-xs md:text-sm text-[#172B3A] dark:text-[#E8F0F4]">
-                    <User className="w-4 h-4 text-[#0D9488]" />
+                    <User className="w-4 h-4 text-[#087A4B]" />
                     <span>Specific Employee</span>
                   </div>
                   <p className="text-[11px] text-[#64748B] dark:text-[#A6B5C0] mt-1">
@@ -2742,7 +2742,7 @@ export default function SchedulesModule({ userProfile }) {
                     </SelectContent>
                   </Select>
                 </div>
-                <p className="text-[11px] text-[#0D9488] font-medium flex items-center gap-1">
+                <p className="text-[11px] text-[#087A4B] font-medium flex items-center gap-1">
                   <Sparkles className="w-3 h-3" /> End Date & Time auto-fill
                 </p>
               </div>
@@ -2794,7 +2794,7 @@ export default function SchedulesModule({ userProfile }) {
 
             <Button
               type="submit"
-              className="w-full bg-[#0D9488] hover:bg-[#0F766E] text-white mt-4"
+              className="w-full bg-[#087A4B] hover:bg-[#07563B] text-white mt-4"
               disabled={createProjectTaskMutation.isPending}
             >
               {createProjectTaskMutation.isPending 
@@ -2895,7 +2895,7 @@ export default function SchedulesModule({ userProfile }) {
                     <span className={`font-semibold ${
                       selectedTask && isTaskExpired(selectedTask) && toUiStatus(selectedTask.status, selectedTask) !== 'completed'
                         ? 'text-rose-600 dark:text-rose-400'
-                        : 'text-[#0D9488] dark:text-[#14B8A6]'
+                        : 'text-[#087A4B] dark:text-[#14B8A6]'
                     }`}>
                       {selectedTask && (formatDeadline(selectedTask) || `${formatDisplayDate(selectedTask.rawEndDate || selectedTask.endDate)} (End of day)`)}
                     </span>
@@ -2914,7 +2914,7 @@ export default function SchedulesModule({ userProfile }) {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h4 className="font-medium text-sm text-[#172B3A] dark:text-[#E8F0F4] flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-[#0D9488] dark:text-[#14B8A6]" />
+                  <Clock className="w-4 h-4 text-[#087A4B] dark:text-[#14B8A6]" />
                   <span>Task Updates History</span>
                 </h4>
                 {selectedTask && (

@@ -1129,7 +1129,7 @@ export default function PaymentsModule({ userProfile }) {
               <Button
                 type="submit"
                 disabled={updateSettingsMutation.isPending}
-                className="bg-[#0D9488] hover:bg-[#0F766E] text-white font-semibold"
+                className="bg-[#087A4B] hover:bg-[#07563B] text-white font-semibold"
               >
                 {updateSettingsMutation.isPending ? 'Saving...' : 'Save Configuration'}
               </Button>
@@ -1344,7 +1344,7 @@ export default function PaymentsModule({ userProfile }) {
                     <Button
                       onClick={() => handleFinalizePayroll(previewData.userId)}
                       disabled={finalizeMutation.isPending}
-                      className="bg-[#0D9488] hover:bg-[#0F766E] text-white font-semibold w-full sm:w-auto justify-center"
+                      className="bg-[#087A4B] hover:bg-[#07563B] text-white font-semibold w-full sm:w-auto justify-center"
                     >
                       <ShieldCheck className="mr-1.5 h-4 w-4" />
                       {finalizeMutation.isPending ? 'Finalizing...' : 'Finalize Payroll Snapshot'}

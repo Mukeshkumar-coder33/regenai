@@ -671,17 +671,17 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
   return (
     <div className="space-y-4 sm:space-y-5">
       {/* 1. Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-[#D5E5D7] dark:border-[#2A3D48]">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-[#E1E8E4] dark:border-[#2A3D48]">
         {portalType !== 'superadmin' ? (
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-[#15966A]/10 text-[#15966A] dark:text-[#14B8A6] flex items-center justify-center shrink-0 shadow-2xs">
+            <div className="w-11 h-11 rounded-2xl bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] flex items-center justify-center shrink-0 shadow-2xs">
               <CalendarDays className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#183B2B] dark:text-[#E8F0F4] leading-snug">
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#17231F] dark:text-[#E8F0F4] leading-snug">
                 Office Calendar
               </h1>
-              <p className="text-xs sm:text-sm text-[#687C70] dark:text-[#A6B5C0] mt-0.5 font-normal">
+              <p className="text-xs sm:text-sm text-[#52615B] dark:text-[#A6B5C0] mt-0.5 font-normal">
                 Your team's schedule, celebrations, and time off.
               </p>
             </div>
@@ -755,7 +755,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
           <div className="flex flex-wrap items-center justify-between gap-2.5 p-3 sm:p-4 border-b border-[#DFE8EC] dark:border-[#2A3D48] bg-[#F4F8FA]/60 dark:bg-[#1D303B]/50 shrink-0">
             <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               <div className="flex items-center gap-2">
-                <CalendarIcon className="w-4 h-4 text-[#0D9488] dark:text-[#14B8A6]" />
+                <CalendarIcon className="w-4 h-4 text-[#087A4B] dark:text-[#14B8A6]" />
                 <span className="text-sm font-semibold text-[#172B3A] dark:text-[#E8F0F4]">Monthly Schedule</span>
               </div>
 
@@ -765,7 +765,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                   variant="outline"
                   size="sm"
                   onClick={() => setMonthDate(new Date())}
-                  className="h-7 px-2 text-xs font-semibold border-[#DFE8EC] dark:border-[#2A3D48] text-[#172B3A] dark:text-[#E8F0F4] hover:text-[#0D9488] dark:hover:text-[#14B8A6] hover:bg-[#F4F8FA] dark:hover:bg-[#1D303B] rounded-lg"
+                  className="h-7 px-2 text-xs font-semibold border-[#DFE8EC] dark:border-[#2A3D48] text-[#172B3A] dark:text-[#E8F0F4] hover:text-[#087A4B] dark:hover:text-[#14B8A6] hover:bg-[#F4F8FA] dark:hover:bg-[#1D303B] rounded-lg"
                   title="Jump to current date"
                 >
                   Today
@@ -774,7 +774,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 w-7 p-0 rounded-lg text-[#172B3A] dark:text-[#E8F0F4] hover:text-[#0D9488] dark:hover:text-[#14B8A6] hover:bg-[#F4F8FA] dark:hover:bg-[#1D303B]"
+                  className="h-7 w-7 p-0 rounded-lg text-[#172B3A] dark:text-[#E8F0F4] hover:text-[#087A4B] dark:hover:text-[#14B8A6] hover:bg-[#F4F8FA] dark:hover:bg-[#1D303B]"
                   onClick={() => setMonthDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
                   title="Previous Month"
                 >
@@ -786,7 +786,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 w-7 p-0 rounded-lg text-[#172B3A] dark:text-[#E8F0F4] hover:text-[#0D9488] dark:hover:text-[#14B8A6] hover:bg-[#F4F8FA] dark:hover:bg-[#1D303B]"
+                  className="h-7 w-7 p-0 rounded-lg text-[#172B3A] dark:text-[#E8F0F4] hover:text-[#087A4B] dark:hover:text-[#14B8A6] hover:bg-[#F4F8FA] dark:hover:bg-[#1D303B]"
                   onClick={() => setMonthDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
                   title="Next Month"
                 >
@@ -919,20 +919,20 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                       className={cn(
                         "rounded-xl p-1 sm:p-1.5 lg:p-2 min-h-[56px] sm:min-h-[64px] lg:min-h-[70px] xl:min-h-[74px] flex flex-col justify-between overflow-hidden relative cursor-pointer border transition-all text-left group",
                         !cell.inMonth && "opacity-30 bg-muted/10 border-[#DFE8EC]/40 dark:border-[#2A3D48]/40",
-                        cell.inMonth && "bg-white dark:bg-[#15232D] border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#0D9488]/50 hover:shadow-xs",
+                        cell.inMonth && "bg-white dark:bg-[#15232D] border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#C9DED1] hover:shadow-xs",
                         isWeekend && cell.inMonth && !hasBirthday && "bg-[#F4F8FA]/50 dark:bg-[#1D303B]/30",
                         hasBirthday && cell.inMonth && "border-[#D4AF37] dark:border-[#FFD700]/70 bg-gradient-to-b from-[#FFFDF0] to-[#FFF9DB]/80 dark:from-[#242010]/90 dark:to-[#181508] shadow-[0_0_12px_rgba(255,215,0,0.18)] dark:shadow-[0_0_16px_rgba(255,215,0,0.14)]",
                         hasHoliday && !hasBirthday && cell.inMonth && "border-blue-300 dark:border-blue-500/50 bg-blue-50/20 dark:bg-blue-950/15",
                         hasApprovedLeave && !hasBirthday && !hasHoliday && cell.inMonth && "border-emerald-300 dark:border-emerald-500/50 bg-emerald-50/20 dark:bg-emerald-950/15",
                         hasPendingLeave && !hasBirthday && !hasHoliday && !hasApprovedLeave && cell.inMonth && "border-amber-300 dark:border-amber-500/50 bg-amber-50/20 dark:bg-amber-950/15",
-                        isToday && "ring-2 ring-[#0D9488] ring-offset-1 ring-offset-background"
+                        isToday && "ring-2 ring-[#087A4B] ring-offset-1 ring-offset-background"
                       )}
                     >
                       <div className="w-full flex items-center justify-between">
                         <span className={cn(
                           "text-[11px] sm:text-xs font-semibold inline-flex items-center justify-center transition-all",
                           isToday 
-                            ? "h-5 w-5 sm:h-6 sm:w-6 rounded-md sm:rounded-lg bg-[#0D9488] text-white font-bold shadow-xs" 
+                            ? "h-5 w-5 sm:h-6 sm:w-6 rounded-md sm:rounded-lg bg-[#087A4B] text-white font-bold shadow-xs" 
                             : hasBirthday && cell.inMonth
                             ? "h-5 w-5 sm:h-6 sm:w-6 rounded-md sm:rounded-lg bg-[#FEF9C3] dark:bg-[#78350F]/40 text-[#854D0E] dark:text-[#FFD700] font-black border border-[#D4AF37]/50 shadow-2xs group-hover:scale-105"
                             : cell.inMonth 
@@ -946,7 +946,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                             "w-1.5 h-1.5 rounded-full shrink-0",
                             hasBirthday && cell.inMonth 
                               ? "bg-[#D4AF37] dark:bg-[#FFD700] shadow-[0_0_6px_#FFD700]" 
-                              : "bg-[#0D9488]"
+                              : "bg-[#087A4B]"
                           )} />
                         )}
                       </div>
@@ -966,7 +966,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                           </div>
                         ))}
                         {overflowCount > 0 && (
-                          <span className="text-[9px] font-medium text-[#0D9488] dark:text-[#14B8A6] px-1 bg-[#0D9488]/10 rounded leading-tight">
+                          <span className="text-[9px] font-medium text-[#087A4B] dark:text-[#14B8A6] px-1 bg-[#E8F3EC] rounded leading-tight">
                             +{overflowCount} more
                           </span>
                         )}
@@ -986,7 +986,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
           <Card className="border border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] text-foreground rounded-2xl shadow-sm p-3.5 sm:p-4 flex flex-col lg:flex-1 lg:min-h-0 overflow-hidden">
             <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-[#DFE8EC] dark:border-[#2A3D48] shrink-0">
               <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-[#0D9488] dark:text-[#14B8A6]" />
+                <Clock className="w-4 h-4 text-[#087A4B] dark:text-[#14B8A6]" />
                 <h3 className="text-sm sm:text-base font-semibold text-[#172B3A] dark:text-[#E8F0F4]">Monthly Agenda</h3>
               </div>
               <Badge variant="outline" className="text-[10px] sm:text-[11px] px-2 font-medium bg-[#F4F8FA] dark:bg-[#1D303B] border-[#DFE8EC] dark:border-[#2A3D48]">
@@ -1003,7 +1003,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                   className={cn(
                     "px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all capitalize shrink-0",
                     agendaFilter === type 
-                      ? "bg-[#0D9488] text-white shadow-xs" 
+                      ? "bg-[#087A4B] text-white shadow-xs" 
                       : "bg-[#F4F8FA] dark:bg-[#1D303B] text-[#64748B] dark:text-[#A6B5C0] hover:text-[#172B3A] dark:hover:text-[#E8F0F4] hover:bg-[#E8F1F4] dark:hover:bg-[#253945]"
                   )}
                 >
@@ -1027,12 +1027,12 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                       const matchingCell = monthMatrix.flat().find(c => c.iso === evt.iso);
                       if (matchingCell) handleCellClick(matchingCell);
                     }}
-                    className="p-2.5 rounded-xl border border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#0D9488]/50 bg-[#F4F8FA]/60 dark:bg-[#1D303B]/60 hover:bg-white dark:hover:bg-[#1A2C38] transition-all cursor-pointer flex items-center justify-between gap-2.5 group shadow-2xs"
+                    className="p-2.5 rounded-xl border border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#C9DED1] bg-[#F4F8FA]/60 dark:bg-[#1D303B]/60 hover:bg-white dark:hover:bg-[#1A2C38] transition-all cursor-pointer flex items-center justify-between gap-2.5 group shadow-2xs"
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-sm shrink-0">{evt.icon}</span>
                       <div className="min-w-0">
-                        <p className="text-xs font-semibold text-[#172B3A] dark:text-[#E8F0F4] group-hover:text-[#0D9488] dark:group-hover:text-[#14B8A6] truncate transition-colors">
+                        <p className="text-xs font-semibold text-[#172B3A] dark:text-[#E8F0F4] group-hover:text-[#087A4B] dark:group-hover:text-[#14B8A6] truncate transition-colors">
                           {evt.title}
                         </p>
                         <p className="text-[10px] text-[#64748B] dark:text-[#A6B5C0]">
@@ -1089,7 +1089,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
             <div className="flex items-center justify-between gap-2 pb-2.5 mb-2.5 border-b border-[#DFE8EC] dark:border-[#2A3D48] shrink-0">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <Palmtree className="w-4 h-4 text-[#0D9488] dark:text-[#14B8A6] shrink-0" />
+                  <Palmtree className="w-4 h-4 text-[#087A4B] dark:text-[#14B8A6] shrink-0" />
                   <h3 className="text-sm sm:text-base font-semibold text-[#172B3A] dark:text-[#E8F0F4] truncate">
                     {isAdmin ? (leaveCardTab === 'holidays' ? 'Company Holidays' : 'Leave Requests') : 'Leave Requests'}
                   </h3>
@@ -1108,7 +1108,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                     <Button 
                       size="sm"
                       onClick={() => handleOpenHolidayDialog()}
-                      className="bg-[#0D9488] hover:bg-[#0F766E] text-white text-xs h-8 px-3 font-semibold shadow-xs rounded-xl flex items-center gap-1.5"
+                      className="bg-[#087A4B] hover:bg-[#07563B] text-white text-xs h-8 px-3 font-semibold shadow-xs rounded-xl flex items-center gap-1.5"
                     >
                       <Plus className="h-3.5 w-3.5" />
                       <span>Add Holiday</span>
@@ -1118,7 +1118,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                   <Button 
                     size="sm"
                     onClick={() => setIsLeaveDialogOpen(true)}
-                    className="bg-[#0D9488] hover:bg-[#0F766E] text-white text-xs h-8 px-3 font-semibold shadow-xs rounded-xl flex items-center gap-1.5"
+                    className="bg-[#087A4B] hover:bg-[#07563B] text-white text-xs h-8 px-3 font-semibold shadow-xs rounded-xl flex items-center gap-1.5"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     <span>Add Leave</span>
@@ -1133,13 +1133,13 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                 <TabsList className="bg-[#F4F8FA] dark:bg-[#1D303B] border border-[#DFE8EC] dark:border-[#2A3D48] p-1 rounded-xl h-auto flex w-full shrink-0">
                   <TabsTrigger 
                     value="leaves" 
-                    className="flex-1 text-xs font-semibold px-2 py-1.5 rounded-lg data-[state=active]:bg-white dark:data-[state=active]:bg-[#15232D] data-[state=active]:text-[#0D9488] dark:data-[state=active]:text-[#14B8A6] data-[state=active]:shadow-xs transition-all"
+                    className="flex-1 text-xs font-semibold px-2 py-1.5 rounded-lg data-[state=active]:bg-white dark:data-[state=active]:bg-[#15232D] data-[state=active]:text-[#087A4B] dark:data-[state=active]:text-[#14B8A6] data-[state=active]:shadow-xs transition-all"
                   >
                     Leaves ({leaveRequests.length})
                   </TabsTrigger>
                   <TabsTrigger 
                     value="holidays" 
-                    className="flex-1 text-xs font-semibold px-2 py-1.5 rounded-lg data-[state=active]:bg-white dark:data-[state=active]:bg-[#15232D] data-[state=active]:text-[#0D9488] dark:data-[state=active]:text-[#14B8A6] data-[state=active]:shadow-xs transition-all"
+                    className="flex-1 text-xs font-semibold px-2 py-1.5 rounded-lg data-[state=active]:bg-white dark:data-[state=active]:bg-[#15232D] data-[state=active]:text-[#087A4B] dark:data-[state=active]:text-[#14B8A6] data-[state=active]:shadow-xs transition-all"
                   >
                     Holidays ({holidayList.length})
                   </TabsTrigger>
@@ -1150,7 +1150,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                     <div className="flex-1 flex items-center justify-center py-6 text-muted-foreground text-xs">Loading leave requests...</div>
                   ) : leaveRequests.length === 0 ? (
                     <div className="flex-1 min-h-[140px] flex flex-col items-center justify-center bg-[#F4F8FA]/60 dark:bg-[#1D303B]/50 border border-dashed border-[#DFE8EC] dark:border-[#2A3D48] rounded-xl p-4 text-center space-y-2">
-                      <div className="w-10 h-10 mx-auto rounded-full bg-[#0D9488]/10 text-[#0D9488] dark:text-[#14B8A6] flex items-center justify-center">
+                      <div className="w-10 h-10 mx-auto rounded-full bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] flex items-center justify-center">
                         <CalendarDays className="w-5 h-5" />
                       </div>
                       <div className="space-y-1">
@@ -1171,7 +1171,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                         return (
                           <div 
                             key={leave.id} 
-                            className="bg-white dark:bg-[#15232D] border border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#0D9488]/40 dark:hover:border-[#14B8A6]/40 rounded-xl p-3 shadow-xs transition-all space-y-2"
+                            className="bg-white dark:bg-[#15232D] border border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#C9DED1] dark:hover:border-[#14B8A6]/40 rounded-xl p-3 shadow-xs transition-all space-y-2"
                           >
                             <div className="flex flex-wrap items-center justify-between gap-1.5">
                               <div className="flex flex-wrap items-center gap-1.5">
@@ -1219,7 +1219,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
 
                             <div className="space-y-1 pt-0.5 text-xs">
                               <div className="flex items-center gap-1.5 text-xs text-[#64748B] dark:text-[#A6B5C0]">
-                                <CalendarDays className="w-3.5 h-3.5 text-[#0D9488] dark:text-[#14B8A6]" />
+                                <CalendarDays className="w-3.5 h-3.5 text-[#087A4B] dark:text-[#14B8A6]" />
                                 <span className="font-semibold text-[#172B3A] dark:text-[#E8F0F4] text-xs">
                                   {formatFriendlyDate(leave.startDate)} — {formatFriendlyDate(leave.endDate)}
                                 </span>
@@ -1234,7 +1234,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
 
                             <div className="pt-2 border-t border-[#DFE8EC]/70 dark:border-[#2A3D48]/70 flex items-center justify-between text-[11px] text-[#64748B] dark:text-[#A6B5C0]">
                               <div className="flex items-center gap-1.5 min-w-0">
-                                <span className="w-4 h-4 rounded-full bg-[#0D9488]/15 text-[#0D9488] dark:text-[#14B8A6] flex items-center justify-center font-bold text-[9px] shrink-0">
+                                <span className="w-4 h-4 rounded-full bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] flex items-center justify-center font-bold text-[9px] shrink-0">
                                   {requesterName.slice(0, 2).toUpperCase()}
                                 </span>
                                 <span className="truncate">
@@ -1320,7 +1320,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-7 w-7 text-[#64748B] hover:text-[#0D9488] dark:hover:text-[#14B8A6] rounded-lg"
+                                className="h-7 w-7 text-[#64748B] hover:text-[#087A4B] dark:hover:text-[#14B8A6] rounded-lg"
                                 onClick={() => handleOpenHolidayDialog(holiday)}
                                 title="Edit Holiday"
                               >
@@ -1347,7 +1347,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
               <div className="w-full lg:flex-1 lg:min-h-0 flex flex-col space-y-2.5">
                 {myLeaves.length === 0 ? (
                   <div className="flex-1 min-h-[140px] flex flex-col items-center justify-center bg-[#F4F8FA]/60 dark:bg-[#1D303B]/50 border border-dashed border-[#DFE8EC] dark:border-[#2A3D48] rounded-xl p-4 text-center space-y-2">
-                    <div className="w-10 h-10 mx-auto rounded-full bg-[#0D9488]/10 text-[#0D9488] dark:text-[#14B8A6] flex items-center justify-center">
+                    <div className="w-10 h-10 mx-auto rounded-full bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] flex items-center justify-center">
                       <CalendarDays className="w-5 h-5" />
                     </div>
                     <div className="space-y-1">
@@ -1368,7 +1368,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                       return (
                         <div 
                           key={leave.id} 
-                          className="bg-white dark:bg-[#15232D] border border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#0D9488]/40 dark:hover:border-[#14B8A6]/40 rounded-xl p-3 shadow-xs transition-all space-y-2"
+                          className="bg-white dark:bg-[#15232D] border border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#C9DED1] dark:hover:border-[#14B8A6]/40 rounded-xl p-3 shadow-xs transition-all space-y-2"
                         >
                           <div className="flex flex-wrap items-center justify-between gap-1.5">
                             <div className="flex flex-wrap items-center gap-1.5">
@@ -1392,7 +1392,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
 
                           <div className="space-y-1 pt-0.5 text-xs">
                             <div className="flex items-center gap-1.5 text-xs text-[#64748B] dark:text-[#A6B5C0]">
-                              <CalendarDays className="w-3.5 h-3.5 text-[#0D9488] dark:text-[#14B8A6]" />
+                              <CalendarDays className="w-3.5 h-3.5 text-[#087A4B] dark:text-[#14B8A6]" />
                               <span className="font-semibold text-[#172B3A] dark:text-[#E8F0F4] text-xs">
                                 {formatFriendlyDate(leave.startDate)} — {formatFriendlyDate(leave.endDate)}
                               </span>
@@ -1407,7 +1407,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
 
                           <div className="pt-2 border-t border-[#DFE8EC]/70 dark:border-[#2A3D48]/70 flex items-center justify-between text-[11px] text-[#64748B] dark:text-[#A6B5C0]">
                             <div className="flex items-center gap-1.5 min-w-0">
-                              <span className="w-4 h-4 rounded-full bg-[#0D9488]/15 text-[#0D9488] dark:text-[#14B8A6] flex items-center justify-center font-bold text-[9px] shrink-0">
+                              <span className="w-4 h-4 rounded-full bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] flex items-center justify-center font-bold text-[9px] shrink-0">
                                 {requesterName.slice(0, 2).toUpperCase()}
                               </span>
                               <span className="truncate">
@@ -1495,7 +1495,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                     required
                   />
                 </div>
-                <Button type="submit" className="w-full bg-[#0D9488] hover:bg-[#0F766E] text-white" disabled={addHoliday.isPending || updateHoliday.isPending}>
+                <Button type="submit" className="w-full bg-[#087A4B] hover:bg-[#07563B] text-white" disabled={addHoliday.isPending || updateHoliday.isPending}>
                   {(addHoliday.isPending || updateHoliday.isPending) ? 'Saving...' : 'Save Holiday'}
                 </Button>
               </form>
@@ -1582,7 +1582,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                     rows={3}
                   />
                 </div>
-                <Button type="submit" className="w-full bg-[#0D9488] hover:bg-[#0F766E] text-white" disabled={applyLeave.isPending}>
+                <Button type="submit" className="w-full bg-[#087A4B] hover:bg-[#07563B] text-white" disabled={applyLeave.isPending}>
                   {applyLeave.isPending ? 'Submitting...' : (isAdmin ? 'Submit / Record Leave' : 'Submit Request')}
                 </Button>
               </form>
@@ -1597,7 +1597,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
           <DialogHeader className="pb-3 border-b border-[#DFE8EC] dark:border-[#2A3D48]">
             <div className="flex items-center justify-between gap-2">
               <DialogTitle className="text-lg font-bold text-[#172B3A] dark:text-[#E8F0F4] flex items-center gap-2">
-                <CalendarIcon className="w-5 h-5 text-[#0D9488] dark:text-[#14B8A6]" />
+                <CalendarIcon className="w-5 h-5 text-[#087A4B] dark:text-[#14B8A6]" />
                 <span>{selectedCell ? format(selectedCell.date, 'EEEE, MMMM d, yyyy') : 'Day Breakdown'}</span>
               </DialogTitle>
             </div>
@@ -1716,7 +1716,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                       return (
                         <div
                           key={l.id || idx}
-                          className="p-3.5 rounded-xl border border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] shadow-2xs space-y-2 hover:border-[#0D9488]/40 transition-colors"
+                          className="p-3.5 rounded-xl border border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] shadow-2xs space-y-2 hover:border-[#C9DED1] transition-colors"
                         >
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex items-center gap-3 min-w-0">
@@ -1727,7 +1727,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                                   className="w-10 h-10 rounded-full object-cover border border-[#DFE8EC] dark:border-[#2A3D48] shrink-0"
                                 />
                               ) : (
-                                <div className="w-10 h-10 rounded-full bg-[#0D9488]/15 text-[#0D9488] dark:text-[#14B8A6] font-bold flex items-center justify-center text-sm shrink-0">
+                                <div className="w-10 h-10 rounded-full bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] font-bold flex items-center justify-center text-sm shrink-0">
                                   {(l.name || 'U').slice(0, 2).toUpperCase()}
                                 </div>
                               )}
@@ -1762,7 +1762,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                           </div>
 
                           <div className="flex items-center gap-1.5 text-xs text-[#64748B] dark:text-[#A6B5C0] pt-1 border-t border-[#DFE8EC]/60 dark:border-[#2A3D48]/60">
-                            <CalendarDays className="w-3.5 h-3.5 text-[#0D9488] dark:text-[#14B8A6] shrink-0" />
+                            <CalendarDays className="w-3.5 h-3.5 text-[#087A4B] dark:text-[#14B8A6] shrink-0" />
                             <span className="font-medium text-[#172B3A] dark:text-[#E8F0F4]">
                               {formatFriendlyDate(l.startDate)} — {formatFriendlyDate(l.endDate)}
                             </span>

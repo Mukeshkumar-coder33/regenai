@@ -1209,7 +1209,7 @@ export default function PrivateChatModule({ userProfile }) {
                   >
                     <div className={`max-w-[85%] sm:max-w-[75%] md:max-w-[68%] rounded-2xl p-2.5 sm:p-3.5 relative shadow-xs transition-all ${
                       own
-                        ? 'bg-[#0D9488] text-white rounded-br-xs'
+                        ? 'bg-[#087A4B] text-white rounded-br-xs'
                         : 'bg-card border border-border text-foreground rounded-bl-xs'
                     }`}>
                       {/* Hover Actions */}
@@ -1436,7 +1436,7 @@ export default function PrivateChatModule({ userProfile }) {
                     <Button
                       type="submit"
                       size="icon"
-                      className="h-8.5 w-8.5 sm:h-10 sm:w-10 rounded-lg sm:rounded-xl bg-[#0D9488] hover:bg-[#0F766E] text-white shrink-0 shadow-xs"
+                      className="h-8.5 w-8.5 sm:h-10 sm:w-10 rounded-lg sm:rounded-xl bg-[#087A4B] hover:bg-[#07563B] text-white shrink-0 shadow-xs"
                       disabled={sendDM.isPending || (!content.trim() && files.length === 0)}
                     >
                       <Send className="h-3.5 w-3.5 sm:h-4 sm:w-4" />

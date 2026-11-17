@@ -631,7 +631,7 @@ export default function MessengerModule({ userProfile }) {
       {/* 1. Page Header with Mode Selector */}
       <div className="flex items-center justify-between gap-2 pb-2.5 sm:pb-3 border-b border-[#DFE8EC] dark:border-[#2A3D48]">
         <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-          <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-[#0D9488]/10 text-[#0D9488] dark:text-[#14B8A6] flex items-center justify-center shrink-0 shadow-2xs">
+          <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] flex items-center justify-center shrink-0 shadow-2xs">
             <MessageSquare className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
           </div>
           <div className="min-w-0">
@@ -779,7 +779,7 @@ export default function MessengerModule({ userProfile }) {
                     <div
                       className={`max-w-[85%] sm:max-w-[75%] md:max-w-[68%] rounded-2xl p-2.5 sm:p-3.5 relative shadow-xs transition-all ${
                         own
-                          ? 'bg-[#0D9488] text-white rounded-br-xs'
+                          ? 'bg-[#087A4B] text-white rounded-br-xs'
                           : 'bg-card border border-border text-foreground rounded-bl-xs'
                       } ${selectionMode && selectedIds.includes(mid) ? 'ring-2 ring-destructive' : ''}`}
                     >
@@ -991,7 +991,7 @@ export default function MessengerModule({ userProfile }) {
                 <Button
                   type="submit"
                   size="icon"
-                  className="h-8.5 w-8.5 sm:h-10 sm:w-10 rounded-lg sm:rounded-xl bg-[#0D9488] hover:bg-[#0F766E] text-white shrink-0 shadow-xs cursor-pointer"
+                  className="h-8.5 w-8.5 sm:h-10 sm:w-10 rounded-lg sm:rounded-xl bg-[#087A4B] hover:bg-[#07563B] text-white shrink-0 shadow-xs cursor-pointer"
                   disabled={sendMessage.isPending || (!content.trim() && files.length === 0)}
                 >
                   <Send className="h-3.5 w-3.5 sm:h-4 sm:w-4" />

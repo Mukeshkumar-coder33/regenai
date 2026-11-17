@@ -413,7 +413,7 @@ export default function EmployeeProfileDialog({
                 <SafeAvatar
                   src={employee.avatar}
                   name={empName}
-                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl border-2 border-white dark:border-[#203A42] shadow-md ring-2 ring-[#15966A]/20 dark:ring-[#45CFC0]/30"
+                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl border-2 border-white dark:border-[#203A42] shadow-md ring-2 ring-[#087A4B]/20 dark:ring-[#45CFC0]/30"
                 />
                 <span
                   className={cn(

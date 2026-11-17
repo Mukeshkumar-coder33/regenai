@@ -17,7 +17,7 @@ const Textarea = React.forwardRef(function Textarea({ className, onChange, maxLe
             maxLength={maxLength}
             onChange={handleChange}
             className={cn(
-                'border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 flex field-sizing-content min-h-16 w-full rounded-md border bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 md:text-sm',
+                'border-[#E1E8E4] bg-[#F8FAF9] text-[#17231F] placeholder:text-[#829089] focus-visible:border-[#087A4B] focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-[#087A4B]/20 aria-invalid:ring-[#DC4C4C]/20 aria-invalid:border-[#DC4C4C] flex field-sizing-content min-h-16 w-full rounded-xl border px-3.5 py-2.5 text-base shadow-xs transition-[color,box-shadow,border-color] outline-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm',
                 className
             )}
             {...props}

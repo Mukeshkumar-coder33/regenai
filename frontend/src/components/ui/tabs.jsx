@@ -14,7 +14,7 @@ function TabsList({ className, ...props }) {
         <TabsPrimitive.List
             data-slot="tabs-list"
             className={cn(
-                'bg-secondary/60 text-muted-foreground inline-flex h-11 max-w-full overflow-x-auto no-scrollbar items-center justify-start sm:justify-center rounded-2xl p-1 border border-border/80 gap-1',
+                'bg-[#EFF3F1] text-[#52615B] inline-flex h-11 max-w-full overflow-x-auto no-scrollbar items-center justify-start sm:justify-center rounded-2xl p-1 border border-[#E1E8E4] gap-1',
                 className
             )}
             {...props}
@@ -27,7 +27,7 @@ function TabsTrigger({ className, ...props }) {
         <TabsPrimitive.Trigger
             data-slot="tabs-trigger"
             className={cn(
-                "data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-xs text-foreground/80 hover:text-foreground inline-flex h-full flex-1 items-center justify-center gap-2 rounded-xl px-4 py-1.5 text-xs sm:text-sm font-semibold whitespace-nowrap transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:pointer-events-none disabled:opacity-50 select-none cursor-pointer [&_svg]:size-4",
+                "data-[state=active]:bg-white data-[state=active]:text-[#087A4B] data-[state=active]:shadow-xs data-[state=active]:border data-[state=active]:border-[#E1E8E4] text-[#52615B] hover:text-[#17231F] hover:bg-[#E8F3EC] inline-flex h-full flex-1 items-center justify-center gap-2 rounded-xl px-4 py-1.5 text-xs sm:text-sm font-semibold whitespace-nowrap transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-[#087A4B]/30 disabled:pointer-events-none disabled:opacity-50 select-none cursor-pointer [&_svg]:size-4",
                 className
             )}
             {...props}

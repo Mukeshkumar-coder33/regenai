@@ -485,7 +485,7 @@ export default function Dashboard({ userProfile }) {
         className={cn(
           "hidden md:flex flex-col sticky top-0 h-screen shrink-0 z-20 border-r",
           "transition-[width] duration-300 ease-in-out overflow-x-hidden",
-          "bg-[#FFFFFF] dark:bg-[#0D2028] border-[#D5E5D7] dark:border-[#203A42]",
+          "bg-[#FFFFFF] dark:bg-[#0D2028] border-[#E1E8E4] dark:border-[#203A42]",
           isSidebarExpanded
             ? "w-[260px] shadow-sm"
             : "w-20"
@@ -494,7 +494,7 @@ export default function Dashboard({ userProfile }) {
       >
         {/* Brand Logo & Header */}
         <div className={cn(
-          "h-16 flex items-center border-b border-[#D5E5D7] dark:border-[#203A42] bg-[#F8FAF9] dark:bg-[#10252D] transition-all duration-300 px-3",
+          "h-16 flex items-center border-b border-[#E1E8E4] dark:border-[#203A42] bg-[#FFFFFF] dark:bg-[#10252D] transition-all duration-300 px-3",
           isSidebarExpanded ? "justify-between" : "justify-center"
         )}>
           <div
@@ -512,7 +512,7 @@ export default function Dashboard({ userProfile }) {
                 className="w-8 h-8 rounded-xl shrink-0 object-contain shadow-xs border border-border/40"
               />
             ) : (
-              <div className="w-8 h-8 rounded-xl bg-teal-500/10 dark:bg-[#142E35] text-teal-600 dark:text-[#45CFC0] flex items-center justify-center font-bold text-sm shrink-0 border border-teal-500/30 dark:border-[#203A42]">
+              <div className="w-8 h-8 rounded-xl bg-[#E8F3EC] dark:bg-[#142E35] text-[#087A4B] dark:text-[#45CFC0] flex items-center justify-center font-bold text-sm shrink-0 border border-[#C9DED1] dark:border-[#203A42]">
                 R
               </div>
             )}
@@ -523,7 +523,7 @@ export default function Dashboard({ userProfile }) {
               <span className="text-lg font-bold tracking-tight text-foreground dark:text-white truncate">
                 {companyDisplayName}
               </span>
-              <span className="w-2 h-2 rounded-full bg-primary dark:bg-[#36BEB0] shrink-0" />
+              <span className="w-2 h-2 rounded-full bg-[#087A4B] dark:bg-[#36BEB0] shrink-0" />
             </div>
           </div>
 
@@ -534,7 +534,7 @@ export default function Dashboard({ userProfile }) {
               onClick={() => setSidebarPinned(prev => !prev)}
               className={cn(
                 "p-1.5 rounded-lg text-muted-foreground hover:text-foreground dark:text-[#A8BAC3] dark:hover:text-[#45CFC0] hover:bg-secondary/80 dark:hover:bg-[#142E35] transition-colors cursor-pointer",
-                sidebarPinned && "text-teal-600 dark:text-[#45CFC0] bg-teal-500/10 dark:bg-[#123A3C]"
+                sidebarPinned && "text-[#087A4B] dark:text-[#45CFC0] bg-[#E8F3EC] dark:bg-[#123A3C]"
               )}
               title={sidebarPinned ? "Unpin sidebar (collapse on mouse leave)" : "Pin sidebar expanded"}
               aria-label={sidebarPinned ? "Unpin sidebar" : "Pin sidebar expanded"}
@@ -564,14 +564,14 @@ export default function Dashboard({ userProfile }) {
                   "w-full h-11 flex items-center rounded-xl text-sm font-medium transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-primary/40 select-none cursor-pointer border relative group",
                   isSidebarExpanded ? "px-3.5 gap-3.5" : "justify-center px-0",
                   isActive
-                    ? "bg-[#DDF1E2] dark:bg-[#123A3C] text-[#087A57] dark:text-[#45CFC0] font-semibold border-[rgba(8,122,87,0.35)] dark:border-[#176B68]"
-                    : "text-[#40574A] dark:text-[#B6C4CC] border-transparent hover:bg-[#E3F1E5] dark:hover:bg-[#142E35] hover:text-[#087A57] dark:hover:text-[#45CFC0]"
+                    ? "bg-[#E8F3EC] dark:bg-[#123A3C] text-[#087A4B] dark:text-[#45CFC0] font-semibold border-[#C9DED1] dark:border-[#176B68]"
+                    : "text-[#52615B] dark:text-[#B6C4CC] border-transparent hover:bg-[#F1F7F3] dark:hover:bg-[#142E35] hover:text-[#087A4B] dark:hover:text-[#45CFC0]"
                 )}
                 aria-current={isActive ? 'page' : undefined}
               >
                 {/* Narrow Vertical Active Indicator */}
                 {isActive && (
-                  <span className="absolute left-1 top-2.5 bottom-2.5 w-1 rounded-full bg-[#087A57] dark:bg-[#36BEB0]" />
+                  <span className="absolute left-1 top-2.5 bottom-2.5 w-1 rounded-full bg-[#087A4B] dark:bg-[#36BEB0]" />
                 )}
 
                 {/* Navigation Icon */}
@@ -579,8 +579,8 @@ export default function Dashboard({ userProfile }) {
                   className={cn(
                     "w-5 h-5 shrink-0 transition-colors duration-150",
                     isActive
-                      ? "text-[#087A57] dark:text-[#45CFC0]"
-                      : "text-[#40574A] dark:text-[#A8BAC3] group-hover:text-[#087A57] dark:group-hover:text-[#45CFC0]"
+                      ? "text-[#087A4B] dark:text-[#45CFC0]"
+                      : "text-[#52615B] dark:text-[#A8BAC3] group-hover:text-[#087A4B] dark:group-hover:text-[#45CFC0]"
                   )}
                 />
 
@@ -684,7 +684,7 @@ export default function Dashboard({ userProfile }) {
               >
                 <Bell className="w-4 h-4 lg:w-4.5 lg:h-4.5 text-muted-foreground" />
                 {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 h-4 min-w-[16px] px-1 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center animate-pulse">
+                  <span className="absolute -top-1 -right-1 h-4 min-w-[16px] px-1 rounded-full bg-[#DC4C4C] text-white text-[10px] font-bold flex items-center justify-center animate-pulse">
                     {unreadCount > 9 ? '9+' : unreadCount}
                   </span>
                 )}
@@ -997,15 +997,15 @@ export default function Dashboard({ userProfile }) {
                     className={cn(
                       "w-full h-11 flex items-center gap-3.5 px-3.5 rounded-xl text-sm font-medium transition-colors duration-150 outline-none select-none cursor-pointer border relative",
                       isActive
-                        ? "bg-[#DDF1E2] dark:bg-[#123A3C] text-[#087A57] dark:text-[#45CFC0] font-semibold border-[rgba(8,122,87,0.35)] dark:border-[#176B68]"
-                        : "text-[#40574A] dark:text-[#B6C4CC] border-transparent hover:bg-[#E3F1E5] dark:hover:bg-[#142E35] hover:text-[#087A57] dark:hover:text-[#45CFC0]"
+                        ? "bg-[#E8F3EC] dark:bg-[#123A3C] text-[#087A4B] dark:text-[#45CFC0] font-semibold border-[#C9DED1] dark:border-[#176B68]"
+                        : "text-[#52615B] dark:text-[#B6C4CC] border-transparent hover:bg-[#F1F7F3] dark:hover:bg-[#142E35] hover:text-[#087A4B] dark:hover:text-[#45CFC0]"
                     )}
                     aria-current={isActive ? 'page' : undefined}
                   >
                     {isActive && (
-                      <span className="absolute left-1 top-2.5 bottom-2.5 w-1 rounded-full bg-[#087A57] dark:bg-[#36BEB0]" />
+                      <span className="absolute left-1 top-2.5 bottom-2.5 w-1 rounded-full bg-[#087A4B] dark:bg-[#36BEB0]" />
                     )}
-                    <item.icon className={cn("w-5 h-5 shrink-0 transition-colors", isActive ? "text-[#087A57] dark:text-[#45CFC0]" : "text-[#40574A] dark:text-[#A8BAC3]")} />
+                    <item.icon className={cn("w-5 h-5 shrink-0 transition-colors", isActive ? "text-[#087A4B] dark:text-[#45CFC0]" : "text-[#52615B] dark:text-[#A8BAC3]")} />
                     <span className="truncate">{item.label}</span>
                   </button>
                 );

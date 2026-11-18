@@ -1,91 +1,67 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/celadon_colors.dart';
+import '../../dashboard/data/dashboard_service.dart';
 
-/// Screen 8 (from Reference Design): Team Directory Screen
-///
-/// Features:
-/// - Light mint background with modern corporate aesthetic
-/// - Search bar & filter trigger in top bar
-/// - Clean white cards with employee initials, name, designation, and direct call action
+/// Team Directory Screen — 100% Dynamic Company Team Roster from MongoDB (`GET /api/users`)
 class TeamDirectoryView extends StatefulWidget {
   final VoidCallback? onBack;
+  final DashboardService? dashboardService;
 
-  const TeamDirectoryView({super.key, this.onBack});
+  const TeamDirectoryView({super.key, this.onBack, this.dashboardService});
 
   @override
   State<TeamDirectoryView> createState() => _TeamDirectoryViewState();
 }
 
 class _TeamDirectoryViewState extends State<TeamDirectoryView> {
+  late final DashboardService _dashboardService;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  bool _isLoading = true;
+  List<_TeamMember> _allMembers = const [];
 
-  final List<_TeamMember> _allMembers = const [
-    _TeamMember(
-      name: 'Rohith Kumar',
-      role: 'Project Manager',
-      department: 'Management',
-      phone: '+91 98765 43210',
-      email: 'rohith.k@regen.com',
-      avatarLetter: 'R',
-    ),
-    _TeamMember(
-      name: 'Sneha R',
-      role: 'UI/UX Designer',
-      department: 'Product Design',
-      phone: '+91 98765 43211',
-      email: 'sneha.r@regen.com',
-      avatarLetter: 'S',
-    ),
-    _TeamMember(
-      name: 'Vikram S',
-      role: 'Frontend Developer',
-      department: 'Engineering',
-      phone: '+91 98765 43212',
-      email: 'vikram.s@regen.com',
-      avatarLetter: 'V',
-    ),
-    _TeamMember(
-      name: 'Priya M',
-      role: 'Backend Developer',
-      department: 'Engineering',
-      phone: '+91 98765 43213',
-      email: 'priya.m@regen.com',
-      avatarLetter: 'P',
-    ),
-    _TeamMember(
-      name: 'Arjun K',
-      role: 'QA Engineer',
-      department: 'Quality Assurance',
-      phone: '+91 98765 43214',
-      email: 'arjun.k@regen.com',
-      avatarLetter: 'A',
-    ),
-    _TeamMember(
-      name: 'Kavya S',
-      role: 'Product Designer',
-      department: 'Product Design',
-      phone: '+91 98765 43215',
-      email: 'kavya.s@regen.com',
-      avatarLetter: 'K',
-    ),
-    _TeamMember(
-      name: 'Aafrin Shajathi',
-      role: 'Full Stack Engineer',
-      department: 'Engineering',
-      phone: '+91 98765 43216',
-      email: 'aafrin@regen.com',
-      avatarLetter: 'A',
-    ),
-    _TeamMember(
-      name: 'Deepak Raj',
-      role: 'DevOps Specialist',
-      department: 'Infrastructure',
-      phone: '+91 98765 43217',
-      email: 'deepak.r@regen.com',
-      avatarLetter: 'D',
-    ),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _dashboardService = widget.dashboardService ?? DashboardService();
+    _loadTeam();
+  }
+
+  Future<void> _loadTeam() async {
+    setState(() => _isLoading = true);
+    try {
+      final users = await _dashboardService.getUsers();
+      final members = users.map((u) {
+        final displayName = u.name.isNotEmpty ? u.name : u.username;
+        final initial = displayName.isNotEmpty ? displayName[0].toUpperCase() : '?';
+        final roleLabel = (u.designation != null && u.designation!.trim().isNotEmpty)
+            ? u.designation!.trim()
+            : u.roleDisplayName;
+        return _TeamMember(
+          name: displayName,
+          role: roleLabel,
+          department: (u.department != null && u.department!.trim().isNotEmpty)
+              ? u.department!.trim()
+              : (u.company ?? 'General'),
+          phone: (u.phone != null && u.phone!.trim().isNotEmpty) ? u.phone!.trim() : 'Not provided',
+          email: (u.email != null && u.email!.trim().isNotEmpty) ? u.email!.trim() : 'Not provided',
+          avatarLetter: initial,
+        );
+      }).toList()
+        ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      if (!mounted) return;
+      setState(() {
+        _allMembers = members;
+        _isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _allMembers = const [];
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -155,36 +131,51 @@ class _TeamDirectoryViewState extends State<TeamDirectoryView> {
 
             // 2. Member Cards List
             Expanded(
-              child: filteredMembers.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.groups_outlined,
-                            size: 48,
-                            color: CeladonColors.textMuted.withValues(alpha: 0.6),
-                          ),
-                          const SizedBox(height: 12),
-                          const Text(
-                            'No team members found',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                              color: CeladonColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
+              child: _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(color: CeladonColors.primary),
                     )
-                  : ListView.separated(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                      itemCount: filteredMembers.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 10),
-                      itemBuilder: (context, index) {
-                        final member = filteredMembers[index];
-                        return _buildMemberCard(context, member);
-                      },
+                  : RefreshIndicator(
+                      onRefresh: _loadTeam,
+                      color: CeladonColors.primary,
+                      child: filteredMembers.isEmpty
+                          ? ListView(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              children: [
+                                const SizedBox(height: 120),
+                                Center(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.groups_outlined,
+                                        size: 48,
+                                        color: CeladonColors.textMuted.withValues(alpha: 0.6),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      const Text(
+                                        'No team members found',
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600,
+                                          color: CeladonColors.textSecondary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            )
+                          : ListView.separated(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                              itemCount: filteredMembers.length,
+                              separatorBuilder: (_, _) => const SizedBox(height: 10),
+                              itemBuilder: (context, index) {
+                                final member = filteredMembers[index];
+                                return _buildMemberCard(context, member);
+                              },
+                            ),
                     ),
             ),
           ],

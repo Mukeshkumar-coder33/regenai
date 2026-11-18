@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/celadon_colors.dart';
 import '../../auth/data/user_model.dart';
+import '../../dashboard/presentation/employee_payroll_view.dart';
 import '../../messenger/presentation/messenger_view.dart';
 import 'help_support_view.dart';
 import 'leave_request_view.dart';
@@ -322,6 +323,31 @@ class AppDrawer extends StatelessWidget {
                       }
                     },
                   ),
+
+                  // 8. Payroll (Employee personal payroll — matches Company pages without Reports)
+                  if (!user.isCompanyAdmin && !user.isSuperAdmin)
+                    _buildDrawerItem(
+                      context: context,
+                      icon: Icons.payments_outlined,
+                      title: 'Payroll',
+                      isSelected: currentPageId == 'payroll',
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        if (onNavigateToPage != null) {
+                          onNavigateToPage!('payroll');
+                        } else {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => EmployeePayrollView(
+                                user: user,
+                                embedded: false,
+                                onBack: () => Navigator.of(context).pop(),
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                    ),
 
                   // 8. Settings
                   _buildDrawerItem(

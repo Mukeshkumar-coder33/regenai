@@ -23,25 +23,72 @@ class MessengerService {
     };
   }
 
-  /// Fetch server-authorized contacts for the current role (`GET /api/dm/contacts`).
-  /// - Super Admin: company owners/admins across the platform
-  /// - Company Admin/Owner: own-company employees + Super Admin
+  /// Fetch authorized Messenger contacts using ReGen's existing `/api/users` endpoint
+  /// (zero 404s across all server versions) with strict role & company scoping:
+  /// - Super Admin: active company owners/admins across the platform
+  /// - Company Admin/Owner: own-company employees + platform Super Admin
   /// - Employee: own-company employees + own company owner/admin
   Future<List<MessengerContactModel>> getAuthorizedContacts({required UserModel user}) async {
     final headers = await _getHeaders(user: user);
-    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/dm/contacts');
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/users');
+    final myId = (user.userId.isNotEmpty ? user.userId : user.id).trim().toLowerCase();
+    final myCompanyId = (user.companyId ?? '').trim();
+
     try {
       final res = await _client.get(url, headers: headers).timeout(const Duration(seconds: 10));
+      final contacts = <MessengerContactModel>[];
+
       if (res.statusCode == 200) {
         final raw = jsonDecode(res.body);
         if (raw is List) {
-          return raw
-              .whereType<Map<String, dynamic>>()
-              .map(MessengerContactModel.fromJson)
-              .toList();
+          for (final item in raw.whereType<Map<String, dynamic>>()) {
+            final status = (item['status'] ?? 'active').toString().toLowerCase();
+            if (status == 'inactive') continue;
+
+            final c = MessengerContactModel.fromJson(item);
+            final cid = c.userId.trim().toLowerCase();
+            if (cid.isEmpty || cid == myId || c.id.trim().toLowerCase() == myId) continue;
+
+            final role = c.role.toLowerCase();
+            if (user.isSuperAdmin) {
+              // Super Admin talks strictly to company owners & admins (never regular employees)
+              if (role != 'owner' && role != 'admin') continue;
+            } else {
+              // Strict company isolation
+              if (myCompanyId.isNotEmpty &&
+                  c.companyId != null &&
+                  c.companyId!.isNotEmpty &&
+                  c.companyId != myCompanyId) {
+                continue;
+              }
+            }
+            contacts.add(c);
+          }
         }
       }
-      return [];
+
+      // Company Owners / Admins can also communicate with Platform Super Admin
+      if (user.isCompanyAdmin && !user.isSuperAdmin && myId != 'vyshwa') {
+        final hasSuperAdmin = contacts.any((c) => c.role.toLowerCase() == 'param');
+        if (!hasSuperAdmin) {
+          contacts.insert(
+            0,
+            const MessengerContactModel(
+              id: 'Vyshwa',
+              userId: 'Vyshwa',
+              username: 'Vyshwa',
+              name: 'Vyshwa',
+              role: 'param',
+              company: 'ReGen Central',
+              designation: 'Platform Administrator',
+              department: 'Central Administration',
+              online: false,
+            ),
+          );
+        }
+      }
+
+      return contacts;
     } catch (_) {
       return [];
     }

@@ -220,6 +220,41 @@ class DashboardService {
     }
   }
 
+  /// Fetch Projects (`GET /api/projects`) for the authenticated user's company
+  Future<List<Map<String, dynamic>>> getProjects() async {
+    final headers = await _getHeaders();
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/projects');
+    try {
+      final res = await _client.get(url, headers: headers).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        final raw = jsonDecode(res.body);
+        if (raw is List) {
+          return raw.whereType<Map<String, dynamic>>().toList();
+        }
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Fetch Employee's own Payroll record & full history (`GET /api/payroll/my-records?month=YYYY-MM`)
+  Future<Map<String, dynamic>> getMyPayrollRecords({String? month}) async {
+    final headers = await _getHeaders();
+    final query = (month != null && month.isNotEmpty) ? '?month=$month' : '';
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/payroll/my-records$query');
+    try {
+      final res = await _client.get(url, headers: headers).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        final raw = jsonDecode(res.body);
+        if (raw is Map<String, dynamic>) return raw;
+      }
+      return const {'payroll': null, 'transaction': null, 'history': []};
+    } catch (_) {
+      return const {'payroll': null, 'transaction': null, 'history': []};
+    }
+  }
+
   /// Delete user / employee from company roster and revoke access (/api/users/:id)
   Future<void> deleteUser(String id) async {
     final headers = await _getHeaders();

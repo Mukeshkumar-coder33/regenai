@@ -21,6 +21,7 @@ import 'package:regen_mobile/features/messenger/data/messenger_service.dart';
 import 'package:regen_mobile/features/messenger/presentation/messenger_view.dart';
 import 'package:regen_mobile/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:regen_mobile/features/dashboard/presentation/employee_dashboard_view.dart';
+import 'package:regen_mobile/features/dashboard/presentation/employee_payroll_view.dart';
 import 'package:regen_mobile/features/superadmin/presentation/superadmin_dashboard_view.dart';
 import 'package:regen_mobile/features/tasks/data/task_model.dart';
 import 'package:regen_mobile/features/tasks/data/project_model.dart';
@@ -94,6 +95,13 @@ class MockDashboardService extends DashboardService {
   Future<void> deleteUser(String id) async {
     return;
   }
+
+  @override
+  Future<List<Map<String, dynamic>>> getProjects() async => const [];
+
+  @override
+  Future<Map<String, dynamic>> getMyPayrollRecords({String? month}) async =>
+      const {'payroll': null, 'transaction': null, 'history': []};
 }
 
 
@@ -2051,7 +2059,192 @@ void main() {
       expect(find.text('Document'), findsOneWidget);
       expect(find.text('Record\nVideo'), findsNothing);
     });
+
+    testWidgets('EmployeeDashboardView uses joining year selector and dynamically computes year-scoped DB metrics',
+        (WidgetTester tester) async {
+      final empUser = const UserModel(
+        id: 'emp_2024',
+        userId: 'EMP-2024',
+        username: 'ram_dev',
+        name: 'Ram Kumar',
+        role: 'staff',
+        company: 'krish Tech Computer',
+        joiningDate: '2024-03-10',
+        token: 'tok_emp_2024',
+      );
+
+      final dynamicService = _EmployeeDynamicDashboardService(empUser);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EmployeeDashboardView(
+            user: empUser,
+            dashboardService: dynamicService,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final currentYear = DateTime.now().year;
+
+      // Verify Company-style KPI labels & monthly Attendance Trends graph exist
+      expect(find.text('Attendance Rate'), findsOneWidget);
+      expect(find.text('My Projects'), findsOneWidget);
+      expect(find.text('Summary'), findsOneWidget);
+      expect(find.text('Leave'), findsWidgets);
+      expect(find.text('Earned Payment'), findsOneWidget);
+      expect(find.text('Attendance Trends ($currentYear)'), findsOneWidget);
+
+      // Open Year Picker from Welcome Hero card: must start at joining year 2024 (no 2023)
+      await tester.tap(find.text('Year: $currentYear'));
+      await tester.pumpAndSettle();
+      expect(find.text('Available from your joining year (2024)'), findsOneWidget);
+      expect(find.text('2024'), findsOneWidget);
+      expect(find.text('2025'), findsOneWidget);
+      expect(find.text('2023'), findsNothing);
+
+      // Switch to 2025 and verify 2025 dynamic values (Projects=2, Earned=₹60,000, Approved Leave=2, Absent includes unapproved leave=1)
+      await tester.tap(find.text('2025').last);
+      await tester.pumpAndSettle();
+      expect(find.text('Year: 2025'), findsOneWidget);
+      expect(find.text('Attendance Trends (2025)'), findsOneWidget);
+      expect(find.text('₹60,000'), findsOneWidget);
+    });
+
+    testWidgets('Employee role mirrors Company pages without Reports and renders dynamic EmployeePayrollView',
+        (WidgetTester tester) async {
+      final empUser = const UserModel(
+        id: 'emp_pay',
+        userId: 'EMP-2024',
+        username: 'ram_dev',
+        name: 'Ram Kumar',
+        role: 'staff',
+        company: 'krish Tech Computer',
+        joiningDate: '2024-03-10',
+        token: 'tok_emp_pay',
+      );
+
+      // 1. Employee Drawer includes Payroll and excludes Reports
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AppDrawer(
+              user: empUser,
+              onLogout: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Payroll'), findsOneWidget);
+      expect(find.text('Reports'), findsNothing);
+
+      // 2. EmployeePayrollView dynamically renders DB payroll history
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EmployeePayrollView(
+            user: empUser,
+            embedded: false,
+            dashboardService: _EmployeeDynamicDashboardService(empUser),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('My Payroll'), findsOneWidget);
+      expect(find.textContaining('Earned Payment'), findsOneWidget);
+    });
   });
+}
+
+class _EmployeeDynamicDashboardService extends DashboardService {
+  final UserModel user;
+  _EmployeeDynamicDashboardService(this.user);
+
+  @override
+  Future<UserModel> getMe() async => user;
+
+  @override
+  Future<List<TaskModel>> getTasks() async => const [
+        TaskModel(
+          id: 't_2025',
+          title: 'Sprint Task',
+          priority: 'High',
+          status: 'pending',
+          dueDate: '2025-05-12',
+          assignedTo: 'EMP-2024',
+          projectId: 'proj_2',
+        ),
+      ];
+
+  @override
+  Future<List<Map<String, dynamic>>> getProjects() async => const [
+        {
+          '_id': 'proj_1',
+          'name': 'Mobile Revamp',
+          'startDate': '2025-01-10',
+          'endDate': '2025-11-30',
+          'members': ['EMP-2024'],
+        },
+        {
+          '_id': 'proj_2',
+          'name': 'ERP Sync',
+          'startDate': '2025-04-01',
+          'endDate': '2025-09-30',
+          'members': ['EMP-2024'],
+        },
+        {
+          '_id': 'proj_3',
+          'name': 'AI Portal',
+          'startDate': '2026-01-15',
+          'endDate': '2026-12-20',
+          'members': ['EMP-2024'],
+        },
+      ];
+
+  @override
+  Future<List<AttendanceModel>> getAttendance() async => const [
+        AttendanceModel(id: 'a1', userId: 'EMP-2024', date: '2025-01-10', checkIn: '09:00 AM', status: 'present'),
+        AttendanceModel(id: 'a2', userId: 'EMP-2024', date: '2025-01-11', checkIn: '09:40 AM', status: 'late'),
+        AttendanceModel(id: 'a3', userId: 'EMP-2024', date: '2026-02-05', checkIn: '09:05 AM', status: 'present'),
+      ];
+
+  @override
+  Future<List<LeaveModel>> getLeaves() async => const [
+        LeaveModel(
+          id: 'l_app',
+          userId: 'EMP-2024',
+          type: 'casual',
+          startDate: '2025-02-10',
+          endDate: '2025-02-11',
+          reason: 'Family event',
+          status: 'approved',
+        ),
+        LeaveModel(
+          id: 'l_unapp',
+          userId: 'EMP-2024',
+          type: 'sick',
+          startDate: '2025-03-04',
+          endDate: '2025-03-04',
+          reason: 'Unapproved leave day',
+          status: 'rejected',
+        ),
+      ];
+
+  @override
+  Future<Map<String, dynamic>> getMyPayrollRecords({String? month}) async => {
+        'payroll': {
+          'month': month ?? '2026-01',
+          'baseSalary': 35000,
+          'netPayable': 35000,
+          'totalAmount': 35000,
+          'status': 'paid',
+        },
+        'history': const [
+          {'month': '2025-01', 'netPayable': 30000, 'amountPaid': 30000, 'status': 'paid'},
+          {'month': '2025-02', 'netPayable': 30000, 'amountPaid': 30000, 'status': 'paid'},
+          {'month': '2026-01', 'netPayable': 35000, 'amountPaid': 35000, 'status': 'paid'},
+        ],
+      };
 }
 
 class _FakeMessengerService extends MessengerService {

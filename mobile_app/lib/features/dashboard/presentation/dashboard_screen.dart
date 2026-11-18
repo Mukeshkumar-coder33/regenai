@@ -22,6 +22,7 @@ import '../../profile/presentation/team_directory_view.dart';
 import '../../superadmin/presentation/superadmin_dashboard_view.dart';
 import '../../tasks/presentation/tasks_view.dart';
 import 'employee_dashboard_view.dart';
+import 'employee_payroll_view.dart';
 
 /// Role-Based Main App Shell with Bottom Navigation
 ///
@@ -113,6 +114,13 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
           label: 'Leave',
           icon: Icons.beach_access_outlined,
           activeIcon: Icons.beach_access_rounded,
+        ),
+      if (!_currentUser.isSuperAdmin)
+        const NavShortcutItem(
+          id: 'payroll',
+          label: 'Payroll',
+          icon: Icons.payments_outlined,
+          activeIcon: Icons.payments_rounded,
         ),
       const NavShortcutItem(
         id: 'settings',
@@ -349,6 +357,12 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
           user: _currentUser,
           onBack: () => _navigateToPage('home'),
         );
+      case 'payroll':
+        return EmployeePayrollView(
+          user: _currentUser,
+          embedded: true,
+          onBack: () => _navigateToPage('home'),
+        );
       case 'settings':
         return SettingsView(
           onBack: () => _navigateToPage('home'),
@@ -500,6 +514,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
       onOpenDrawer: _openDrawer,
       onLogout: _handleLogout,
       onOpenAttendance: _openAttendance,
+      onNavigateToPage: _navigateToPage,
       onNavigateToTab: (index) {
         if (index == 2) {
           _openAttendance();

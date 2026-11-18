@@ -1,8 +1,13 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:video_player/video_player.dart';
 import '../../../core/theme/celadon_colors.dart';
@@ -126,45 +131,17 @@ class MessengerMediaPicker {
     );
   }
 
-  /// Record a video using the device camera and show caption preview before sending.
+  /// Opens the live in-app Camera Video Recorder (Web, Android & iOS) so tapping
+  /// the camera icon ALWAYS opens the live camera immediately instead of file explorer.
   static Future<PickedMediaAttachment?> recordVideo(BuildContext context) async {
     if (!await _ensureCameraAndMicPermissions(context)) return null;
-    try {
-      final XFile? recorded = await _picker.pickVideo(
-        source: ImageSource.camera,
-        maxDuration: const Duration(minutes: 2),
-      );
-      if (recorded == null || !context.mounted) return null;
+    if (!context.mounted) return null;
 
-      final bytes = await recorded.readAsBytes();
-      if (bytes.isEmpty) {
-        if (context.mounted) _showError(context, 'Recorded video was empty.');
-        return null;
-      }
-      if (bytes.length > _maxVideoBytes) {
-        if (context.mounted) _showError(context, 'Video exceeds 20 MB limit. Record a shorter clip.');
-        return null;
-      }
-      final rawName = recorded.name.isNotEmpty
-          ? recorded.name
-          : 'video-${DateTime.now().millisecondsSinceEpoch}.mp4';
-      final name = rawName.toLowerCase().contains('video') ? rawName : 'video-$rawName';
-      final mime = _mimeFromFilename(name, MediaAttachKind.video);
-
-      if (!context.mounted) return null;
-      return await _showPreviewConfirmSheet(
-        context,
-        PickedMediaAttachment(
-          name: name,
-          mimeType: mime,
-          bytes: bytes,
-          kind: MediaAttachKind.video,
-        ),
-      );
-    } catch (e) {
-      if (context.mounted) _showError(context, 'Could not record video: $e');
-      return null;
-    }
+    return showDialog<PickedMediaAttachment>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const LiveVideoRecorderDialog(),
+    );
   }
 
   /// Pick a photo from local gallery (or camera).
@@ -332,14 +309,8 @@ class MessengerMediaPicker {
               ),
               const SizedBox(height: 18),
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  _attachTile(
-                    icon: Icons.videocam_rounded,
-                    label: 'Record\nVideo',
-                    color: const Color(0xFFDC2626),
-                    onTap: () => Navigator.pop(ctx, 'record_video'),
-                  ),
                   _attachTile(
                     icon: Icons.photo_library_rounded,
                     label: 'Photo',
@@ -368,8 +339,6 @@ class MessengerMediaPicker {
 
     if (choice == null || !context.mounted) return null;
     switch (choice) {
-      case 'record_video':
-        return recordVideo(context);
       case 'photo':
         return pickPhoto(context);
       case 'video':
@@ -919,3 +888,499 @@ class FullScreenImageViewer extends StatelessWidget {
   }
 }
 
+
+
+/// Live In-App Camera Video Recorder (Web / Chrome, Android & iOS)
+///
+/// Opens the live camera immediately inside Messenger (never opening Documents/File Explorer),
+/// lets the user record themselves with live preview + timer + camera flip, preview the recorded
+/// clip, add an optional caption, and send directly to the chat.
+class LiveVideoRecorderDialog extends StatefulWidget {
+  const LiveVideoRecorderDialog({super.key});
+
+  @override
+  State<LiveVideoRecorderDialog> createState() => _LiveVideoRecorderDialogState();
+}
+
+class _LiveVideoRecorderDialogState extends State<LiveVideoRecorderDialog> {
+  static const int _maxVideoBytes = 20 * 1024 * 1024;
+
+  final RTCVideoRenderer _localRenderer = RTCVideoRenderer();
+  final TextEditingController _captionController = TextEditingController();
+
+  MediaStream? _stream;
+  MediaRecorder? _mediaRecorder;
+  VideoPlayerController? _previewController;
+
+  bool _cameraReady = false;
+  bool _isRecording = false;
+  bool _isFinalizing = false;
+  bool _isFrontCamera = true;
+  int _recordSeconds = 0;
+  Timer? _timer;
+  String? _errorText;
+  String? _nativeOutputPath;
+
+  Uint8List? _recordedBytes;
+  String? _recordedName;
+  String? _recordedMime;
+
+  @override
+  void initState() {
+    super.initState();
+    _initCamera();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _stopCameraStream();
+    _previewController?.dispose();
+    _localRenderer.dispose();
+    _captionController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _stopCameraStream() async {
+    try {
+      _localRenderer.srcObject = null;
+      _stream?.getTracks().forEach((t) => t.stop());
+      await _stream?.dispose();
+    } catch (_) {}
+    _stream = null;
+  }
+
+  Future<void> _initCamera() async {
+    setState(() {
+      _errorText = null;
+      _cameraReady = false;
+    });
+    try {
+      await _localRenderer.initialize();
+      final stream = await navigator.mediaDevices.getUserMedia({
+        'audio': true,
+        'video': {
+          'facingMode': _isFrontCamera ? 'user' : 'environment',
+          'width': {'ideal': 640},
+          'height': {'ideal': 480},
+        },
+      });
+      _stream = stream;
+      _localRenderer.srcObject = stream;
+      if (mounted) setState(() => _cameraReady = true);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorText = 'Could not open camera: $e';
+          _cameraReady = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _flipCamera() async {
+    if (_stream == null || _isRecording) return;
+    final videoTracks = _stream!.getVideoTracks();
+    if (videoTracks.isEmpty) return;
+    try {
+      await Helper.switchCamera(videoTracks.first);
+      if (mounted) setState(() => _isFrontCamera = !_isFrontCamera);
+    } catch (_) {}
+  }
+
+  Future<void> _startRecording() async {
+    if (_stream == null || _isRecording) return;
+    setState(() => _errorText = null);
+
+    try {
+      final recorder = MediaRecorder();
+      _mediaRecorder = recorder;
+
+      if (kIsWeb) {
+        recorder.startWeb(_stream!, mimeType: 'video/webm');
+      } else {
+        final dir = await getTemporaryDirectory();
+        final outPath = '${dir.path}/regen_video_${DateTime.now().millisecondsSinceEpoch}.mp4';
+        _nativeOutputPath = outPath;
+        final videoTracks = _stream!.getVideoTracks();
+        if (videoTracks.isEmpty) throw Exception('No camera video track available');
+        await recorder.start(
+          outPath,
+          videoTrack: videoTracks.first,
+          audioChannel: RecorderAudioChannel.INPUT,
+        );
+      }
+
+      _recordSeconds = 0;
+      _timer?.cancel();
+      _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted) return;
+        setState(() => _recordSeconds++);
+        if (_recordSeconds >= 120) {
+          _stopRecording();
+        }
+      });
+
+      if (mounted) setState(() => _isRecording = true);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isRecording = false;
+          _errorText = 'Recording failed to start: $e';
+        });
+      }
+    }
+  }
+
+  Future<void> _stopRecording() async {
+    if (!_isRecording || _mediaRecorder == null) return;
+    _timer?.cancel();
+    setState(() {
+      _isRecording = false;
+      _isFinalizing = true;
+    });
+
+    try {
+      final stopResult = await _mediaRecorder!.stop();
+      _mediaRecorder = null;
+
+      Uint8List bytes;
+      String mime;
+      String fileName;
+      VideoPlayerController? previewCtrl;
+
+      if (kIsWeb) {
+        final blobUrl = stopResult?.toString() ?? '';
+        if (blobUrl.isEmpty) throw Exception('Empty recorded video');
+        final resp = await http.get(Uri.parse(blobUrl));
+        if (resp.statusCode != 200 || resp.bodyBytes.isEmpty) {
+          throw Exception('Could not read recorded video blob');
+        }
+        bytes = resp.bodyBytes;
+        mime = 'video/webm';
+        fileName = 'video-${DateTime.now().millisecondsSinceEpoch}.webm';
+        previewCtrl = VideoPlayerController.networkUrl(Uri.parse(blobUrl));
+      } else {
+        final path = _nativeOutputPath ?? stopResult?.toString() ?? '';
+        if (path.isEmpty) throw Exception('Recorded video path missing');
+        final file = File(path);
+        if (!await file.exists()) throw Exception('Recorded video file not found');
+        bytes = await file.readAsBytes();
+        mime = 'video/mp4';
+        fileName = 'video-${DateTime.now().millisecondsSinceEpoch}.mp4';
+        previewCtrl = VideoPlayerController.file(file);
+      }
+
+      if (bytes.isEmpty) throw Exception('Recorded video was empty');
+      if (bytes.length > _maxVideoBytes) {
+        throw Exception('Recorded video exceeds 20 MB limit. Please record a shorter clip.');
+      }
+
+      await _stopCameraStream();
+
+      try {
+        await previewCtrl.initialize();
+        await previewCtrl.setLooping(true);
+        await previewCtrl.play();
+      } catch (_) {
+        previewCtrl = null;
+      }
+
+      if (mounted) {
+        setState(() {
+          _recordedBytes = bytes;
+          _recordedMime = mime;
+          _recordedName = fileName;
+          _previewController = previewCtrl;
+          _isFinalizing = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isFinalizing = false;
+          _errorText = 'Could not finish recording: $e';
+        });
+      }
+    }
+  }
+
+  Future<void> _reRecord() async {
+    await _previewController?.dispose();
+    _previewController = null;
+    setState(() {
+      _recordedBytes = null;
+      _recordedName = null;
+      _recordedMime = null;
+      _recordSeconds = 0;
+      _errorText = null;
+    });
+    await _initCamera();
+  }
+
+  void _sendRecordedVideo() {
+    if (_recordedBytes == null || _recordedName == null || _recordedMime == null) return;
+    Navigator.pop(
+      context,
+      PickedMediaAttachment(
+        name: _recordedName!,
+        mimeType: _recordedMime!,
+        bytes: _recordedBytes!,
+        kind: MediaAttachKind.video,
+        caption: _captionController.text.trim(),
+      ),
+    );
+  }
+
+  String _fmt(int secs) {
+    final m = secs ~/ 60;
+    final s = secs % 60;
+    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasRecorded = _recordedBytes != null;
+
+    return Dialog(
+      backgroundColor: const Color(0xFF0E1B17),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Top bar
+              Row(
+                children: [
+                  const Icon(Icons.videocam_rounded, color: Color(0xFF6EE7B7), size: 22),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      hasRecorded ? 'Preview & Send Video' : 'Record Video Message',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  if (!hasRecorded && !kIsWeb && _cameraReady && !_isRecording)
+                    IconButton(
+                      tooltip: 'Switch Camera',
+                      icon: const Icon(Icons.cameraswitch_rounded, color: Colors.white70, size: 21),
+                      onPressed: _flipCamera,
+                    ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, color: Colors.white70),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+
+              // Live Camera / Recorded Video Viewport
+              ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: AspectRatio(
+                  aspectRatio: 4 / 3,
+                  child: Container(
+                    color: Colors.black,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        if (hasRecorded && _previewController != null)
+                          GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _previewController!.value.isPlaying
+                                    ? _previewController!.pause()
+                                    : _previewController!.play();
+                              });
+                            },
+                            child: VideoPlayer(_previewController!),
+                          )
+                        else if (hasRecorded)
+                          const Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.check_circle_rounded, color: Color(0xFF22C55E), size: 46),
+                                SizedBox(height: 8),
+                                Text(
+                                  'Video Recorded & Ready to Send',
+                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                                ),
+                              ],
+                            ),
+                          )
+                        else if (_cameraReady)
+                          RTCVideoView(
+                            _localRenderer,
+                            mirror: _isFrontCamera,
+                            objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                          )
+                        else if (_errorText != null)
+                          Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Text(
+                                _errorText!,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+                              ),
+                            ),
+                          )
+                        else
+                          const Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                CircularProgressIndicator(color: Color(0xFF6EE7B7)),
+                                SizedBox(height: 10),
+                                Text(
+                                  'Opening camera...',
+                                  style: TextStyle(color: Colors.white70, fontSize: 13),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                        // Recording timer pill
+                        if (_isRecording)
+                          Positioned(
+                            top: 12,
+                            left: 12,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: CeladonColors.error,
+                                borderRadius: BorderRadius.circular(99),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.fiber_manual_record, color: Colors.white, size: 11),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    'REC ${_fmt(_recordSeconds)}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w800,
+                                      fontFamily: 'monospace',
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                        if (_isFinalizing)
+                          Container(
+                            color: Colors.black54,
+                            child: const Center(
+                              child: CircularProgressIndicator(color: Colors.white),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+
+              if (_errorText != null && _cameraReady)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Text(
+                    _errorText!,
+                    style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+
+              // Controls: Record/Stop vs Preview Caption + Send
+              if (!hasRecorded)
+                Center(
+                  child: GestureDetector(
+                    onTap: (!_cameraReady || _isFinalizing)
+                        ? null
+                        : (_isRecording ? _stopRecording : _startRecording),
+                    child: Container(
+                      width: 68,
+                      height: 68,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 3.5),
+                      ),
+                      padding: const EdgeInsets.all(5),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: CeladonColors.error,
+                          borderRadius: BorderRadius.circular(_isRecording ? 10 : 99),
+                        ),
+                        child: Icon(
+                          _isRecording ? Icons.stop_rounded : Icons.videocam_rounded,
+                          color: Colors.white,
+                          size: 28,
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+              else ...[
+                TextField(
+                  controller: _captionController,
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: 'Add a caption (optional)...',
+                    hintStyle: const TextStyle(color: Colors.white54, fontSize: 13),
+                    filled: true,
+                    fillColor: Colors.white10,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white70,
+                        side: const BorderSide(color: Colors.white24),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      onPressed: _reRecord,
+                      icon: const Icon(Icons.replay_rounded, size: 17),
+                      label: const Text('Re-record'),
+                    ),
+                    const Spacer(),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: CeladonColors.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      onPressed: _sendRecordedVideo,
+                      icon: const Icon(Icons.send_rounded, size: 17),
+                      label: const Text('Send Video', style: TextStyle(fontWeight: FontWeight.w800)),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

@@ -2042,13 +2042,14 @@ void main() {
       expect(find.byTooltip('Attach Photo, Video or Document'), findsOneWidget);
       expect(find.byTooltip('Record Video'), findsOneWidget);
 
-      // Tapping Attach opens the local media & document picker sheet
+      // Tapping Attach opens the local media & document picker sheet (Photo, Video, Document only — no Record Video)
       await tester.tap(find.byTooltip('Attach Photo, Video or Document'));
       await tester.pumpAndSettle();
       expect(find.text('Share Media & Files'), findsOneWidget);
       expect(find.text('Photo'), findsOneWidget);
       expect(find.text('Video'), findsOneWidget);
       expect(find.text('Document'), findsOneWidget);
+      expect(find.text('Record\nVideo'), findsNothing);
     });
   });
 }

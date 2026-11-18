@@ -9,6 +9,7 @@ import 'package:regen_mobile/features/auth/data/user_model.dart';
 import 'package:regen_mobile/features/auth/presentation/login_screen.dart';
 import 'package:regen_mobile/features/calendar/data/holiday_model.dart';
 import 'package:regen_mobile/features/calendar/presentation/calendar_view.dart';
+import 'package:regen_mobile/features/calendar/presentation/widgets/calendar_item_detail_dialog.dart';
 import 'package:regen_mobile/features/company/data/company_model.dart';
 import 'package:regen_mobile/features/company/presentation/add_employee_view.dart';
 import 'package:regen_mobile/features/company/presentation/company_dashboard_view.dart';
@@ -1503,6 +1504,99 @@ void main() {
       final empStatus = EmployeePolicyStatus.fromJson(statusJson);
       expect(empStatus.hasBlockedPolicy, isTrue);
       expect(empStatus.blockedPolicies.length, 1);
+    });
+
+    test('HolidayModel encodes and decodes Holiday & Company Event descriptions across MongoDB schema', () {
+      final eventId = HolidayModel.buildEncodedId(
+        isEvent: true,
+        description: 'Annual Townhall & Awards ceremony at 4 PM',
+        salaryDeduction: true,
+        timestampMs: 1731920000000,
+      );
+      expect(eventId.startsWith('event-'), isTrue);
+      expect(eventId.contains('/'), isFalse);
+      expect(eventId.contains('='), isFalse);
+
+      // Simulate MongoDB returning only {id, name, date} (schema strips description)
+      final parsedEvent = HolidayModel.fromJson({
+        'id': eventId,
+        'name': 'Annual Townhall',
+        'date': '2026-11-25T00:00:01Z',
+      });
+      expect(parsedEvent.isEvent, isTrue);
+      expect(parsedEvent.date, '2026-11-25');
+      expect(parsedEvent.salaryDeduction, isTrue);
+      expect(parsedEvent.description, 'Annual Townhall & Awards ceremony at 4 PM');
+
+      final holidayId = HolidayModel.buildEncodedId(
+        isEvent: false,
+        description: 'Diwali festival company holiday',
+        timestampMs: 1731920000001,
+      );
+      final parsedHoliday = HolidayModel.fromJson({
+        'id': holidayId,
+        'name': 'Diwali',
+        'date': '2026-11-20',
+      });
+      expect(parsedHoliday.isEvent, isFalse);
+      expect(parsedHoliday.date, '2026-11-20');
+      expect(parsedHoliday.description, 'Diwali festival company holiday');
+    });
+
+    testWidgets('CalendarItemDetailDialog displays pinned Event and Holiday details professionally', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (ctx) => Scaffold(
+              body: Column(
+                children: [
+                  ElevatedButton(
+                    onPressed: () => CalendarItemDetailDialog.show(
+                      ctx,
+                      title: 'Annual Townhall',
+                      date: '2026-11-25',
+                      isEvent: true,
+                      description: 'Quarterly review and team dinner in main hall.',
+                      salaryDeduction: false,
+                    ),
+                    child: const Text('Open Event'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => CalendarItemDetailDialog.show(
+                      ctx,
+                      title: 'Diwali Festival',
+                      date: '2026-11-20',
+                      isEvent: false,
+                      description: 'Company-wide paid festival holiday.',
+                    ),
+                    child: const Text('Open Holiday'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // Tap Event modal
+      await tester.tap(find.text('Open Event'));
+      await tester.pumpAndSettle();
+      expect(find.text('COMPANY EVENT ★'), findsOneWidget);
+      expect(find.text('Annual Townhall'), findsOneWidget);
+      expect(find.text('Quarterly review and team dinner in main hall.'), findsOneWidget);
+      expect(find.text('Normal Working Day'), findsOneWidget);
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+
+      // Tap Holiday modal
+      await tester.tap(find.text('Open Holiday'));
+      await tester.pumpAndSettle();
+      expect(find.text('OFFICIAL HOLIDAY'), findsOneWidget);
+      expect(find.text('Diwali Festival'), findsOneWidget);
+      expect(find.text('Company-wide paid festival holiday.'), findsOneWidget);
+      expect(find.text('Company-Wide Day Off'), findsOneWidget);
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
     });
   });
 }

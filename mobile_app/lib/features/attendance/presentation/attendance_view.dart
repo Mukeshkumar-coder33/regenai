@@ -4,6 +4,8 @@ import '../../../core/services/location_service.dart';
 import '../../../core/storage/session_storage.dart';
 import '../../../core/theme/celadon_colors.dart';
 import '../../auth/data/user_model.dart';
+import '../../calendar/data/holiday_model.dart';
+import '../../calendar/presentation/widgets/calendar_item_detail_dialog.dart';
 import '../../company/data/company_model.dart';
 import '../../dashboard/data/dashboard_service.dart';
 import '../data/attendance_model.dart';
@@ -34,6 +36,7 @@ class _AttendanceViewState extends State<AttendanceView> {
   WorkScheduleModel _workSchedule = const WorkScheduleModel();
   AttendanceModel? _todayAttendance;
   List<AttendanceModel> _history = [];
+  List<HolidayModel> _calendarItems = [];
 
   bool _isLoading = true;
   bool _isActionInProgress = false;
@@ -90,6 +93,12 @@ class _AttendanceViewState extends State<AttendanceView> {
         final historyList = await _attendanceService.getUserAttendanceHistory(user.userId);
         _history = historyList;
       }
+
+      // 5. Fetch Company Holidays & Pinned Events
+      try {
+        final calItems = await _attendanceService.getHolidays();
+        _calendarItems = calItems;
+      } catch (_) {}
 
       _startBreakTimerIfNeeded();
     } catch (e) {
@@ -767,8 +776,45 @@ class _AttendanceViewState extends State<AttendanceView> {
 
           // Calendar Grid
           _buildCalendarGrid(),
+          const SizedBox(height: 12),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 12,
+            runSpacing: 6,
+            children: [
+              _buildAttCalendarLegend(const Color(0xFF087A4B), 'Present'),
+              _buildAttCalendarLegend(const Color(0xFFF4A261), 'Late'),
+              _buildAttCalendarLegend(const Color(0xFF7C3AED), 'Event ★'),
+              _buildAttCalendarLegend(CeladonColors.holidayDark, 'Holiday'),
+            ],
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _buildAttCalendarLegend(Color color, String label) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2.5),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 10.5,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF475569),
+          ),
+        ),
+      ],
     );
   }
 
@@ -801,6 +847,20 @@ class _AttendanceViewState extends State<AttendanceView> {
         }
       }
 
+      // Match pinned company event or official holiday for this date
+      HolidayModel? pinnedEvent;
+      HolidayModel? pinnedHoliday;
+      for (final item in _calendarItems) {
+        if (item.date == dateStr) {
+          if (item.isEvent && pinnedEvent == null) {
+            pinnedEvent = item;
+          } else if (!item.isEvent && pinnedHoliday == null) {
+            pinnedHoliday = item;
+          }
+        }
+      }
+      final pinnedItem = pinnedEvent ?? pinnedHoliday;
+
       Color dotColor = Colors.transparent;
       if (record != null) {
         if (record.isLate) {
@@ -812,37 +872,86 @@ class _AttendanceViewState extends State<AttendanceView> {
         }
       }
 
+      Color bgColor = Colors.transparent;
+      Color borderColor = Colors.transparent;
+      Color textColor = CeladonColors.textPrimary;
+
+      if (pinnedEvent != null) {
+        bgColor = const Color(0xFF7C3AED);
+        borderColor = isSelected ? CeladonColors.primary : const Color(0xFF8B5CF6);
+        textColor = Colors.white;
+      } else if (pinnedHoliday != null) {
+        bgColor = CeladonColors.holidayDark;
+        borderColor = isSelected ? CeladonColors.primary : const Color(0xFF1E293B);
+        textColor = Colors.white;
+      } else if (isSelected) {
+        bgColor = CeladonColors.primary;
+        borderColor = CeladonColors.primary;
+        textColor = Colors.white;
+      }
+
       days.add(
         GestureDetector(
-          onTap: () => setState(() => _selectedDate = thisDate),
+          onTap: () {
+            setState(() => _selectedDate = thisDate);
+            if (pinnedItem != null) {
+              CalendarItemDetailDialog.show(
+                context,
+                title: pinnedItem.name,
+                date: pinnedItem.date,
+                isEvent: pinnedItem.isEvent,
+                description: pinnedItem.description,
+                salaryDeduction: pinnedItem.salaryDeduction,
+              );
+            }
+          },
           child: Container(
             margin: const EdgeInsets.all(2.5),
             decoration: BoxDecoration(
-              color: isSelected ? CeladonColors.primary : Colors.transparent,
-              shape: BoxShape.circle,
+              color: bgColor,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: borderColor,
+                width: (isSelected && pinnedItem != null) ? 2.0 : 1.0,
+              ),
             ),
             alignment: Alignment.center,
-            child: Stack(
-              alignment: Alignment.center,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
                   '$day',
                   style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                    color: isSelected ? Colors.white : CeladonColors.textPrimary,
+                    fontSize: 12.5,
+                    fontWeight: (isSelected || pinnedItem != null)
+                        ? FontWeight.w800
+                        : FontWeight.w500,
+                    color: textColor,
                   ),
                 ),
-                if (!isSelected && record != null)
-                  Positioned(
-                    bottom: 2,
-                    child: Container(
-                      width: 5,
-                      height: 5,
-                      decoration: BoxDecoration(
-                        color: dotColor,
-                        shape: BoxShape.circle,
-                      ),
+                if (pinnedEvent != null)
+                  const Text(
+                    '★',
+                    style: TextStyle(fontSize: 7.5, height: 0.9, color: Colors.white),
+                  )
+                else if (pinnedHoliday != null)
+                  Container(
+                    margin: const EdgeInsets.only(top: 1.5),
+                    width: 4,
+                    height: 4,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                  )
+                else if (!isSelected && record != null)
+                  Container(
+                    margin: const EdgeInsets.only(top: 2),
+                    width: 5,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: dotColor,
+                      shape: BoxShape.circle,
                     ),
                   ),
               ],

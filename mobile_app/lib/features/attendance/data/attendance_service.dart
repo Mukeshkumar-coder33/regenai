@@ -354,9 +354,10 @@ class AttendanceService {
     }
   }
 
-  /// Get Company Holidays (`GET /api/holidays`)
+  /// Get Company Holidays & Events (`GET /api/holidays`)
   Future<List<HolidayModel>> getHolidays() async {
     final headers = await _getHeaders();
+    headers['x-portal-view'] = 'ems';
     final url = Uri.parse('${AppConfig.activeBaseUrl}/api/holidays');
 
     try {
@@ -378,8 +379,12 @@ class AttendanceService {
     String? description,
   }) async {
     final headers = await _getHeaders();
+    headers['x-portal-view'] = 'ems';
     final url = Uri.parse('${AppConfig.activeBaseUrl}/api/holidays');
-    final id = 'holiday-${DateTime.now().millisecondsSinceEpoch}';
+    final id = HolidayModel.buildEncodedId(
+      isEvent: false,
+      description: description,
+    );
     final body = jsonEncode({
       'id': id,
       'name': name,
@@ -391,7 +396,15 @@ class AttendanceService {
       final res = await _client.post(url, headers: headers, body: body).timeout(const Duration(seconds: 10));
       if (res.statusCode == 200 || res.statusCode == 201) {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
-        return HolidayModel.fromJson(data);
+        final parsed = HolidayModel.fromJson(data);
+        return HolidayModel(
+          id: parsed.id,
+          companyId: parsed.companyId,
+          name: parsed.name,
+          date: parsed.date,
+          description: (parsed.description?.isNotEmpty == true) ? parsed.description : description,
+          isEvent: false,
+        );
       }
       return null;
     } catch (_) {
@@ -399,9 +412,55 @@ class AttendanceService {
     }
   }
 
-  /// Delete Company Holiday (`DELETE /api/holidays/:id`)
+  /// Add Company Event (`POST /api/holidays` with event marker so payroll treats it as working day)
+  Future<HolidayModel?> addCompanyEvent({
+    required String name,
+    required String date,
+    String? description,
+    bool salaryDeduction = false,
+  }) async {
+    final headers = await _getHeaders();
+    headers['x-portal-view'] = 'ems';
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/holidays');
+    final id = HolidayModel.buildEncodedId(
+      isEvent: true,
+      description: description,
+      salaryDeduction: salaryDeduction,
+    );
+    final normalizedDate = date.contains('T') ? date.split('T').first : date;
+    final body = jsonEncode({
+      'id': id,
+      'name': name,
+      'date': '${normalizedDate}T00:00:01Z',
+      if (description != null && description.isNotEmpty) 'description': description,
+      'salaryDeduction': salaryDeduction,
+    });
+
+    try {
+      final res = await _client.post(url, headers: headers, body: body).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final parsed = HolidayModel.fromJson(data);
+        return HolidayModel(
+          id: parsed.id,
+          companyId: parsed.companyId,
+          name: parsed.name,
+          date: parsed.date,
+          description: (parsed.description?.isNotEmpty == true) ? parsed.description : description,
+          isEvent: true,
+          salaryDeduction: salaryDeduction,
+        );
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Delete Company Holiday or Event (`DELETE /api/holidays/:id`)
   Future<bool> deleteHoliday(String id) async {
     final headers = await _getHeaders();
+    headers['x-portal-view'] = 'ems';
     final url = Uri.parse('${AppConfig.activeBaseUrl}/api/holidays/$id');
 
     try {

@@ -13,6 +13,7 @@ import '../../auth/data/auth_service.dart';
 import '../../auth/data/user_model.dart';
 import '../../calendar/data/holiday_model.dart';
 import '../../calendar/data/leave_service.dart';
+import '../../calendar/presentation/widgets/calendar_item_detail_dialog.dart';
 import '../../dashboard/data/dashboard_service.dart';
 import '../../dashboard/data/leave_model.dart';
 import '../../notifications/data/notification_model.dart';
@@ -206,7 +207,20 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         final attendance = results[3] as List<AttendanceModel>;
         final leaves = results[4] as List<LeaveModel>;
         final schedule = results[5] as WorkScheduleModel;
-        final holidays = results[6] as List<HolidayModel>;
+        final allCalendarItems = results[6] as List<HolidayModel>;
+        final pureHolidays = allCalendarItems.where((h) => !h.isEvent).toList();
+        final persistedEvents = allCalendarItems
+            .where((h) => h.isEvent)
+            .map(
+              (h) => CompanyEventModel(
+                id: h.id,
+                name: h.name,
+                description: h.description ?? '',
+                date: h.date,
+                salaryDeduction: h.salaryDeduction,
+              ),
+            )
+            .toList();
 
         setState(() {
           _company = companies.isNotEmpty ? companies.first : null;
@@ -215,7 +229,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           _attendance = attendance;
           _leaves = leaves;
           _workSchedule = schedule;
-          _holidays = holidays;
+          _holidays = pureHolidays;
+          _companyEvents
+            ..clear()
+            ..addAll(persistedEvents);
           _isLoading = false;
           if (_company != null) {
             final startDt = DateTime(
@@ -2341,8 +2358,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                         const SizedBox(height: 10),
                         ConstrainedBox(
                           constraints: BoxConstraints(
-                            maxWidth:
-                                MediaQuery.of(context).size.width * 0.52,
+                            maxWidth: MediaQuery.of(context).size.width * 0.52,
                           ),
                           child: const Text(
                             'Manage your team, track attendance and keep your workplace running smoothly.',
@@ -2918,7 +2934,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         ),
       ),
     );
-}
+  }
 
   Widget _buildMiniLegend({
     required Color color,
@@ -6608,28 +6624,42 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 onTapAction = () =>
                     _showBirthdayEmployeesDialog(dayDate, birthdayEmployees);
               } else if (isEvent) {
-                // Violet color for company event (tap displays event details & salary deduction)
+                // Pinned Violet color for company event (tap displays professional details)
                 bgColor = const Color(0xFF7C3AED);
                 borderColor = const Color(0xFF8B5CF6);
                 textColor = Colors.white;
                 shadows = [
                   BoxShadow(
-                    color: const Color(0xFF7C3AED).withValues(alpha: 0.5),
+                    color: const Color(0xFF7C3AED).withValues(alpha: 0.45),
                     blurRadius: 8,
+                    offset: const Offset(0, 2),
                   ),
                 ];
-                onTapAction = () => _showEventDetailsDialog(event);
+                onTapAction = () {
+                  setState(() => _selectedCalendarDate = dayDate);
+                  _showEventDetailsDialog(event);
+                };
               } else if (isHoliday) {
-                // Dark grey color for company holiday (tap displays holiday description)
-                bgColor = CeladonColors.holidayLight;
-                borderColor = CeladonColors.holidayBorder;
-                textColor = CeladonColors.holidayDark;
-                onTapAction = () => _showHolidayDetailsDialog(holiday);
+                // Pinned Dark Grey color for added company holiday (tap displays professional details)
+                bgColor = CeladonColors.holidayDark;
+                borderColor = const Color(0xFF1E293B);
+                textColor = Colors.white;
+                shadows = [
+                  BoxShadow(
+                    color: CeladonColors.holidayDark.withValues(alpha: 0.35),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ];
+                onTapAction = () {
+                  setState(() => _selectedCalendarDate = dayDate);
+                  _showHolidayDetailsDialog(holiday);
+                };
               } else if (isLeaveOrOff) {
-                // Dark grey for leaves & non-working days (unclickable: locked)
+                // Soft slate grey for weekly non-working days (unclickable: locked)
                 bgColor = CeladonColors.holidayLight;
                 borderColor = CeladonColors.holidayBorder;
-                textColor = CeladonColors.holidayDark;
+                textColor = CeladonColors.holidayGrey;
                 onTapAction = null;
               } else {
                 // Regular working day
@@ -6661,7 +6691,12 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     borderRadius: BorderRadius.circular(
                       6,
                     ), // Square shape in calendar
-                    border: Border.all(color: borderColor, width: 1.0),
+                    border: Border.all(
+                      color: isSelected && (isEvent || isHoliday)
+                          ? CeladonColors.primary
+                          : borderColor,
+                      width: isSelected && (isEvent || isHoliday) ? 2.0 : 1.0,
+                    ),
                     boxShadow: shadows,
                   ),
                   child: Center(
@@ -6677,6 +6712,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                 (isSelected ||
                                     hasBirthday ||
                                     isEvent ||
+                                    isHoliday ||
                                     isLeaveOrOff)
                                 ? FontWeight.w800
                                 : FontWeight.w500,
@@ -6696,6 +6732,16 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                               height: 0.8,
                               color: Colors.white,
                             ),
+                          )
+                        else if (isHoliday)
+                          Container(
+                            margin: const EdgeInsets.only(top: 1.5),
+                            width: 4.5,
+                            height: 4.5,
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                            ),
                           ),
                       ],
                     ),
@@ -6714,7 +6760,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             children: [
               _buildCalendarLegendDot(CeladonColors.primary, 'Working Day'),
               _buildCalendarLegendDot(const Color(0xFF7C3AED), 'Event ★'),
-              _buildCalendarLegendDot(CeladonColors.holidayDark, 'Holiday / Off'),
+              _buildCalendarLegendDot(
+                CeladonColors.holidayDark,
+                'Holiday / Off',
+              ),
               _buildCalendarLegendDot(const Color(0xFFF59E0B), 'Birthday 🎂'),
             ],
           ),
@@ -7467,7 +7516,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                 final holiday =
                                     h ??
                                     HolidayModel(
-                                      id: 'holiday-${DateTime.now().millisecondsSinceEpoch}',
+                                      id: HolidayModel.buildEncodedId(
+                                        isEvent: false,
+                                        description: descCtrl.text.trim(),
+                                      ),
                                       name: name,
                                       date: dateStr,
                                       description: descCtrl.text.trim(),
@@ -7477,13 +7529,19 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                     (x) => x.date == dateStr,
                                   );
                                   _holidays.add(holiday);
+                                  _currentCalendarMonth = DateTime(
+                                    pickedDate.year,
+                                    pickedDate.month,
+                                    1,
+                                  );
+                                  _selectedCalendarDate = pickedDate;
                                 });
                                 rootNav.pop();
                                 messenger.showSnackBar(
                                   SnackBar(
                                     backgroundColor: const Color(0xFF334155),
                                     content: Text(
-                                      '✓ Holiday "$name" added for $dateStr! (Grey)',
+                                      '✓ Holiday "$name" pinned on $dateStr!',
                                     ),
                                   ),
                                 );
@@ -7537,144 +7595,31 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   }
 
   // ---------------------------------------------------------
-  // SHOW HOLIDAY DETAILS DIALOG (Grey Theme)
+  // SHOW HOLIDAY DETAILS DIALOG (Professional Dark Grey Theme)
   // ---------------------------------------------------------
   void _showHolidayDetailsDialog(HolidayModel holiday) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: CeladonColors.cardBackground,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: CeladonColors.border, width: 1.2),
-        ),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: CeladonColors.searchBackground,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: CeladonColors.border),
-              ),
-              child: const Icon(
-                Icons.beach_access_rounded,
-                color: CeladonColors.textSecondary,
-                size: 22,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                holiday.name,
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w800,
-                  color: CeladonColors.textPrimary,
-                ),
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: CeladonColors.searchBackground,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: CeladonColors.border),
-              ),
-              child: const Text(
-                'Official Company Holiday',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  color: CeladonColors.textSecondary,
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                const Icon(
-                  Icons.event_rounded,
-                  size: 16,
-                  color: CeladonColors.textSecondary,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'Date: ${holiday.date}',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: CeladonColors.textPrimary,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              holiday.description != null && holiday.description!.isNotEmpty
-                  ? holiday.description!
-                  : 'Official company holiday. No employee attendance or check-in required on this date.',
-              style: const TextStyle(
-                fontSize: 12.5,
-                color: CeladonColors.textSecondary,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton.icon(
-            icon: const Icon(
-              Icons.delete_outline_rounded,
-              color: CeladonColors.error,
-              size: 16,
-            ),
-            label: const Text(
-              'Delete',
-              style: TextStyle(
-                color: CeladonColors.error,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            onPressed: () async {
-              Navigator.pop(ctx);
-              setState(() {
-                _holidays.removeWhere(
-                  (h) => h.id == holiday.id || h.date == holiday.date,
-                );
-              });
-              await _attendanceService.deleteHoliday(holiday.id);
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    backgroundColor: CeladonColors.primary,
-                    content: Text('Holiday "${holiday.name}" deleted.'),
-                  ),
-                );
-              }
-            },
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
+    CalendarItemDetailDialog.show(
+      context,
+      title: holiday.name,
+      date: holiday.date,
+      isEvent: false,
+      description: holiday.description,
+      onDelete: () async {
+        setState(() {
+          _holidays.removeWhere(
+            (h) => h.id == holiday.id || h.date == holiday.date,
+          );
+        });
+        await _attendanceService.deleteHoliday(holiday.id);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
               backgroundColor: CeladonColors.primary,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
+              content: Text('Holiday "${holiday.name}" deleted.'),
             ),
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text(
-              'Close',
-              style: TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
-      ),
+          );
+        }
+      },
     );
   }
 
@@ -7969,29 +7914,54 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                 );
                                 return;
                               }
+                              final messenger = ScaffoldMessenger.of(context);
+                              final rootNav = Navigator.of(ctx);
                               setSheetState(() => isSaving = true);
-                              final event = CompanyEventModel(
-                                id: 'event-${DateTime.now().millisecondsSinceEpoch}',
-                                name: name,
-                                description: desc,
-                                date: dateStr,
-                                salaryDeduction: salaryDeduction,
-                              );
-                              setState(() {
-                                _companyEvents.removeWhere(
-                                  (e) => e.date == dateStr,
+                              try {
+                                final saved = await _attendanceService
+                                    .addCompanyEvent(
+                                      name: name,
+                                      date: dateStr,
+                                      description: desc,
+                                      salaryDeduction: salaryDeduction,
+                                    );
+                                final event = CompanyEventModel(
+                                  id:
+                                      saved?.id ??
+                                      HolidayModel.buildEncodedId(
+                                        isEvent: true,
+                                        description: desc,
+                                        salaryDeduction: salaryDeduction,
+                                      ),
+                                  name: name,
+                                  description: desc,
+                                  date: dateStr,
+                                  salaryDeduction: salaryDeduction,
                                 );
-                                _companyEvents.add(event);
-                              });
-                              Navigator.pop(ctx);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  backgroundColor: const Color(0xFF7C3AED),
-                                  content: Text(
-                                    '✓ Event "$name" added for $dateStr! Highlighted in violet.',
+                                setState(() {
+                                  _companyEvents.removeWhere(
+                                    (e) => e.date == dateStr,
+                                  );
+                                  _companyEvents.add(event);
+                                  _currentCalendarMonth = DateTime(
+                                    pickedDate.year,
+                                    pickedDate.month,
+                                    1,
+                                  );
+                                  _selectedCalendarDate = pickedDate;
+                                });
+                                rootNav.pop();
+                                messenger.showSnackBar(
+                                  SnackBar(
+                                    backgroundColor: const Color(0xFF7C3AED),
+                                    content: Text(
+                                      '✓ Event "$name" pinned on $dateStr!',
+                                    ),
                                   ),
-                                ),
-                              );
+                                );
+                              } catch (_) {
+                                setSheetState(() => isSaving = false);
+                              }
                             },
                       borderRadius: BorderRadius.circular(12),
                       child: Container(
@@ -8039,170 +8009,32 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   }
 
   // ---------------------------------------------------------
-  // SHOW EVENT DETAILS DIALOG (Violet Color)
+  // SHOW EVENT DETAILS DIALOG (Professional Violet Theme)
   // ---------------------------------------------------------
   void _showEventDetailsDialog(CompanyEventModel event) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: CeladonColors.cardBackground,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: Color(0xFF8B5CF6), width: 1.2),
-        ),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFF8B5CF6)),
-              ),
-              child: const Icon(
-                Icons.event_available_rounded,
-                color: Color(0xFF8B5CF6),
-                size: 22,
-              ),
+    CalendarItemDetailDialog.show(
+      context,
+      title: event.name,
+      date: event.date,
+      isEvent: true,
+      description: event.description,
+      salaryDeduction: event.salaryDeduction,
+      onDelete: () async {
+        setState(() {
+          _companyEvents.removeWhere(
+            (e) => e.id == event.id || e.date == event.date,
+          );
+        });
+        await _attendanceService.deleteHoliday(event.id);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: CeladonColors.primary,
+              content: Text('Event "${event.name}" removed.'),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                event.name,
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w800,
-                  color: CeladonColors.textPrimary,
-                ),
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: const Color(0xFF8B5CF6).withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.35),
-                ),
-              ),
-              child: const Text(
-                'Company Event (Calculated as Normal Working Day)',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF8B5CF6),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                const Icon(
-                  Icons.event_rounded,
-                  size: 16,
-                  color: CeladonColors.textSecondary,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'Date: ${event.date}',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: CeladonColors.textPrimary,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Icon(
-                  event.salaryDeduction
-                      ? Icons.money_off_rounded
-                      : Icons.attach_money_rounded,
-                  size: 16,
-                  color: event.salaryDeduction
-                      ? CeladonColors.error
-                      : CeladonColors.primary,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'Salary Deduction: ${event.salaryDeduction ? "Yes" : "No"}',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: event.salaryDeduction
-                        ? CeladonColors.error
-                        : CeladonColors.primary,
-                  ),
-                ),
-              ],
-            ),
-            if (event.description.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Text(
-                event.description,
-                style: const TextStyle(
-                  fontSize: 12.5,
-                  color: CeladonColors.textSecondary,
-                ),
-              ),
-            ],
-          ],
-        ),
-        actions: [
-          TextButton.icon(
-            icon: const Icon(
-              Icons.delete_outline_rounded,
-              color: CeladonColors.error,
-              size: 16,
-            ),
-            label: const Text(
-              'Delete',
-              style: TextStyle(
-                color: CeladonColors.error,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            onPressed: () {
-              Navigator.pop(ctx);
-              setState(() {
-                _companyEvents.removeWhere(
-                  (e) => e.id == event.id || e.date == event.date,
-                );
-              });
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  backgroundColor: CeladonColors.primary,
-                  content: Text('Event "${event.name}" removed.'),
-                ),
-              );
-            },
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF8B5CF6),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text(
-              'Close',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
+          );
+        }
+      },
     );
   }
 
@@ -9818,8 +9650,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           final filteredList = _notifications.where((n) {
             if (_selectedNotificationFilter == 1 && n.read) return false;
             if (_selectedNotificationFilter == 2 && !n.isTask) return false;
-            if (_selectedNotificationFilter == 3 &&
-                !n.type.contains('leave')) {
+            if (_selectedNotificationFilter == 3 && !n.type.contains('leave')) {
               return false;
             }
             if (_selectedNotificationFilter == 4 &&
@@ -10406,9 +10237,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(
-          top: BorderSide(color: Color(0xFFE2E8F0), width: 1.0),
-        ),
+        border: Border(top: BorderSide(color: Color(0xFFE2E8F0), width: 1.0)),
         boxShadow: [
           BoxShadow(
             color: Color(0x0A000000),
@@ -10532,7 +10361,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         children: [
           Row(
             children: const [
-              Icon(Icons.shield_outlined, color: CeladonColors.primary, size: 18),
+              Icon(
+                Icons.shield_outlined,
+                color: CeladonColors.primary,
+                size: 18,
+              ),
               SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -12211,7 +12044,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             children: [
               Text(
                 'Showing ${safePage * pageSize + 1} - ${(safePage + 1) * pageSize > filtered.length ? filtered.length : (safePage + 1) * pageSize} of ${filtered.length}',
-                style: const TextStyle(fontSize: 12, color: CeladonColors.textMuted),
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: CeladonColors.textMuted,
+                ),
               ),
               Row(
                 mainAxisSize: MainAxisSize.min,
@@ -13001,11 +12837,7 @@ class _WelcomeCardWavePainter extends CustomPainter {
       ..shader = const LinearGradient(
         begin: Alignment.bottomLeft,
         end: Alignment.topRight,
-        colors: [
-          Color(0xFF064E3B),
-          Color(0xFF047857),
-          Color(0x00047857),
-        ],
+        colors: [Color(0xFF064E3B), Color(0xFF047857), Color(0x00047857)],
         stops: [0.0, 0.70, 1.0],
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
       ..style = PaintingStyle.fill;
@@ -13034,11 +12866,7 @@ class _WelcomeCardWavePainter extends CustomPainter {
       ..shader = const LinearGradient(
         begin: Alignment.bottomLeft,
         end: Alignment.topRight,
-        colors: [
-          Color(0xBBA7F3D0),
-          Color(0x33A7F3D0),
-          Color(0x00A7F3D0),
-        ],
+        colors: [Color(0xBBA7F3D0), Color(0x33A7F3D0), Color(0x00A7F3D0)],
         stops: [0.0, 0.60, 1.0],
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
       ..style = PaintingStyle.stroke

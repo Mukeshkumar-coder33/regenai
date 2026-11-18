@@ -8,6 +8,7 @@ import '../../tasks/data/task_model.dart';
 import '../data/calendar_event_model.dart';
 import '../data/calendar_service.dart';
 import '../data/leave_service.dart';
+import 'widgets/calendar_item_detail_dialog.dart';
 
 /// Screen 5: Comprehensive Calendar, Leaves & Holidays Module
 ///
@@ -112,12 +113,13 @@ class _CalendarViewState extends State<CalendarView> {
 
       final List<CalendarEventModel> dynamicEvents = [];
 
-      // 1. Live Public Holidays
+      // 1. Live Company Events & Public Holidays
       for (final h in holidays) {
+        final isCompanyEvent = h.category.toLowerCase() == 'event';
         dynamicEvents.add(h.copyWith(
-          icon: Icons.celebration_outlined,
-          color: const Color(0xFF334155),
-          bg: const Color(0xFFF1F5F9),
+          icon: isCompanyEvent ? Icons.event_available_rounded : Icons.beach_access_rounded,
+          color: isCompanyEvent ? const Color(0xFF7C3AED) : const Color(0xFF334155),
+          bg: isCompanyEvent ? const Color(0xFFF3E8FF) : const Color(0xFFF1F5F9),
         ));
       }
 
@@ -208,10 +210,6 @@ class _CalendarViewState extends State<CalendarView> {
       e.dateTime.month == date.month &&
       e.dateTime.day == date.day
     ).toList();
-  }
-
-  bool _hasEventsOnDate(DateTime date) {
-    return _getEventsForDate(date).isNotEmpty;
   }
 
   Future<void> _handleUpdateLeave(String id, String status) async {
@@ -577,6 +575,20 @@ class _CalendarViewState extends State<CalendarView> {
               // Calendar Grid
               _buildMonthGrid(primaryGreen),
               const SizedBox(height: 10),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                child: Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 12,
+                  runSpacing: 6,
+                  children: [
+                    _buildLegendDot(primaryGreen, 'Selected'),
+                    _buildLegendDot(const Color(0xFF7C3AED), 'Event ★'),
+                    _buildLegendDot(const Color(0xFF334155), 'Holiday'),
+                    _buildLegendDot(const Color(0xFFD97706), 'Activity'),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -649,14 +661,79 @@ class _CalendarViewState extends State<CalendarView> {
         final isToday = cellDate.year == DateTime.now().year &&
             cellDate.month == DateTime.now().month &&
             cellDate.day == DateTime.now().day;
-        final hasEvents = _hasEventsOnDate(cellDate);
+
+        final dayEvents = _getEventsForDate(cellDate);
+        CalendarEventModel? pinnedCompanyEvent;
+        CalendarEventModel? pinnedHoliday;
+        for (final ev in dayEvents) {
+          final cat = ev.category.toLowerCase();
+          if (cat == 'event' && pinnedCompanyEvent == null) {
+            pinnedCompanyEvent = ev;
+          } else if (cat == 'holiday' && pinnedHoliday == null) {
+            pinnedHoliday = ev;
+          }
+        }
+        final hasOtherEvents = dayEvents.any((ev) {
+          final cat = ev.category.toLowerCase();
+          return cat != 'event' && cat != 'holiday';
+        });
+
+        Color cellBg = Colors.transparent;
+        Color cellBorder = Colors.transparent;
+        Color dayTextColor = const Color(0xFF1A202C);
+        List<BoxShadow>? shadows;
+
+        if (pinnedCompanyEvent != null) {
+          cellBg = const Color(0xFF7C3AED);
+          cellBorder = isSelected ? primaryGreen : const Color(0xFF8B5CF6);
+          dayTextColor = Colors.white;
+          shadows = [
+            BoxShadow(
+              color: const Color(0xFF7C3AED).withValues(alpha: 0.35),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ];
+        } else if (pinnedHoliday != null) {
+          cellBg = const Color(0xFF334155);
+          cellBorder = isSelected ? primaryGreen : const Color(0xFF1E293B);
+          dayTextColor = Colors.white;
+          shadows = [
+            BoxShadow(
+              color: const Color(0xFF334155).withValues(alpha: 0.30),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ];
+        } else if (isSelected) {
+          cellBg = primaryGreen;
+          cellBorder = primaryGreen;
+          dayTextColor = Colors.white;
+        } else if (isToday) {
+          cellBg = const Color(0xFFE8F5ED);
+          cellBorder = primaryGreen.withValues(alpha: 0.4);
+          dayTextColor = primaryGreen;
+        }
+
+        final targetDetail = pinnedCompanyEvent ?? pinnedHoliday;
 
         return GestureDetector(
-          onTap: () => setState(() => _selectedDate = cellDate),
+          onTap: () {
+            setState(() => _selectedDate = cellDate);
+            if (targetDetail != null) {
+              _openPinnedItemDetail(targetDetail);
+            }
+          },
           child: Container(
+            margin: const EdgeInsets.all(2),
             decoration: BoxDecoration(
-              color: isSelected ? primaryGreen : (isToday ? const Color(0xFFE8F5ED) : Colors.transparent),
-              shape: BoxShape.circle,
+              color: cellBg,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: cellBorder,
+                width: (isSelected && targetDetail != null) ? 2.0 : 1.0,
+              ),
+              boxShadow: shadows,
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -664,12 +741,29 @@ class _CalendarViewState extends State<CalendarView> {
                 Text(
                   dayOffset.toString(),
                   style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: isSelected || isToday ? FontWeight.w800 : FontWeight.w500,
-                    color: isSelected ? Colors.white : (isToday ? primaryGreen : const Color(0xFF1A202C)),
+                    fontSize: 12.5,
+                    fontWeight: (isSelected || isToday || targetDetail != null)
+                        ? FontWeight.w800
+                        : FontWeight.w500,
+                    color: dayTextColor,
                   ),
                 ),
-                if (hasEvents) ...[
+                if (pinnedCompanyEvent != null)
+                  const Text(
+                    '★',
+                    style: TextStyle(fontSize: 8, height: 0.9, color: Colors.white),
+                  )
+                else if (pinnedHoliday != null)
+                  Container(
+                    margin: const EdgeInsets.only(top: 1.5),
+                    width: 4.5,
+                    height: 4.5,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                  )
+                else if (hasOtherEvents) ...[
                   const SizedBox(height: 2),
                   Container(
                     width: 5,
@@ -685,6 +779,64 @@ class _CalendarViewState extends State<CalendarView> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildLegendDot(Color color, String label) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2.5),
+          ),
+        ),
+        const SizedBox(width: 5),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 10.5,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF475569),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _openPinnedItemDetail(CalendarEventModel item) {
+    final isEvent = item.category.toLowerCase() == 'event';
+    final dateStr =
+        '${item.dateTime.year}-${item.dateTime.month.toString().padLeft(2, '0')}-${item.dateTime.day.toString().padLeft(2, '0')}';
+    CalendarItemDetailDialog.show(
+      context,
+      title: item.title,
+      date: dateStr,
+      isEvent: isEvent,
+      description: item.description,
+      salaryDeduction: item.salaryDeduction,
+      onDelete: _isManager
+          ? () async {
+              final deleted = await _calendarService.deleteEvent(
+                user: widget.user ??
+                    const UserModel(
+                      id: '',
+                      userId: '',
+                      username: '',
+                      name: '',
+                      role: 'admin',
+                      token: '',
+                    ),
+                eventId: item.id,
+              );
+              if (deleted && mounted) {
+                _loadAllBackendData();
+              }
+            }
+          : null,
     );
   }
 
@@ -758,63 +910,71 @@ class _CalendarViewState extends State<CalendarView> {
   }
 
   Widget _buildEventCard(CalendarEventModel event) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE1E8E4)),
-        boxShadow: const [BoxShadow(color: Color(0x04000000), blurRadius: 6, offset: Offset(0, 2))],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: event.bg,
-              borderRadius: BorderRadius.circular(12),
+    final isEventOrHoliday = event.category.toLowerCase() == 'event' ||
+        event.category.toLowerCase() == 'holiday';
+    return InkWell(
+      onTap: isEventOrHoliday ? () => _openPinnedItemDetail(event) : null,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE1E8E4)),
+          boxShadow: const [BoxShadow(color: Color(0x04000000), blurRadius: 6, offset: Offset(0, 2))],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: event.bg,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(event.icon, color: event.color, size: 20),
             ),
-            child: Icon(event.icon, color: event.color, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  event.title,
-                  style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF1A202C)),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  event.time,
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF829089)),
-                ),
-                if (event.description != null && event.description!.isNotEmpty) ...[
-                  const SizedBox(height: 4),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    event.description!,
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    event.title,
+                    style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF1A202C)),
                   ),
+                  const SizedBox(height: 3),
+                  Text(
+                    event.time,
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
+                  ),
+                  if (event.description != null && event.description!.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      event.description!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12, color: Color(0xFF475569)),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: event.bg,
-              borderRadius: BorderRadius.circular(8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: event.bg,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                event.category,
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: event.color),
+              ),
             ),
-            child: Text(
-              event.category,
-              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: event.color),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1027,52 +1187,63 @@ class _CalendarViewState extends State<CalendarView> {
   }
 
   Widget _buildHolidayCard(CalendarEventModel holiday, Color primaryGreen) {
+    final isEvent = holiday.category.toLowerCase() == 'event';
+    final accent = isEvent ? const Color(0xFF7C3AED) : const Color(0xFF334155);
+    final softBg = isEvent ? const Color(0xFFF3E8FF) : const Color(0xFFF1F5F9);
     final dateStr = "${holiday.dateTime.year}-${holiday.dateTime.month.toString().padLeft(2, '0')}-${holiday.dateTime.day.toString().padLeft(2, '0')}";
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE1E8E4)),
-        boxShadow: const [BoxShadow(color: Color(0x04000000), blurRadius: 6, offset: Offset(0, 2))],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF1F5F9),
-              borderRadius: BorderRadius.circular(12),
+    return InkWell(
+      onTap: () => _openPinnedItemDetail(holiday),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE1E8E4)),
+          boxShadow: const [BoxShadow(color: Color(0x04000000), blurRadius: 6, offset: Offset(0, 2))],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: softBg,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                isEvent ? Icons.event_available_rounded : Icons.beach_access_rounded,
+                color: accent,
+                size: 20,
+              ),
             ),
-            child: const Icon(Icons.celebration_outlined, color: Color(0xFF334155), size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  holiday.title,
-                  style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF1A202C)),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  dateStr,
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
-                ),
-              ],
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    holiday.title,
+                    style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF1A202C)),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${isEvent ? "Company Event" : "Official Holiday"} • $dateStr',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: accent),
+                  ),
+                ],
+              ),
             ),
-          ),
-          if (_isManager)
-            IconButton(
-              icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFDC4C4C), size: 20),
-              tooltip: 'Delete Holiday',
-              onPressed: () => _handleDeleteHoliday(holiday.id),
-            ),
-        ],
+            if (_isManager)
+              IconButton(
+                icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFDC4C4C), size: 20),
+                tooltip: isEvent ? 'Delete Event' : 'Delete Holiday',
+                onPressed: () => _handleDeleteHoliday(holiday.id),
+              ),
+          ],
+        ),
       ),
     );
   }

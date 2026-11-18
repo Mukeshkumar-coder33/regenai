@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import '../../../app/app_config.dart';
 import '../../auth/data/user_model.dart';
 import 'calendar_event_model.dart';
+import 'holiday_model.dart';
 
 /// Calendar and Holidays Service connecting with ReGen backend
 class CalendarService {
@@ -10,7 +11,7 @@ class CalendarService {
 
   CalendarService({http.Client? client}) : _client = client ?? http.Client();
 
-  /// Fetch events & holidays based on logged-in role
+  /// Fetch company events & official holidays based on logged-in role
   Future<List<CalendarEventModel>> fetchEvents({
     required UserModel user,
   }) async {
@@ -24,9 +25,7 @@ class CalendarService {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
           if (user.token.isNotEmpty) 'Authorization': 'Bearer ${user.token}',
-          'x-portal-view': user.isSuperAdmin
-              ? 'superadmin'
-              : (user.isCompanyAdmin ? 'company' : 'staff'),
+          'x-portal-view': user.isSuperAdmin ? 'superadmin' : 'ems',
         },
       ).timeout(const Duration(seconds: 8));
 
@@ -34,21 +33,23 @@ class CalendarService {
         final List<dynamic> list = jsonDecode(response.body) as List<dynamic>;
         for (final item in list) {
           if (item is Map<String, dynamic>) {
-            final dateStr = (item['date'] ?? '').toString();
+            final parsed = HolidayModel.fromJson(item);
             DateTime? dt;
             try {
-              dt = DateTime.parse(dateStr);
+              dt = DateTime.parse(parsed.date);
             } catch (_) {}
 
             if (dt != null) {
               loadedEvents.add(CalendarEventModel(
-                id: (item['id'] ?? item['_id'] ?? '').toString(),
-                title: (item['name'] ?? item['title'] ?? 'Company Holiday').toString(),
+                id: parsed.id,
+                title: parsed.name,
                 dateTime: dt,
-                time: 'All Day',
-                category: 'Holiday',
-                companyId: item['companyId']?.toString(),
+                time: parsed.isEvent ? 'Company Event • Working Day' : 'All Day • Official Holiday',
+                category: parsed.isEvent ? 'Event' : 'Holiday',
+                description: parsed.description,
+                companyId: parsed.companyId,
                 roleAccess: 'all',
+                salaryDeduction: parsed.salaryDeduction,
               ));
             }
           }
@@ -68,10 +69,20 @@ class CalendarService {
   }) async {
     try {
       final url = Uri.parse('${AppConfig.activeBaseUrl}/api/holidays');
-      final dateFormatted = "${event.dateTime.year}-${event.dateTime.month.toString().padLeft(2, '0')}-${event.dateTime.day.toString().padLeft(2, '0')}";
+      final isCompanyEvent = event.category.toLowerCase() == 'event';
+      final dateFormatted =
+          "${event.dateTime.year}-${event.dateTime.month.toString().padLeft(2, '0')}-${event.dateTime.day.toString().padLeft(2, '0')}";
+      final encodedId = HolidayModel.buildEncodedId(
+        isEvent: isCompanyEvent,
+        description: event.description,
+        salaryDeduction: event.salaryDeduction,
+      );
       final payload = jsonEncode({
+        'id': encodedId,
         'name': event.title,
-        'date': dateFormatted,
+        'date': isCompanyEvent ? '${dateFormatted}T00:00:01Z' : dateFormatted,
+        if (event.description != null && event.description!.isNotEmpty)
+          'description': event.description,
         if (user.companyId != null) 'companyId': user.companyId,
       });
 
@@ -81,7 +92,7 @@ class CalendarService {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
           if (user.token.isNotEmpty) 'Authorization': 'Bearer ${user.token}',
-          'x-portal-view': user.isSuperAdmin ? 'superadmin' : 'company',
+          'x-portal-view': user.isSuperAdmin ? 'superadmin' : 'ems',
         },
         body: payload,
       ).timeout(const Duration(seconds: 8));
@@ -105,6 +116,7 @@ class CalendarService {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
           if (user.token.isNotEmpty) 'Authorization': 'Bearer ${user.token}',
+          'x-portal-view': user.isSuperAdmin ? 'superadmin' : 'ems',
         },
       ).timeout(const Duration(seconds: 8));
 
@@ -114,4 +126,3 @@ class CalendarService {
     }
   }
 }
-

@@ -15,6 +15,7 @@ class CalendarEventModel {
   final Color? color;
   final Color? bg;
   final IconData? icon;
+  final bool salaryDeduction;
 
   const CalendarEventModel({
     required this.id,
@@ -30,6 +31,7 @@ class CalendarEventModel {
     this.color,
     this.bg,
     this.icon,
+    this.salaryDeduction = false,
   });
 
   factory CalendarEventModel.fromJson(Map<String, dynamic> json) {
@@ -83,6 +85,7 @@ class CalendarEventModel {
     Color? color,
     Color? bg,
     IconData? icon,
+    bool? salaryDeduction,
   }) {
     return CalendarEventModel(
       id: id ?? this.id,
@@ -98,6 +101,7 @@ class CalendarEventModel {
       color: color ?? this.color,
       bg: bg ?? this.bg,
       icon: icon ?? this.icon,
+      salaryDeduction: salaryDeduction ?? this.salaryDeduction,
     );
   }
 }

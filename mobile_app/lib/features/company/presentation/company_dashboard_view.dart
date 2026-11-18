@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:ui';
 
@@ -17,6 +18,7 @@ import '../../calendar/data/leave_service.dart';
 import '../../calendar/presentation/widgets/calendar_item_detail_dialog.dart';
 import '../../dashboard/data/dashboard_service.dart';
 import '../../dashboard/data/leave_model.dart';
+import '../../messenger/data/messenger_socket_service.dart';
 import '../../messenger/presentation/messenger_view.dart';
 import '../../notifications/data/notification_model.dart';
 import '../../notifications/data/notification_service.dart';
@@ -205,11 +207,12 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   String _selectedEmployeeDeptFilter = 'all';
   final NotificationService _notificationService = NotificationService();
   List<NotificationModel> _notifications = [];
+  StreamSubscription<Map<String, dynamic>>? _liveNotifSub;
   int get _unreadNotificationCount =>
       _notifications.where((n) => !n.read).length;
 
   int _selectedNotificationFilter =
-      0; // 0=All, 1=Unread, 2=Tasks, 3=Leave, 4=Attendance, 5=System
+      0; // 0=All, 1=Unread, 2=Tasks, 3=Leave, 4=Attendance, 5=Messenger
 
   bool _isLoading = true;
   String? _errorMessage;
@@ -262,6 +265,15 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     _authService = widget.authService ?? AuthService();
     _loadCompanyBottomNavSlots();
     _loadCompanyData();
+    _liveNotifSub = MessengerSocketService.instance.onNotification.listen((raw) {
+      if (!mounted) return;
+      final incoming = NotificationModel.fromJson(raw);
+      if (incoming.id.isEmpty) return;
+      setState(() {
+        _notifications.removeWhere((n) => n.id == incoming.id);
+        _notifications.insert(0, incoming);
+      });
+    });
   }
 
   Future<void> _loadCompanyBottomNavSlots() async {
@@ -328,6 +340,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
 
   @override
   void dispose() {
+    _liveNotifSub?.cancel();
     _employeeSearchController.dispose();
     _attendanceSearchController.dispose();
     _leaveSearchController.dispose();
@@ -10092,7 +10105,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 !n.type.contains('attendance')) {
               return false;
             }
-            if (_selectedNotificationFilter == 5 && !n.isSystem) return false;
+            if (_selectedNotificationFilter == 5 && !n.isMessenger) {
+              return false;
+            }
             return true;
           }).toList();
 
@@ -10265,7 +10280,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                           ),
                           const SizedBox(width: 8),
                           _buildSegmentChip(
-                            'System',
+                            'Messenger',
                             5,
                             _selectedNotificationFilter,
                             (idx) => setSheetState(
@@ -10298,11 +10313,19 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                       Color iconColor = CeladonColors.primary;
 
                                       if (notif.isCall) {
-                                        iconData = Icons.phone_in_talk_rounded;
+                                        iconData = notif.type == 'video_call'
+                                            ? Icons.videocam_rounded
+                                            : Icons.phone_in_talk_rounded;
                                         iconColor = const Color(0xFF06B6D4);
                                       } else if (notif.isMeeting) {
                                         iconData = Icons.groups_rounded;
                                         iconColor = const Color(0xFFF59E0B);
+                                      } else if (notif.type == 'voice_message') {
+                                        iconData = Icons.mic_rounded;
+                                        iconColor = CeladonColors.primary;
+                                      } else if (notif.type == 'text_message' || notif.isMessenger) {
+                                        iconData = Icons.chat_bubble_rounded;
+                                        iconColor = CeladonColors.primary;
                                       } else if (notif.isTask) {
                                         iconData = Icons.assignment_rounded;
                                         iconColor = CeladonColors.primary;
@@ -10344,7 +10367,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                           }
                                           sheetNav.pop();
 
-                                          if (notif.isTask ||
+                                          if (notif.isMessenger) {
+                                            _navigateToCompanyPage('messenger');
+                                          } else if (notif.isTask ||
                                               notif.type.toLowerCase().contains(
                                                 'task',
                                               ) ||

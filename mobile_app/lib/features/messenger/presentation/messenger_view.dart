@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:cryptography/cryptography.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../../../core/theme/celadon_colors.dart';
 import '../../auth/data/user_model.dart';
@@ -596,6 +598,24 @@ class _MessengerViewState extends State<MessengerView> {
       return;
     }
 
+    // Request runtime microphone permission on Android/iOS BEFORE initializing STT
+    if (!kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS)) {
+      final micStatus = await Permission.microphone.request();
+      if (!micStatus.isGranted) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              backgroundColor: CeladonColors.error,
+              content: Text('Microphone permission is required for Voice-to-Text.'),
+            ),
+          );
+        }
+        return;
+      }
+    }
+
     try {
       final ready = await _dictationSpeech.initialize(
         onStatus: (status) {
@@ -603,14 +623,23 @@ class _MessengerViewState extends State<MessengerView> {
             setState(() => _isDictating = false);
           }
         },
-        onError: (_) {
-          if (mounted) setState(() => _isDictating = false);
+        onError: (err) {
+          if (mounted) {
+            setState(() => _isDictating = false);
+            if (err.errorMsg != 'error_speech_timeout' && err.errorMsg != 'error_no_match') {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Voice-to-Text error: ${err.errorMsg}')),
+              );
+            }
+          }
         },
       );
       if (!ready) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Speech-to-text is not available on this device.')),
+            const SnackBar(
+              content: Text('Speech recognition is unavailable. Please enable Google Speech Services / browser mic access.'),
+            ),
           );
         }
         return;
@@ -621,9 +650,9 @@ class _MessengerViewState extends State<MessengerView> {
       await _dictationSpeech.listen(
         onResult: (res) {
           if (!mounted) return;
-          final combined = prefix.isEmpty
-              ? res.recognizedWords
-              : '$prefix ${res.recognizedWords}';
+          final spoken = res.recognizedWords.trim();
+          if (spoken.isEmpty) return;
+          final combined = prefix.isEmpty ? spoken : '$prefix $spoken';
           _messageController.text = combined;
           _messageController.selection = TextSelection.fromPosition(
             TextPosition(offset: combined.length),
@@ -631,11 +660,19 @@ class _MessengerViewState extends State<MessengerView> {
         },
         listenOptions: stt.SpeechListenOptions(
           partialResults: true,
+          cancelOnError: false,
           listenMode: stt.ListenMode.dictation,
+          listenFor: const Duration(seconds: 45),
+          pauseFor: const Duration(seconds: 4),
         ),
       );
-    } catch (_) {
-      if (mounted) setState(() => _isDictating = false);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isDictating = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not start Voice-to-Text: $e')),
+        );
+      }
     }
   }
 
@@ -1495,12 +1532,52 @@ class _MessengerViewState extends State<MessengerView> {
       return resolvedName.contains(q) || c.lastMessage.toLowerCase().contains(q);
     }).toList();
 
-    final filteredContacts = _contacts.where((c) {
-      if (q.isEmpty) return false;
-      return c.displayName.toLowerCase().contains(q) ||
-          c.company.toLowerCase().contains(q) ||
-          c.roleLabel.toLowerCase().contains(q);
-    }).toList();
+    // Collect userIds that already have an active 1:1 conversation shown above (avoid duplicates)
+    final activePeerIds = <String>{};
+    for (final c in _conversations) {
+      if (!c.isGroup && c.otherUserId.isNotEmpty) {
+        activePeerIds.add(c.otherUserId.trim().toLowerCase());
+      }
+    }
+
+    // Always list all authorized people directly below the search bar (not hidden behind + button):
+    // - Company Owner/Admin: Super Admin + all own-company employees
+    // - Employee: own-company owner/admin + all own-company employees
+    // - Super Admin: all registered company owners/admins (no regular employees)
+    final directoryPeople = _contacts.where((c) {
+      final key = c.userId.trim().toLowerCase();
+      final altKey = c.username.trim().toLowerCase();
+      if (q.isEmpty && (activePeerIds.contains(key) || activePeerIds.contains(altKey))) {
+        return false;
+      }
+      if (q.isNotEmpty) {
+        return c.displayName.toLowerCase().contains(q) ||
+            c.company.toLowerCase().contains(q) ||
+            c.roleLabel.toLowerCase().contains(q);
+      }
+      return true;
+    }).toList()
+      ..sort((a, b) {
+        // Pin Super Admin at top for Company Owners, then Owners/Admins, then alphabetical
+        int rank(String r) {
+          switch (r.toLowerCase()) {
+            case 'param':
+              return 0;
+            case 'owner':
+              return 1;
+            case 'admin':
+              return 2;
+            default:
+              return 3;
+          }
+        }
+        final diff = rank(a.role) - rank(b.role);
+        return diff != 0 ? diff : a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
+      });
+
+    final peopleSectionTitle = widget.user.isSuperAdmin
+        ? 'COMPANY OWNERS & ADMINS'
+        : (widget.user.isCompanyAdmin ? 'PEOPLE IN COMPANY & SUPER ADMIN' : 'PEOPLE IN COMPANY');
 
     return Stack(
       children: [
@@ -1508,7 +1585,7 @@ class _MessengerViewState extends State<MessengerView> {
           color: Colors.white,
           child: Column(
             children: [
-              // Sleek Full-Width Pill Search Bar (NO filter chips or strip below!)
+              // Sleek Full-Width Pill Search Bar
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
                 child: TextField(
@@ -1518,7 +1595,7 @@ class _MessengerViewState extends State<MessengerView> {
                   decoration: InputDecoration(
                     hintText: widget.user.isSuperAdmin
                         ? 'Search company owners or groups...'
-                        : 'Search conversations...',
+                        : 'Search people or conversations...',
                     hintStyle: const TextStyle(fontSize: 13.5, color: Color(0xFF64748B)),
                     prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Color(0xFF64748B)),
                     suffixIcon: _searchQuery.isNotEmpty
@@ -1554,32 +1631,39 @@ class _MessengerViewState extends State<MessengerView> {
               ),
 
               Expanded(
-                child: filteredConvos.isEmpty && filteredContacts.isEmpty
+                child: filteredConvos.isEmpty && directoryPeople.isEmpty
                     ? _buildEmptyConversationsState()
                     : ListView(
                         padding: const EdgeInsets.only(bottom: 84),
                         children: [
-                          for (int i = 0; i < filteredConvos.length; i++) ...[
-                            _buildConversationRow(filteredConvos[i]),
-                            if (i < filteredConvos.length - 1)
-                              const Divider(height: 1, indent: 78, endIndent: 16, color: _subtleDivider),
+                          if (filteredConvos.isNotEmpty) ...[
+                            for (int i = 0; i < filteredConvos.length; i++) ...[
+                              _buildConversationRow(filteredConvos[i]),
+                              if (i < filteredConvos.length - 1)
+                                const Divider(height: 1, indent: 78, endIndent: 16, color: _subtleDivider),
+                            ],
                           ],
-                          if (filteredContacts.isNotEmpty) ...[
-                            const Padding(
-                              padding: EdgeInsets.fromLTRB(16, 16, 16, 6),
+                          if (directoryPeople.isNotEmpty) ...[
+                            Padding(
+                              padding: EdgeInsets.fromLTRB(
+                                16,
+                                filteredConvos.isNotEmpty ? 16 : 6,
+                                16,
+                                6,
+                              ),
                               child: Text(
-                                'PEOPLE',
-                                style: TextStyle(
+                                peopleSectionTitle,
+                                style: const TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.8,
+                                  letterSpacing: 0.7,
                                   color: Color(0xFF64748B),
                                 ),
                               ),
                             ),
-                            for (int i = 0; i < filteredContacts.length; i++) ...[
-                              _buildDirectoryContactRow(filteredContacts[i]),
-                              if (i < filteredContacts.length - 1)
+                            for (int i = 0; i < directoryPeople.length; i++) ...[
+                              _buildDirectoryContactRow(directoryPeople[i]),
+                              if (i < directoryPeople.length - 1)
                                 const Divider(
                                   height: 1,
                                   indent: 78,
@@ -1595,7 +1679,7 @@ class _MessengerViewState extends State<MessengerView> {
           ),
         ),
 
-        // Modern Floating Action Button for New Chat (WhatsApp / Google Messages style)
+        // Modern Floating Action Button for New Chat / New Group
         Positioned(
           right: 16,
           bottom: 18,
@@ -1780,6 +1864,8 @@ class _MessengerViewState extends State<MessengerView> {
   }
 
   Widget _buildDirectoryContactRow(MessengerContactModel person) {
+    final isSa = person.role.toLowerCase() == 'param';
+    final isOwner = person.role.toLowerCase() == 'owner' || person.role.toLowerCase() == 'admin';
     return Material(
       color: Colors.white,
       child: InkWell(
@@ -1794,25 +1880,53 @@ class _MessengerViewState extends State<MessengerView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      person.displayName,
-                      style: const TextStyle(
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w700,
-                        color: CeladonColors.textPrimary,
-                      ),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            person.displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w700,
+                              color: CeladonColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                        if (isSa || isOwner) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: isSa ? const Color(0xFFDCFCE7) : CeladonColors.softMint,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              isSa ? 'Super Admin' : person.roleLabel,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                color: isSa ? const Color(0xFF15803D) : CeladonColors.primary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 2),
                     Text(
                       person.company.isNotEmpty
-                          ? '${person.roleLabel} • ${person.company}'
-                          : person.roleLabel,
+                          ? (isSa ? 'ReGen Platform Support' : '${person.roleLabel} • ${person.company}')
+                          : (person.designation.isNotEmpty ? person.designation : person.roleLabel),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                     ),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8), size: 20),
+              const Icon(Icons.chat_bubble_outline_rounded, color: CeladonColors.primary, size: 18),
             ],
           ),
         ),

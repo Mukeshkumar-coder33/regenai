@@ -1900,17 +1900,67 @@ void main() {
 
       // Super Admin central portal hides company-wide Team Channel tab
       expect(find.text('Team Channel'), findsNothing);
-      // No horizontal avatar/chip strip below search box
-      expect(find.text('Alice Owner'), findsNothing);
+      // Authorized Company Owners appear directly below search bar (no regular employees)
+      expect(find.text('COMPANY OWNERS & ADMINS'), findsOneWidget);
+      expect(find.text('Alice Owner'), findsOneWidget);
+      expect(find.text('Bob Owner'), findsOneWidget);
       // Group creation & New Chat FAB are available
       expect(find.byTooltip('New Group'), findsOneWidget);
       expect(find.byTooltip('New Chat'), findsOneWidget);
+    });
 
-      // Opening New Chat modal displays authorized company owners
-      await tester.tap(find.byTooltip('New Chat'));
+    testWidgets('MessengerView Company Owner sees Super Admin + company employees below search bar & Notifications shows Messenger (no System)', (WidgetTester tester) async {
+      final ownerUser = const UserModel(
+        id: 'owner_b',
+        userId: 'ownerB',
+        username: 'ownerB',
+        name: 'Bob Owner',
+        role: 'owner',
+        companyId: 'compB',
+        company: 'Beta Tech',
+        token: 'tok_owner',
+      );
+
+      final mockMessenger = _FakeMessengerService(
+        contacts: const [
+          MessengerContactModel(
+            id: 'sa_1',
+            userId: 'Vyshwa',
+            username: 'Vyshwa',
+            name: 'Vyshwa',
+            role: 'param',
+            company: 'ReGen Central',
+            online: true,
+          ),
+          MessengerContactModel(
+            id: 'emp_b1',
+            userId: 'EMP-101',
+            username: 'arun',
+            name: 'Arun Kumar',
+            role: 'staff',
+            companyId: 'compB',
+            company: 'Beta Tech',
+            online: false,
+          ),
+        ],
+        conversations: const [],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MessengerView(
+            user: ownerUser,
+            embedded: false,
+            messengerService: mockMessenger,
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
-      expect(find.text('Alice Owner'), findsOneWidget);
-      expect(find.text('Bob Owner'), findsOneWidget);
+
+      expect(find.text('PEOPLE IN COMPANY & SUPER ADMIN'), findsOneWidget);
+      expect(find.text('Vyshwa'), findsOneWidget);
+      expect(find.text('Super Admin'), findsOneWidget);
+      expect(find.text('Arun Kumar'), findsOneWidget);
     });
 
     testWidgets('MessengerView resolves raw employee IDs (KRH-123) to employee name and shows call/voice controls', (WidgetTester tester) async {

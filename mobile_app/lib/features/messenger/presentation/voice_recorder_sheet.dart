@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
@@ -33,11 +34,12 @@ class VoiceCaptureResult {
   });
 }
 
-/// Modal Bottom Sheet matching website `VoiceConfirmDialog.jsx`:
-/// 1. Records native audio (AAC `.m4a` compatible with Android, iOS & web browsers)
-///    while transcribing speech live via on-device `speech_to_text`.
-/// 2. After stopping, lets the user preview the audio, edit the transcribed text,
-///    and choose: **Send as Voice Note**, **Send as Text**, **Edit in Chat**, or **Discard**.
+/// Cross-platform (Android, iOS & Web) Voice Recorder + Editable Speech-to-Text Sheet:
+/// - Keeps microphone exclusively on `AudioRecorder` during recording (prevents Android
+///   audio-focus conflicts with `SpeechRecognizer`).
+/// - Uses `AudioEncoder.aacLc` (`.m4a`) on mobile and `AudioEncoder.opus` (`.webm`) on Web.
+/// - After stopping, lets the user preview audio, dictate/edit speech-to-text, and choose:
+///   **Send Voice Note**, **Send Text**, **Edit in Chat**, or **Discard**.
 class VoiceRecorderSheet extends StatefulWidget {
   const VoiceRecorderSheet({super.key});
 
@@ -66,15 +68,18 @@ class _VoiceRecorderSheetState extends State<VoiceRecorderSheet> {
   bool _isRecording = false;
   bool _hasRecorded = false;
   bool _isPlayingPreview = false;
+  bool _isEncoding = false;
+  bool _isDictatingTranscript = false;
   int _durationSeconds = 0;
   Timer? _timer;
-  String? _recordedFilePath;
+  String? _recordedPath;
   String? _errorText;
+  StreamSubscription<void>? _completeSub;
 
   @override
   void initState() {
     super.initState();
-    _previewPlayer.onPlayerComplete.listen((_) {
+    _completeSub = _previewPlayer.onPlayerComplete.listen((_) {
       if (mounted) setState(() => _isPlayingPreview = false);
     });
     _startRecording();
@@ -83,6 +88,7 @@ class _VoiceRecorderSheetState extends State<VoiceRecorderSheet> {
   @override
   void dispose() {
     _timer?.cancel();
+    _completeSub?.cancel();
     _recorder.dispose();
     _speech.stop();
     _previewPlayer.dispose();
@@ -90,58 +96,51 @@ class _VoiceRecorderSheetState extends State<VoiceRecorderSheet> {
     super.dispose();
   }
 
-  Future<void> _startRecording() async {
-    try {
-      if (!kIsWeb &&
-          (defaultTargetPlatform == TargetPlatform.android ||
-              defaultTargetPlatform == TargetPlatform.iOS)) {
-        final mic = await Permission.microphone.request();
-        if (!mic.isGranted) {
-          if (mounted) {
-            setState(() => _errorText = 'Microphone permission is required to record voice notes.');
-          }
-          return;
-        }
-      }
-
-      if (!await _recorder.hasPermission()) {
+  Future<bool> _ensureMicPermission() async {
+    if (!kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS)) {
+      final status = await Permission.microphone.request();
+      if (!status.isGranted) {
         if (mounted) {
-          setState(() => _errorText = 'Microphone access was denied.');
+          setState(() => _errorText = 'Microphone permission is required. Please allow it in device settings.');
         }
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Future<void> _startRecording() async {
+    if (!await _ensureMicPermission()) return;
+
+    try {
+      final hasPerm = await _recorder.hasPermission();
+      if (!hasPerm) {
+        if (mounted) setState(() => _errorText = 'Microphone access was denied.');
         return;
       }
 
-      final dir = await getTemporaryDirectory();
-      final outPath = '${dir.path}/regen_voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
-
-      await _recorder.start(
-        const RecordConfig(
-          encoder: AudioEncoder.aacLc,
-          bitRate: 96000,
-          sampleRate: 44100,
-        ),
-        path: outPath,
-      );
-
-      // Start parallel speech-to-text transcription when supported on device
-      try {
-        final sttReady = await _speech.initialize();
-        if (sttReady) {
-          await _speech.listen(
-            onResult: (res) {
-              if (mounted && res.recognizedWords.isNotEmpty) {
-                setState(() {
-                  _transcriptController.text = res.recognizedWords;
-                });
-              }
-            },
-            listenOptions: stt.SpeechListenOptions(
-              partialResults: true,
-              listenMode: stt.ListenMode.dictation,
-            ),
-          );
-        }
-      } catch (_) {}
+      if (kIsWeb) {
+        await _recorder.start(
+          const RecordConfig(
+            encoder: AudioEncoder.opus,
+            bitRate: 96000,
+          ),
+          path: '',
+        );
+      } else {
+        final dir = await getTemporaryDirectory();
+        final outPath = '${dir.path}/regen_voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+        await _recorder.start(
+          const RecordConfig(
+            encoder: AudioEncoder.aacLc,
+            bitRate: 96000,
+            sampleRate: 44100,
+          ),
+          path: outPath,
+        );
+      }
 
       _durationSeconds = 0;
       _timer?.cancel();
@@ -166,62 +165,165 @@ class _VoiceRecorderSheetState extends State<VoiceRecorderSheet> {
   Future<void> _stopRecording() async {
     _timer?.cancel();
     try {
-      await _speech.stop();
-    } catch (_) {}
-
-    try {
       final path = await _recorder.stop();
       if (mounted) {
         setState(() {
           _isRecording = false;
           _hasRecorded = path != null && path.isNotEmpty;
-          _recordedFilePath = path;
+          _recordedPath = path;
+          if (!_hasRecorded) {
+            _errorText = 'No audio was captured. Please tap Retry and speak clearly.';
+          }
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _isRecording = false;
-          _errorText = 'Failed to finalize audio: $e';
+          _errorText = 'Failed to finalize recording: $e';
         });
       }
     }
   }
 
   Future<void> _togglePreview() async {
-    if (_recordedFilePath == null) return;
-    if (_isPlayingPreview) {
-      await _previewPlayer.pause();
-      if (mounted) setState(() => _isPlayingPreview = false);
-    } else {
-      await _previewPlayer.play(DeviceFileSource(_recordedFilePath!));
-      if (mounted) setState(() => _isPlayingPreview = true);
+    if (_recordedPath == null || _recordedPath!.isEmpty) return;
+    try {
+      if (_isPlayingPreview) {
+        await _previewPlayer.pause();
+        if (mounted) setState(() => _isPlayingPreview = false);
+      } else {
+        if (kIsWeb || _recordedPath!.startsWith('http') || _recordedPath!.startsWith('blob:')) {
+          await _previewPlayer.play(UrlSource(_recordedPath!));
+        } else {
+          await _previewPlayer.play(DeviceFileSource(_recordedPath!));
+        }
+        if (mounted) setState(() => _isPlayingPreview = true);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isPlayingPreview = false;
+          _errorText = 'Preview playback error: $e';
+        });
+      }
+    }
+  }
+
+  Future<void> _toggleTranscriptDictation() async {
+    if (_isDictatingTranscript) {
+      await _speech.stop();
+      if (mounted) setState(() => _isDictatingTranscript = false);
+      return;
+    }
+
+    if (!await _ensureMicPermission()) return;
+
+    try {
+      final available = await _speech.initialize(
+        onStatus: (status) {
+          if ((status == 'done' || status == 'notListening') && mounted) {
+            setState(() => _isDictatingTranscript = false);
+          }
+        },
+        onError: (err) {
+          if (mounted) {
+            setState(() {
+              _isDictatingTranscript = false;
+              _errorText = 'Speech-to-text error: ${err.errorMsg}';
+            });
+          }
+        },
+      );
+      if (!available) {
+        if (mounted) {
+          setState(() => _errorText = 'Speech recognition is unavailable on this device/browser.');
+        }
+        return;
+      }
+
+      final baseText = _transcriptController.text.trim();
+      setState(() {
+        _isDictatingTranscript = true;
+        _errorText = null;
+      });
+      await _speech.listen(
+        onResult: (res) {
+          if (!mounted) return;
+          final combined = baseText.isEmpty
+              ? res.recognizedWords
+              : '$baseText ${res.recognizedWords}';
+          setState(() {
+            _transcriptController.text = combined;
+            _transcriptController.selection = TextSelection.fromPosition(
+              TextPosition(offset: combined.length),
+            );
+          });
+        },
+        listenOptions: stt.SpeechListenOptions(
+          partialResults: true,
+          listenMode: stt.ListenMode.dictation,
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isDictatingTranscript = false;
+          _errorText = 'Could not start speech-to-text: $e';
+        });
+      }
     }
   }
 
   Future<void> _finishWithVoice() async {
-    if (_recordedFilePath == null) return;
+    if (_recordedPath == null || _recordedPath!.isEmpty || _isEncoding) return;
+    setState(() {
+      _isEncoding = true;
+      _errorText = null;
+    });
     try {
-      final file = File(_recordedFilePath!);
-      final bytes = await file.readAsBytes();
+      Uint8List bytes;
+      String mimeType;
+      String ext;
+
+      if (kIsWeb || _recordedPath!.startsWith('blob:') || _recordedPath!.startsWith('http')) {
+        final resp = await http.get(Uri.parse(_recordedPath!));
+        if (resp.statusCode != 200 || resp.bodyBytes.isEmpty) {
+          throw Exception('Empty audio blob');
+        }
+        bytes = resp.bodyBytes;
+        mimeType = resp.headers['content-type']?.split(';').first.trim() ?? 'audio/webm';
+        ext = mimeType.contains('mp4') ? 'm4a' : (mimeType.contains('ogg') ? 'ogg' : 'webm');
+      } else {
+        final file = File(_recordedPath!);
+        bytes = await file.readAsBytes();
+        if (bytes.isEmpty) throw Exception('Recorded audio file is empty');
+        mimeType = 'audio/mp4';
+        ext = 'm4a';
+      }
+
       final b64 = base64Encode(bytes);
-      final dataUri = 'data:audio/mp4;base64,$b64';
+      final dataUri = 'data:$mimeType;base64,$b64';
+
       if (!mounted) return;
       Navigator.pop(
         context,
         VoiceCaptureResult(
           action: VoiceSendAction.sendVoice,
           base64DataUri: dataUri,
-          fileName: 'voice-${DateTime.now().millisecondsSinceEpoch}.m4a',
-          mimeType: 'audio/mp4',
+          fileName: 'voice-${DateTime.now().millisecondsSinceEpoch}.$ext',
+          mimeType: mimeType,
           fileSize: bytes.length,
-          durationSeconds: _durationSeconds,
+          durationSeconds: _durationSeconds > 0 ? _durationSeconds : 1,
           transcript: _transcriptController.text.trim(),
         ),
       );
     } catch (e) {
       if (mounted) {
-        setState(() => _errorText = 'Failed to encode voice note: $e');
+        setState(() {
+          _isEncoding = false;
+          _errorText = 'Failed to prepare voice message: $e';
+        });
       }
     }
   }
@@ -248,8 +350,8 @@ class _VoiceRecorderSheetState extends State<VoiceRecorderSheet> {
               Row(
                 children: [
                   Container(
-                    width: 40,
-                    height: 40,
+                    width: 42,
+                    height: 42,
                     decoration: BoxDecoration(
                       color: _isRecording
                           ? CeladonColors.error.withValues(alpha: 0.14)
@@ -267,7 +369,7 @@ class _VoiceRecorderSheetState extends State<VoiceRecorderSheet> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _isRecording ? 'Recording Voice Note...' : 'Voice Recording Ready',
+                          _isRecording ? 'Recording Voice Note...' : 'Voice Message',
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w800,
@@ -304,15 +406,26 @@ class _VoiceRecorderSheetState extends State<VoiceRecorderSheet> {
                     color: CeladonColors.error.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Text(
-                    _errorText!,
-                    style: const TextStyle(color: CeladonColors.error, fontSize: 12.5),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _errorText!,
+                          style: const TextStyle(color: CeladonColors.error, fontSize: 12.5),
+                        ),
+                      ),
+                      if (!_isRecording && !_hasRecorded)
+                        TextButton(
+                          onPressed: _startRecording,
+                          child: const Text('Retry'),
+                        ),
+                    ],
                   ),
                 ),
 
-              if (_isRecording) ...[
+              if (_isRecording)
                 Container(
-                  padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
                   decoration: BoxDecoration(
                     color: CeladonColors.background,
                     borderRadius: BorderRadius.circular(16),
@@ -321,15 +434,16 @@ class _VoiceRecorderSheetState extends State<VoiceRecorderSheet> {
                   child: Column(
                     children: [
                       const Text(
-                        'Speak clearly — recording audio & transcribing live',
-                        style: TextStyle(fontSize: 12.5, color: CeladonColors.textSecondary),
+                        'Recording high-quality voice note...',
+                        style: TextStyle(fontSize: 13, color: CeladonColors.textSecondary),
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 14),
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: CeladonColors.error,
                           foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                         ),
                         onPressed: _stopRecording,
@@ -339,9 +453,8 @@ class _VoiceRecorderSheetState extends State<VoiceRecorderSheet> {
                     ],
                   ),
                 ),
-              ],
 
-              if (_hasRecorded) ...[
+              if (_hasRecorded && !_isRecording) ...[
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   decoration: BoxDecoration(
@@ -357,7 +470,7 @@ class _VoiceRecorderSheetState extends State<VoiceRecorderSheet> {
                               ? Icons.pause_circle_filled_rounded
                               : Icons.play_circle_filled_rounded,
                           color: CeladonColors.primary,
-                          size: 36,
+                          size: 38,
                         ),
                         onPressed: _togglePreview,
                       ),
@@ -367,15 +480,15 @@ class _VoiceRecorderSheetState extends State<VoiceRecorderSheet> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text(
-                              'Audio Preview',
+                              'Voice Note Ready',
                               style: TextStyle(
                                 fontWeight: FontWeight.w700,
-                                fontSize: 13,
+                                fontSize: 13.5,
                                 color: CeladonColors.textPrimary,
                               ),
                             ),
                             Text(
-                              'Length ${_fmt(_durationSeconds)} • AAC/M4A',
+                              'Length ${_fmt(_durationSeconds)} • Tap play to preview',
                               style: const TextStyle(
                                 fontSize: 11.5,
                                 color: CeladonColors.textSecondary,
@@ -384,44 +497,66 @@ class _VoiceRecorderSheetState extends State<VoiceRecorderSheet> {
                           ],
                         ),
                       ),
+                      TextButton(
+                        onPressed: _startRecording,
+                        child: const Text('Re-record'),
+                      ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 12),
-              ],
+                const SizedBox(height: 14),
 
-              // Editable speech-to-text transcript box (parity with VoiceConfirmDialog)
-              const Text(
-                'Transcribed Text (Editable before sending)',
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: CeladonColors.textPrimary,
+                // Optional Voice-to-Text box (runs cleanly when mic is not held by AudioRecorder)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Voice-to-Text (Optional)',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: CeladonColors.textPrimary,
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: _toggleTranscriptDictation,
+                      icon: Icon(
+                        _isDictatingTranscript ? Icons.stop_circle_rounded : Icons.graphic_eq_rounded,
+                        size: 16,
+                        color: _isDictatingTranscript ? CeladonColors.error : CeladonColors.primary,
+                      ),
+                      label: Text(
+                        _isDictatingTranscript ? 'Stop Dictating' : 'Dictate Text',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: _isDictatingTranscript ? CeladonColors.error : CeladonColors.primary,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 6),
-              TextField(
-                controller: _transcriptController,
-                maxLines: 3,
-                onChanged: (_) => setState(() {}),
-                decoration: InputDecoration(
-                  hintText: 'Spoken words appear here. You can edit before sending...',
-                  hintStyle: const TextStyle(fontSize: 12.5, color: CeladonColors.textSecondary),
-                  filled: true,
-                  fillColor: CeladonColors.background,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: CeladonColors.border),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: CeladonColors.border),
+                TextField(
+                  controller: _transcriptController,
+                  maxLines: 2,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    hintText: 'Tap "Dictate Text" or type to send as text instead...',
+                    hintStyle: const TextStyle(fontSize: 12.5, color: CeladonColors.textSecondary),
+                    filled: true,
+                    fillColor: CeladonColors.background,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(color: CeladonColors.border),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(color: CeladonColors.border),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 14),
+                const SizedBox(height: 16),
 
-              if (!_isRecording)
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -464,18 +599,24 @@ class _VoiceRecorderSheetState extends State<VoiceRecorderSheet> {
                         icon: const Icon(Icons.send_rounded, size: 16),
                         label: const Text('Send Text'),
                       ),
-                    if (_hasRecorded)
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: CeladonColors.primary,
-                          foregroundColor: Colors.white,
-                        ),
-                        onPressed: _finishWithVoice,
-                        icon: const Icon(Icons.mic_rounded, size: 16),
-                        label: const Text('Send Voice Note'),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: CeladonColors.primary,
+                        foregroundColor: Colors.white,
                       ),
+                      onPressed: _isEncoding ? null : _finishWithVoice,
+                      icon: _isEncoding
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Icon(Icons.mic_rounded, size: 16),
+                      label: Text(_isEncoding ? 'Sending...' : 'Send Voice Note'),
+                    ),
                   ],
                 ),
+              ],
             ],
           ),
         ),
@@ -618,4 +759,3 @@ class _VoiceMessagePlayerState extends State<VoiceMessagePlayer> {
     );
   }
 }
-

@@ -390,6 +390,20 @@ export const createAndSendNotification = async (payload) => {
         if (recipient.StaffId) userIdsToNotify.add(String(recipient.StaffId));
         if (recipient.username) userIdsToNotify.add(String(recipient.username));
         if (recipient._id) userIdsToNotify.add(String(recipient._id));
+      } else {
+        const { default: SuperAdmin } = await import('../models/SuperAdmin.js');
+        const sa = await SuperAdmin.findOne({
+          $or: [
+            { adminId: doc.userId },
+            { username: doc.userId },
+            ...(isOid ? [{ _id: doc.userId }] : [])
+          ]
+        }).select('adminId username _id').lean();
+        if (sa) {
+          if (sa.adminId) userIdsToNotify.add(String(sa.adminId));
+          if (sa.username) userIdsToNotify.add(String(sa.username));
+          if (sa._id) userIdsToNotify.add(String(sa._id));
+        }
       }
     } catch (_) {}
 

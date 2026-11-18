@@ -410,6 +410,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     }
 
     return CallOverlay(
+      onOpenMessenger: () => _navigateToPage('messenger'),
       child: Scaffold(
       key: _scaffoldKey,
       backgroundColor: CeladonColors.background,

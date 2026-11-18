@@ -121,6 +121,14 @@ class NotificationModel {
 
   bool get isCall => type == 'voice_call' || type == 'video_call';
   bool get isMeeting => type == 'team_meeting';
+  bool get isMessenger =>
+      type == 'text_message' ||
+      type == 'voice_message' ||
+      isCall ||
+      isMeeting ||
+      (conversationId != null && conversationId!.isNotEmpty) ||
+      (callId != null && callId!.isNotEmpty) ||
+      (meetingId != null && meetingId!.isNotEmpty);
   bool get isTask => type.contains('task') || title.toLowerCase().contains('task') || message.toLowerCase().contains('task');
   bool get isAttendance => type.contains('attendance') || type.contains('leave') || title.toLowerCase().contains('leave') || message.toLowerCase().contains('leave');
   bool get isPayment => type.contains('payment') || type.contains('payroll') || type.contains('salary') || type.contains('bonus');

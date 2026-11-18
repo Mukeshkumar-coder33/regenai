@@ -1,14 +1,23 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../../../core/theme/celadon_colors.dart';
+import '../data/call_notification_service.dart';
+import '../data/messenger_socket_service.dart';
 import '../data/webrtc_call_manager.dart';
 
 /// App-wide overlay mounted in DashboardScreen to display incoming/active
-/// 1-to-1 Voice/Video Calls and Group Voice/Video Meetings across all roles.
+/// 1-to-1 Voice/Video Calls, Group Voice/Video Meetings, and instant live
+/// real-time notifications across all roles.
 class CallOverlay extends StatefulWidget {
   final Widget child;
+  final VoidCallback? onOpenMessenger;
 
-  const CallOverlay({super.key, required this.child});
+  const CallOverlay({
+    super.key,
+    required this.child,
+    this.onOpenMessenger,
+  });
 
   @override
   State<CallOverlay> createState() => _CallOverlayState();
@@ -18,16 +27,59 @@ class _CallOverlayState extends State<CallOverlay> {
   final WebRtcCallManager _manager = WebRtcCallManager.instance;
   String? _lastShownStatus;
 
+  // Live top banner for immediate real-time notifications (messages, calls, events)
+  StreamSubscription<Map<String, dynamic>>? _notifSub;
+  Map<String, dynamic>? _liveBanner;
+  Timer? _bannerTimer;
+
   @override
   void initState() {
     super.initState();
     _manager.addListener(_onManagerChanged);
+    _notifSub = MessengerSocketService.instance.onNotification.listen(_handleIncomingNotification);
   }
 
   @override
   void dispose() {
     _manager.removeListener(_onManagerChanged);
+    _notifSub?.cancel();
+    _bannerTimer?.cancel();
     super.dispose();
+  }
+
+  void _handleIncomingNotification(Map<String, dynamic> notif) {
+    if (!mounted) return;
+    final type = (notif['type'] ?? 'general').toString();
+    final title = (notif['title'] ?? notif['senderName'] ?? 'New Notification').toString();
+    final body = (notif['message'] ?? '').toString();
+    final id = (notif['id'] ?? notif['_id'] ?? DateTime.now().millisecondsSinceEpoch).toString();
+    final convId = notif['conversationId']?.toString();
+
+    // Immediately show native system notification on Android/iOS for non-call alerts
+    // (incoming calls already show a dedicated full-screen call notification via WebRtcCallManager)
+    if (type != 'voice_call' && type != 'video_call' && type != 'team_meeting') {
+      CallNotificationService.instance.showMessageNotification(
+        id: id,
+        senderName: title,
+        preview: body.isNotEmpty ? body : 'You have a new update',
+        conversationId: convId,
+      );
+    }
+
+    // Immediately slide down an in-app real-time alert banner across Android, iOS & Web
+    _bannerTimer?.cancel();
+    setState(() {
+      _liveBanner = {
+        'id': id,
+        'type': type,
+        'title': title,
+        'message': body,
+        'conversationId': convId,
+      };
+    });
+    _bannerTimer = Timer(const Duration(seconds: 4), () {
+      if (mounted) setState(() => _liveBanner = null);
+    });
   }
 
   void _onManagerChanged() {
@@ -55,12 +107,120 @@ class _CallOverlayState extends State<CallOverlay> {
     return Stack(
       children: [
         widget.child,
+        if (_liveBanner != null &&
+            _manager.callPhase == CallPhase.idle &&
+            _manager.meetingPhase == MeetingPhase.idle)
+          _buildLiveNotificationBanner(_liveBanner!),
         if (_manager.callPhase == CallPhase.incoming) _buildIncomingCallOverlay(),
         if (_manager.callPhase == CallPhase.calling) _buildOutgoingCallOverlay(),
         if (_manager.callPhase == CallPhase.connected) _buildActiveCallOverlay(),
         if (_manager.meetingPhase == MeetingPhase.invited) _buildMeetingInviteOverlay(),
         if (_manager.meetingPhase == MeetingPhase.inMeeting) _buildActiveMeetingOverlay(),
       ],
+    );
+  }
+
+  Widget _buildLiveNotificationBanner(Map<String, dynamic> notif) {
+    final type = (notif['type'] ?? 'general').toString();
+    final title = (notif['title'] ?? 'Notification').toString();
+    final message = (notif['message'] ?? '').toString();
+    final isMsg = type == 'text_message' ||
+        type == 'voice_message' ||
+        type == 'voice_call' ||
+        type == 'video_call' ||
+        type == 'team_meeting';
+
+    IconData icon = Icons.notifications_active_rounded;
+    if (type == 'voice_message') {
+      icon = Icons.mic_rounded;
+    } else if (type == 'text_message') {
+      icon = Icons.chat_bubble_rounded;
+    } else if (type == 'voice_call') {
+      icon = Icons.phone_in_talk_rounded;
+    } else if (type == 'video_call') {
+      icon = Icons.videocam_rounded;
+    } else if (type == 'team_meeting') {
+      icon = Icons.groups_rounded;
+    }
+
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: Material(
+            color: const Color(0xFF132620),
+            elevation: 8,
+            borderRadius: BorderRadius.circular(18),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: () {
+                _bannerTimer?.cancel();
+                setState(() => _liveBanner = null);
+                if (isMsg) widget.onOpenMessenger?.call();
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: CeladonColors.primary,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(icon, color: Colors.white, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 13.5,
+                            ),
+                          ),
+                          if (message.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              message,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.close_rounded, color: Colors.white60, size: 18),
+                      onPressed: () {
+                        _bannerTimer?.cancel();
+                        setState(() => _liveBanner = null);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 

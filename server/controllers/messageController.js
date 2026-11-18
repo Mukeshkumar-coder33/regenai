@@ -1,6 +1,8 @@
 import Message from '../models/Message.js';
+import User from '../models/User.js';
 import { resolveCompanyId } from '../utils/resolveCompanyId.js';
 import { emitToCompany } from '../socket.js';
+import { createAndSendNotification } from './notificationController.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -131,7 +133,36 @@ export const createMessage = async (req, res) => {
     }
     const msg = new Message(body);
     await msg.save();
-    emitToCompany('message:change', msg.companyId, { action: 'create', id: msg.messageId || msg.id });
+    emitToCompany('message:change', msg.companyId, { action: 'create', id: msg.messageId || msg.id, message: msg });
+
+    // Notify all other active members in this company immediately
+    try {
+      const isVoice = Array.isArray(msg.attachments) && msg.attachments.some((a) => a.type?.startsWith('audio'));
+      const senderName = msg.senderName || req.user?.username || msg.senderId;
+      const members = await User.find({
+        companyId: msg.companyId,
+        userId: { $ne: msg.senderId },
+        status: { $ne: 'inactive' },
+      }).select('userId').lean();
+
+      for (const m of members) {
+        await createAndSendNotification({
+          companyId: msg.companyId,
+          userId: m.userId,
+          type: isVoice ? 'voice_message' : 'text_message',
+          title: `Team Channel • ${senderName}`,
+          message: isVoice ? 'Sent a voice message' : (msg.content || 'Sent an attachment'),
+          senderId: msg.senderId,
+          senderName,
+          metadata: {
+            messageId: msg.messageId || msg._id?.toString(),
+            isTeamChannel: true,
+            isVoice: !!isVoice,
+          },
+        });
+      }
+    } catch (_) {}
+
     res.status(201).json(msg);
   } catch (error) {
     res.status(400).json({ message: error.message });

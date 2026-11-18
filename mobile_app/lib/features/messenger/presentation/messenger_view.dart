@@ -12,6 +12,7 @@ import '../data/messenger_model.dart';
 import '../data/messenger_service.dart';
 import '../data/messenger_socket_service.dart';
 import '../data/webrtc_call_manager.dart';
+import 'media_attachment_widgets.dart';
 import 'voice_recorder_sheet.dart';
 
 /// Unified Role-Aware ReGen Messenger Screen
@@ -580,6 +581,76 @@ class _MessengerViewState extends State<MessengerView> {
         );
         if (mounted) {
           if (sent != null) setState(() => _directMessages.add(sent));
+          setState(() => _isSending = false);
+          _scrollToBottom();
+        }
+      } else {
+        if (mounted) setState(() => _isSending = false);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isSending = false);
+    }
+  }
+
+  Future<void> _handleOpenMediaPicker() async {
+    final picked = await MessengerMediaPicker.showAttachPickerSheet(context);
+    if (picked == null || !mounted) return;
+    await _sendPickedMedia(picked);
+  }
+
+  Future<void> _handleRecordVideo() async {
+    final recorded = await MessengerMediaPicker.recordVideo(context);
+    if (recorded == null || !mounted) return;
+    await _sendPickedMedia(recorded);
+  }
+
+  Future<void> _sendPickedMedia(PickedMediaAttachment media) async {
+    if (_isSending) return;
+    setState(() => _isSending = true);
+
+    final attPayload = media.toBackendAttachment();
+    final contentText = media.defaultMessageText;
+
+    try {
+      if (_activeTab == 1 && _showTeamChannelTab) {
+        final sent = await _messengerService.sendTeamMessage(
+          user: widget.user,
+          content: contentText,
+          attachments: [attPayload],
+        );
+        if (mounted) {
+          if (sent != null) {
+            setState(() => _teamMessages.add(sent));
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                backgroundColor: CeladonColors.error,
+                content: Text('Failed to upload attachment. Please check your connection.'),
+              ),
+            );
+          }
+          setState(() => _isSending = false);
+          _scrollToBottom();
+        }
+      } else if (_activeConversation != null) {
+        final sent = await _messengerService.sendDirectMessage(
+          user: widget.user,
+          conversationId: _activeConversation!.conversationId,
+          content: contentText,
+          isVoice: false,
+          attachments: [attPayload],
+        );
+        if (mounted) {
+          if (sent != null) {
+            setState(() => _directMessages.add(sent));
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                backgroundColor: CeladonColors.error,
+                content: Text('Failed to upload attachment. Please check your connection.'),
+              ),
+            );
+          }
           setState(() => _isSending = false);
           _scrollToBottom();
         }
@@ -2331,6 +2402,10 @@ class _MessengerViewState extends State<MessengerView> {
   }) {
     final audioAtts = attachments.where((a) => a.isAudio).toList();
     final imageAtts = attachments.where((a) => a.isImage).toList();
+    final videoAtts = attachments.where((a) => a.isVideo).toList();
+    final docAtts = attachments
+        .where((a) => !a.isAudio && !a.isImage && !a.isVideo && a.path.isNotEmpty)
+        .toList();
 
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
@@ -2386,16 +2461,29 @@ class _MessengerViewState extends State<MessengerView> {
             for (final img in imageAtts)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.network(
-                    img.resolvedUrl,
-                    height: 150,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                child: GestureDetector(
+                  onTap: () {
+                    if (img.resolvedUrl.isEmpty) return;
+                    showDialog(
+                      context: context,
+                      builder: (_) => FullScreenImageViewer(imageUrl: img.resolvedUrl),
+                    );
+                  },
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.network(
+                      img.resolvedUrl,
+                      height: 150,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                    ),
                   ),
                 ),
               ),
+            for (final vid in videoAtts)
+              VideoMessageBubble(attachment: vid, isMine: isMine),
+            for (final doc in docAtts)
+              DocumentAttachmentCard(attachment: doc, isMine: isMine),
             const SizedBox(height: 4),
             Row(
               mainAxisSize: MainAxisSize.min,
@@ -2467,6 +2555,21 @@ class _MessengerViewState extends State<MessengerView> {
                 ),
                 child: Row(
                   children: [
+                    // Attach Photo, Video or Document from local storage (or Record Video)
+                    Tooltip(
+                      message: 'Attach Photo, Video or Document',
+                      child: IconButton(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        constraints: const BoxConstraints(minWidth: 34, minHeight: 36),
+                        icon: const Icon(
+                          Icons.attach_file_rounded,
+                          size: 20,
+                          color: Color(0xFF64748B),
+                        ),
+                        onPressed: _isSending ? null : _handleOpenMediaPicker,
+                      ),
+                    ),
                     Expanded(
                       child: TextField(
                         controller: _messageController,
@@ -2482,7 +2585,7 @@ class _MessengerViewState extends State<MessengerView> {
                             color: _isDictating ? CeladonColors.error : const Color(0xFF64748B),
                           ),
                           isDense: true,
-                          contentPadding: const EdgeInsets.fromLTRB(16, 11, 4, 11),
+                          contentPadding: const EdgeInsets.fromLTRB(2, 11, 4, 11),
                           border: InputBorder.none,
                         ),
                       ),
@@ -2492,12 +2595,29 @@ class _MessengerViewState extends State<MessengerView> {
                       message: 'Voice to Text',
                       child: IconButton(
                         visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
                         icon: Icon(
                           _isDictating ? Icons.stop_circle_rounded : Icons.graphic_eq_rounded,
                           size: 20,
                           color: _isDictating ? CeladonColors.error : const Color(0xFF64748B),
                         ),
                         onPressed: _toggleLiveDictation,
+                      ),
+                    ),
+                    // Quick Record Video & Send button inside the pill
+                    Tooltip(
+                      message: 'Record Video',
+                      child: IconButton(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.fromLTRB(2, 0, 8, 0),
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
+                        icon: const Icon(
+                          Icons.videocam_outlined,
+                          size: 21,
+                          color: Color(0xFF64748B),
+                        ),
+                        onPressed: _isSending ? null : _handleRecordVideo,
                       ),
                     ),
                   ],

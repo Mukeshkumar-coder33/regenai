@@ -2034,11 +2034,21 @@ void main() {
       await tester.tap(find.text('eswaran M'));
       await tester.pumpAndSettle();
 
-      // Verify Voice Call, Video Call, Voice Note Recorder, and Voice-to-Text buttons
+      // Verify Voice Call, Video Call, Voice Note Recorder, Voice-to-Text, Attach Media & Record Video buttons
       expect(find.byTooltip('Voice Call'), findsOneWidget);
       expect(find.byTooltip('Video Call'), findsOneWidget);
       expect(find.byTooltip('Record Voice Message'), findsOneWidget);
       expect(find.byTooltip('Voice to Text'), findsOneWidget);
+      expect(find.byTooltip('Attach Photo, Video or Document'), findsOneWidget);
+      expect(find.byTooltip('Record Video'), findsOneWidget);
+
+      // Tapping Attach opens the local media & document picker sheet
+      await tester.tap(find.byTooltip('Attach Photo, Video or Document'));
+      await tester.pumpAndSettle();
+      expect(find.text('Share Media & Files'), findsOneWidget);
+      expect(find.text('Photo'), findsOneWidget);
+      expect(find.text('Video'), findsOneWidget);
+      expect(find.text('Document'), findsOneWidget);
     });
   });
 }

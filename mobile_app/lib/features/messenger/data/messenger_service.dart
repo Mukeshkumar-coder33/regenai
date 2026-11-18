@@ -1,0 +1,204 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import '../../../app/app_config.dart';
+import '../../../core/storage/session_storage.dart';
+import '../../auth/data/user_model.dart';
+import 'messenger_model.dart';
+
+/// Live Messenger API Service reusing ReGen's existing `/api/messages` and `/api/dm` endpoints.
+class MessengerService {
+  final http.Client _client;
+
+  MessengerService({http.Client? client}) : _client = client ?? http.Client();
+
+  Future<Map<String, String>> _getHeaders({required UserModel user}) async {
+    final storedToken = await SessionStorage.getToken();
+    final token = user.token.isNotEmpty ? user.token : (storedToken ?? '');
+    return {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      if (token.isNotEmpty) 'Authorization': 'Bearer $token',
+      'x-portal-view': user.isSuperAdmin ? 'superadmin' : 'ems',
+    };
+  }
+
+  /// Fetch Team Chat messages (`GET /api/messages`)
+  Future<List<TeamMessageModel>> getTeamMessages({required UserModel user}) async {
+    final headers = await _getHeaders(user: user);
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/messages');
+    try {
+      final res = await _client.get(url, headers: headers).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        final list = jsonDecode(res.body) as List<dynamic>;
+        return list
+            .whereType<Map<String, dynamic>>()
+            .map(TeamMessageModel.fromJson)
+            .toList();
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Send a Team Chat message (`POST /api/messages`)
+  Future<TeamMessageModel?> sendTeamMessage({
+    required UserModel user,
+    required String content,
+  }) async {
+    final headers = await _getHeaders(user: user);
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/messages');
+    final msgId = 'msg-${DateTime.now().millisecondsSinceEpoch}';
+    final senderId = user.userId.isNotEmpty ? user.userId : user.id;
+    final senderName = user.name.isNotEmpty ? user.name : user.username;
+    final body = jsonEncode({
+      'messageId': msgId,
+      'id': msgId,
+      'senderId': senderId,
+      'senderName': senderName,
+      'content': content.trim(),
+      'timestamp': DateTime.now().toIso8601String(),
+      if (user.companyId != null && user.companyId!.isNotEmpty) 'companyId': user.companyId,
+    });
+    try {
+      final res = await _client
+          .post(url, headers: headers, body: body)
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        return TeamMessageModel.fromJson(data);
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Delete a Team Chat message (`DELETE /api/messages/:id`)
+  Future<bool> deleteTeamMessage({
+    required UserModel user,
+    required String messageId,
+  }) async {
+    final headers = await _getHeaders(user: user);
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/messages/$messageId');
+    try {
+      final res = await _client.delete(url, headers: headers).timeout(const Duration(seconds: 8));
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Fetch my 1:1 DM conversations (`GET /api/dm/conversations`)
+  Future<List<DmConversationModel>> getConversations({required UserModel user}) async {
+    final headers = await _getHeaders(user: user);
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/dm/conversations');
+    final myId = user.userId.isNotEmpty ? user.userId : user.id;
+    try {
+      final res = await _client.get(url, headers: headers).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        final raw = jsonDecode(res.body);
+        final list = raw is List ? raw : (raw is Map && raw['conversations'] is List ? raw['conversations'] as List : []);
+        return list
+            .whereType<Map<String, dynamic>>()
+            .map((item) => DmConversationModel.fromJson(item, currentUserId: myId))
+            .toList();
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Start or get an existing 1:1 DM conversation (`POST /api/dm/conversations`)
+  Future<DmConversationModel?> getOrCreateConversation({
+    required UserModel user,
+    required String recipientId,
+  }) async {
+    final headers = await _getHeaders(user: user);
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/dm/conversations');
+    final myId = user.userId.isNotEmpty ? user.userId : user.id;
+    try {
+      final res = await _client
+          .post(
+            url,
+            headers: headers,
+            body: jsonEncode({'recipientId': recipientId}),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final convObj = data['conversation'] is Map<String, dynamic>
+            ? data['conversation'] as Map<String, dynamic>
+            : data;
+        return DmConversationModel.fromJson(convObj, currentUserId: myId);
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Fetch messages in a 1:1 DM conversation (`GET /api/dm/conversations/:id/messages`)
+  Future<List<DirectMessageModel>> getDirectMessages({
+    required UserModel user,
+    required String conversationId,
+  }) async {
+    final headers = await _getHeaders(user: user);
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/dm/conversations/$conversationId/messages');
+    try {
+      final res = await _client.get(url, headers: headers).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        final raw = jsonDecode(res.body);
+        final list = raw is List ? raw : (raw is Map && raw['messages'] is List ? raw['messages'] as List : []);
+        return list
+            .whereType<Map<String, dynamic>>()
+            .map(DirectMessageModel.fromJson)
+            .toList();
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Send a 1:1 Direct Message (`POST /api/dm/conversations/:id/messages`)
+  Future<DirectMessageModel?> sendDirectMessage({
+    required UserModel user,
+    required String conversationId,
+    required String content,
+  }) async {
+    final headers = await _getHeaders(user: user);
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/dm/conversations/$conversationId/messages');
+    final msgId = 'dm-${DateTime.now().millisecondsSinceEpoch}';
+    final senderId = user.userId.isNotEmpty ? user.userId : user.id;
+    final senderName = user.name.isNotEmpty ? user.name : user.username;
+    try {
+      final res = await _client
+          .post(
+            url,
+            headers: headers,
+            body: jsonEncode({
+              'messageId': msgId,
+              'id': msgId,
+              'senderId': senderId,
+              'senderName': senderName,
+              'content': content.trim(),
+              'timestamp': DateTime.now().toIso8601String(),
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        final raw = jsonDecode(res.body) as Map<String, dynamic>;
+        final msgObj = raw['message'] is Map<String, dynamic>
+            ? raw['message'] as Map<String, dynamic>
+            : raw;
+        return DirectMessageModel.fromJson(msgObj);
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+}
+

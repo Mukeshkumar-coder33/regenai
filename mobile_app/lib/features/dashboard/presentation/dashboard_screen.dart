@@ -1,14 +1,20 @@
 import '../../auth/presentation/login_screen.dart';
 import 'package:flutter/material.dart';
+import '../../../core/navigation/bottom_nav_customizer.dart';
 import '../../../core/storage/session_storage.dart';
 import '../../../core/theme/celadon_colors.dart';
 import '../../attendance/presentation/attendance_view.dart';
 import '../../auth/data/user_model.dart';
 import '../../calendar/presentation/calendar_view.dart';
 import '../../company/presentation/company_dashboard_view.dart';
+import '../../messenger/presentation/messenger_view.dart';
 import '../../policies/data/policy_service.dart';
 import '../../profile/presentation/app_drawer.dart';
+import '../../profile/presentation/help_support_view.dart';
+import '../../profile/presentation/leave_request_view.dart';
 import '../../profile/presentation/profile_view.dart';
+import '../../profile/presentation/settings_view.dart';
+import '../../profile/presentation/team_directory_view.dart';
 import '../../superadmin/presentation/superadmin_dashboard_view.dart';
 import '../../tasks/presentation/tasks_view.dart';
 import 'employee_dashboard_view.dart';
@@ -40,17 +46,163 @@ class _DashboardScreenState extends State<DashboardScreen> {
   late UserModel _currentUser;
   bool _showAttendanceSubScreen = false;
 
+  // Independent role-based bottom nav shortcut customization (Employee & Super Admin)
+  static const List<String> _defaultSlotIds = ['home', 'tasks', 'calendar', 'profile'];
+  List<String> _bottomNavSlots = List<String>.from(_defaultSlotIds);
+  final List<GlobalKey> _bottomNavSlotKeys = List.generate(4, (_) => GlobalKey());
+  String? _overridePageId;
+
   final PolicyService _policyService = PolicyService();
   EmployeePolicyStatus? _policyStatus;
   bool _isLoadingPolicy = false;
   bool _isPolicySubmitting = false;
 
+  String get _roleStorageKey => _currentUser.isSuperAdmin ? 'superadmin' : 'employee';
+
+  List<NavShortcutItem> get _roleNavCatalog {
+    final items = <NavShortcutItem>[
+      const NavShortcutItem(
+        id: 'home',
+        label: 'Home',
+        icon: Icons.home_outlined,
+        activeIcon: Icons.home_rounded,
+      ),
+      const NavShortcutItem(
+        id: 'tasks',
+        label: 'Tasks',
+        icon: Icons.assignment_outlined,
+        activeIcon: Icons.assignment_rounded,
+      ),
+      const NavShortcutItem(
+        id: 'calendar',
+        label: 'Calendar',
+        icon: Icons.calendar_today_outlined,
+        activeIcon: Icons.calendar_today_rounded,
+      ),
+      const NavShortcutItem(
+        id: 'profile',
+        label: 'Profile',
+        icon: Icons.person_outline_rounded,
+        activeIcon: Icons.person_rounded,
+      ),
+      const NavShortcutItem(
+        id: 'messenger',
+        label: 'Messenger',
+        icon: Icons.chat_bubble_outline_rounded,
+        activeIcon: Icons.chat_bubble_rounded,
+      ),
+      const NavShortcutItem(
+        id: 'attendance',
+        label: 'Attendance',
+        icon: Icons.event_available_outlined,
+        activeIcon: Icons.event_available_rounded,
+      ),
+      const NavShortcutItem(
+        id: 'team',
+        label: 'Team',
+        icon: Icons.groups_outlined,
+        activeIcon: Icons.groups_rounded,
+      ),
+      if (!_currentUser.isSuperAdmin)
+        const NavShortcutItem(
+          id: 'leave',
+          label: 'Leave',
+          icon: Icons.beach_access_outlined,
+          activeIcon: Icons.beach_access_rounded,
+        ),
+      const NavShortcutItem(
+        id: 'settings',
+        label: 'Settings',
+        icon: Icons.settings_outlined,
+        activeIcon: Icons.settings_rounded,
+      ),
+      const NavShortcutItem(
+        id: 'help',
+        label: 'Support',
+        icon: Icons.help_outline_rounded,
+        activeIcon: Icons.help_rounded,
+      ),
+    ];
+    return items;
+  }
+
+  NavShortcutItem _shortcutForId(String id) {
+    final catalog = _roleNavCatalog;
+    return catalog.firstWhere((e) => e.id == id, orElse: () => catalog.first);
+  }
+
+  String get _activePageId =>
+      _overridePageId ?? _bottomNavSlots[_currentTabIndex.clamp(0, _bottomNavSlots.length - 1)];
+
   @override
   void initState() {
     super.initState();
     _currentUser = widget.user;
+    _loadRoleBottomNavSlots();
     if (!_currentUser.isCompanyAdmin && !_currentUser.isSuperAdmin) {
       _checkPolicyStatus();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant DashboardScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.user.id != widget.user.id ||
+        oldWidget.user.role != widget.user.role) {
+      _currentUser = widget.user;
+      _currentTabIndex = 0;
+      _overridePageId = null;
+      _showAttendanceSubScreen = false;
+      _bottomNavSlots = List<String>.from(_defaultSlotIds);
+      _loadRoleBottomNavSlots();
+    }
+  }
+
+  Future<void> _loadRoleBottomNavSlots() async {
+    if (_currentUser.isCompanyAdmin) return;
+    final validIds = _roleNavCatalog.map((e) => e.id).toSet();
+    final loaded = await BottomNavCustomizer.loadSlots(
+      roleKey: _roleStorageKey,
+      defaults: _defaultSlotIds,
+      validIds: validIds,
+    );
+    if (mounted) {
+      setState(() {
+        _bottomNavSlots = loaded;
+      });
+    }
+  }
+
+  Future<void> _handleBottomNavLongPress(int slotIndex) async {
+    final currentId = _bottomNavSlots[slotIndex];
+    final currentItem = _shortcutForId(currentId);
+    final activeSet = _bottomNavSlots.toSet();
+    final available = _roleNavCatalog
+        .where((item) => !activeSet.contains(item.id))
+        .toList();
+
+    final selectedId = await BottomNavCustomizer.showReplacementMenu(
+      context: context,
+      anchorKey: _bottomNavSlotKeys[slotIndex],
+      currentLabel: currentItem.label,
+      availableItems: available,
+    );
+
+    if (selectedId != null && selectedId != currentId && mounted) {
+      final updated = List<String>.from(_bottomNavSlots);
+      updated[slotIndex] = selectedId;
+      setState(() {
+        _bottomNavSlots = updated;
+        _currentTabIndex = slotIndex;
+        _overridePageId = null;
+        if (selectedId == 'calendar') {
+          _showAttendanceSubScreen = false;
+        }
+      });
+      await BottomNavCustomizer.saveSlots(
+        roleKey: _roleStorageKey,
+        slots: updated,
+      );
     }
   }
 
@@ -70,17 +222,117 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _navigateToTab(int index) {
+    // Preserve semantic mapping for legacy numeric callers (0=home, 1=tasks, 2=calendar, 3=profile)
+    const semanticIds = ['home', 'tasks', 'calendar', 'profile'];
+    if (index >= 0 && index < semanticIds.length) {
+      _navigateToPage(semanticIds[index]);
+      return;
+    }
     setState(() {
-      _currentTabIndex = index;
+      _currentTabIndex = index.clamp(0, _bottomNavSlots.length - 1);
+      _overridePageId = null;
       _showAttendanceSubScreen = false;
     });
   }
 
-  void _openAttendance() {
+  void _navigateToPage(String pageId) {
+    final slotIdx = _bottomNavSlots.indexOf(pageId);
+    if (slotIdx != -1) {
+      setState(() {
+        _currentTabIndex = slotIdx;
+        _overridePageId = null;
+        if (pageId == 'calendar') _showAttendanceSubScreen = false;
+      });
+      return;
+    }
+    if (pageId == 'attendance') {
+      _openAttendance();
+      return;
+    }
     setState(() {
-      _currentTabIndex = 2;
-      _showAttendanceSubScreen = true;
+      _overridePageId = pageId;
+      if (pageId == 'calendar') _showAttendanceSubScreen = false;
     });
+  }
+
+  void _openAttendance() {
+    final attIdx = _bottomNavSlots.indexOf('attendance');
+    if (attIdx != -1) {
+      setState(() {
+        _currentTabIndex = attIdx;
+        _overridePageId = null;
+      });
+      return;
+    }
+    final calIdx = _bottomNavSlots.indexOf('calendar');
+    if (calIdx != -1) {
+      setState(() {
+        _currentTabIndex = calIdx;
+        _overridePageId = null;
+        _showAttendanceSubScreen = true;
+      });
+      return;
+    }
+    setState(() {
+      _overridePageId = 'attendance';
+    });
+  }
+
+  Widget _buildPageById(String pageId) {
+    switch (pageId) {
+      case 'home':
+        return _buildHomeView();
+      case 'tasks':
+        return TasksView(
+          user: _currentUser,
+          onOpenDrawer: _openDrawer,
+          onBack: () => _navigateToPage('home'),
+        );
+      case 'calendar':
+        return _buildCalendarAndAttendanceTab();
+      case 'profile':
+        return ProfileView(
+          user: _currentUser,
+          onLogout: _handleLogout,
+          onNavigateToTab: _navigateToTab,
+          onOpenAttendance: _openAttendance,
+          onUserUpdated: (updatedUser) {
+            setState(() => _currentUser = updatedUser);
+            _loadRoleBottomNavSlots();
+          },
+        );
+      case 'messenger':
+        return MessengerView(
+          user: _currentUser,
+          embedded: true,
+          onOpenDrawer: _openDrawer,
+          onBack: () => _navigateToPage('home'),
+        );
+      case 'attendance':
+        return AttendanceView(
+          onOpenDrawer: _openDrawer,
+          onBack: () => _navigateToPage('home'),
+        );
+      case 'team':
+        return TeamDirectoryView(
+          onBack: () => _navigateToPage('home'),
+        );
+      case 'leave':
+        return LeaveRequestView(
+          user: _currentUser,
+          onBack: () => _navigateToPage('home'),
+        );
+      case 'settings':
+        return SettingsView(
+          onBack: () => _navigateToPage('home'),
+        );
+      case 'help':
+        return HelpSupportView(
+          onBack: () => _navigateToPage('home'),
+        );
+      default:
+        return _buildHomeView();
+    }
   }
 
   void _openDrawer() {
@@ -109,7 +361,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         onOpenDrawer: _openDrawer,
         onLogout: _handleLogout,
         onUserUpdated: (updatedUser) {
-          setState(() => _currentUser = updatedUser);
+          setState(() {
+            _currentUser = updatedUser;
+            _overridePageId = null;
+          });
+          _loadRoleBottomNavSlots();
         },
       );
     }
@@ -128,37 +384,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
         user: _currentUser,
         onLogout: _handleLogout,
         onNavigateToTab: _navigateToTab,
+        onNavigateToPage: _navigateToPage,
         onOpenAttendance: _openAttendance,
         currentTabIndex: _currentTabIndex,
+        currentPageId: _activePageId,
       ),
-      body: IndexedStack(
-        index: _currentTabIndex,
-        children: [
-          // Tab 0: Home View (Role-based: Employee, Company, or Super Admin)
-          _buildHomeView(),
-
-          // Tab 1: Tasks View (Screen 6)
-          TasksView(
-            user: _currentUser,
-            onOpenDrawer: _openDrawer,
-            onBack: () => _navigateToTab(0),
-          ),
-
-          // Tab 2: Calendar & Attendance View (Screen 5 & Screen 4)
-          _buildCalendarAndAttendanceTab(),
-
-          // Tab 3: Profile / Sidebar View (Screen 7)
-          ProfileView(
-            user: _currentUser,
-            onLogout: _handleLogout,
-            onNavigateToTab: _navigateToTab,
-            onOpenAttendance: _openAttendance,
-            onUserUpdated: (updatedUser) {
-              setState(() => _currentUser = updatedUser);
-            },
-          ),
-        ],
-      ),
+      body: _overridePageId != null
+          ? _buildPageById(_overridePageId!)
+          : IndexedStack(
+              index: _currentTabIndex.clamp(0, _bottomNavSlots.length - 1),
+              children: _bottomNavSlots.map(_buildPageById).toList(),
+            ),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           color: Colors.white,
@@ -178,32 +414,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildNavItem(
-                  index: 0,
-                  label: 'Home',
-                  icon: Icons.home_outlined,
-                  activeIcon: Icons.home_rounded,
-                ),
-                _buildNavItem(
-                  index: 1,
-                  label: 'Tasks',
-                  icon: Icons.assignment_outlined,
-                  activeIcon: Icons.assignment_rounded,
-                ),
-                _buildNavItem(
-                  index: 2,
-                  label: 'Calendar',
-                  icon: Icons.calendar_today_outlined,
-                  activeIcon: Icons.calendar_today_rounded,
-                ),
-                _buildNavItem(
-                  index: 3,
-                  label: 'Profile',
-                  icon: Icons.person_outline_rounded,
-                  activeIcon: Icons.person_rounded,
-                ),
-              ],
+              children: List.generate(_bottomNavSlots.length, (slotIndex) {
+                final item = _shortcutForId(_bottomNavSlots[slotIndex]);
+                return _buildNavItem(
+                  index: slotIndex,
+                  label: item.label,
+                  icon: item.icon,
+                  activeIcon: item.activeIcon,
+                );
+              }),
             ),
           ),
         ),
@@ -391,11 +610,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required IconData icon,
     required IconData activeIcon,
   }) {
-    final isSelected = _currentTabIndex == index;
+    final isSelected = _overridePageId == null && _currentTabIndex == index;
+    void handleSingleTap() {
+      setState(() {
+        _currentTabIndex = index;
+        _overridePageId = null;
+        _showAttendanceSubScreen = false;
+      });
+    }
 
     if (isSelected) {
       return InkWell(
-        onTap: () => _navigateToTab(index),
+        key: _bottomNavSlotKeys[index],
+        onTap: handleSingleTap,
+        onLongPress: () => _handleBottomNavLongPress(index),
         borderRadius: BorderRadius.circular(16),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -434,7 +662,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     return InkWell(
-      onTap: () => _navigateToTab(index),
+      key: _bottomNavSlotKeys[index],
+      onTap: handleSingleTap,
+      onLongPress: () => _handleBottomNavLongPress(index),
       borderRadius: BorderRadius.circular(16),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),

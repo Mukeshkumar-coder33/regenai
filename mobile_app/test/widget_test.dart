@@ -21,6 +21,7 @@ import 'package:regen_mobile/features/superadmin/presentation/superadmin_dashboa
 import 'package:regen_mobile/features/tasks/data/task_model.dart';
 import 'package:regen_mobile/features/tasks/data/project_model.dart';
 import 'package:regen_mobile/features/tasks/presentation/tasks_view.dart';
+import 'package:regen_mobile/features/profile/presentation/app_drawer.dart';
 import 'package:regen_mobile/features/profile/presentation/profile_view.dart';
 import 'package:regen_mobile/features/policies/data/policy_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1597,6 +1598,189 @@ void main() {
       expect(find.text('Company-Wide Day Off'), findsOneWidget);
       await tester.tap(find.text('Close'));
       await tester.pumpAndSettle();
+    });
+
+    testWidgets('Task 1: Messenger menu item is present in Company Admin, Employee, and Super Admin menus',
+        (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+
+      // 1. Company Admin Drawer
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanyDashboardView(
+            user: const UserModel(
+              id: 'owner_msg',
+              userId: 'Vyshwa',
+              username: 'Vyshwa',
+              name: 'Vyshwa',
+              role: 'owner',
+              company: 'krish Tech Computer',
+              token: 'tok_owner',
+            ),
+            dashboardService: MockDashboardService(),
+            authService: MockAuthService(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.menu_rounded));
+      await tester.pumpAndSettle();
+      expect(find.text('Messenger'), findsOneWidget);
+
+      // 2. Employee Drawer (AppDrawer)
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AppDrawer(
+              user: const UserModel(
+                id: 'emp_msg',
+                userId: 'Eswaran',
+                username: 'eswaran',
+                name: 'eswaran M',
+                role: 'staff',
+                token: 'tok_staff',
+              ),
+              onLogout: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Messenger'), findsOneWidget);
+
+      // 3. Super Admin Drawer (AppDrawer)
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AppDrawer(
+              user: const UserModel(
+                id: 'sa_msg',
+                userId: 'Param',
+                username: 'param',
+                name: 'Param',
+                role: 'param',
+                token: 'tok_sa',
+              ),
+              onLogout: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Messenger'), findsOneWidget);
+    });
+
+    testWidgets('Task 2: Company Admin long-press bottom nav replaces Calender with Payroll and swaps availability',
+        (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanyDashboardView(
+            user: const UserModel(
+              id: 'owner_nav',
+              userId: 'Vyshwa',
+              username: 'Vyshwa',
+              name: 'Vyshwa',
+              role: 'owner',
+              company: 'krish Tech Computer',
+              token: 'tok_owner',
+            ),
+            dashboardService: MockDashboardService(),
+            authService: MockAuthService(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Initial bottom nav has Calender and NOT Payroll
+      expect(find.text('Calender'), findsOneWidget);
+      expect(find.text('Payroll'), findsNothing);
+
+      // Long-press Calender shortcut in bottom nav
+      await tester.longPress(find.text('Calender'));
+      await tester.pumpAndSettle();
+
+      // Contextual menu shows eligible pages NOT in bottom nav (Tasks, Messenger, Payroll, Reports, Settings)
+      expect(find.text('Replace "Calender"'), findsOneWidget);
+      expect(find.text('Payroll'), findsOneWidget);
+      expect(find.text('Messenger'), findsOneWidget);
+      expect(find.text('Tasks'), findsOneWidget);
+
+      // Select Payroll
+      await tester.tap(find.text('Payroll'));
+      await tester.pumpAndSettle();
+
+      // Bottom nav now displays Payroll in place of Calender & navigates to Payroll view
+      expect(find.text('Payroll'), findsOneWidget);
+      expect(find.text('Payroll & Compensation'), findsOneWidget);
+
+      // Long-pressing Payroll now excludes Payroll from menu and makes Calender available again
+      await tester.longPress(find.text('Payroll'));
+      await tester.pumpAndSettle();
+      expect(find.text('Replace "Payroll"'), findsOneWidget);
+      expect(find.text('Calender'), findsOneWidget);
+    });
+
+    testWidgets('Task 2: Employee and Super Admin have independent long-press bottom nav customization & role access',
+        (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+
+      // 1. Employee DashboardScreen
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DashboardScreen(
+            user: const UserModel(
+              id: 'emp_nav',
+              userId: 'Eswaran',
+              username: 'eswaran',
+              name: 'eswaran M',
+              role: 'staff',
+              token: 'tok_staff',
+            ),
+            onLogout: () {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Long-press Calendar in Employee bottom nav
+      await tester.longPress(find.text('Calendar'));
+      await tester.pumpAndSettle();
+      expect(find.text('Replace "Calendar"'), findsOneWidget);
+      expect(find.text('Messenger'), findsOneWidget);
+      expect(find.text('Leave'), findsOneWidget); // Eligible for Employee
+
+      // Select Messenger -> replaces Calendar for Employee
+      await tester.tap(find.text('Messenger'));
+      await tester.pumpAndSettle();
+      expect(find.text('Messenger'), findsWidgets);
+
+      // 2. Super Admin DashboardScreen (independent slots & no Employee-only Leave)
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DashboardScreen(
+            user: const UserModel(
+              id: 'sa_nav',
+              userId: 'Param',
+              username: 'param',
+              name: 'Param',
+              role: 'param',
+              token: 'tok_sa',
+            ),
+            onLogout: () {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Super Admin still has its default Calendar slot (unaffected by Employee customization!)
+      expect(find.text('Calendar'), findsOneWidget);
+      await tester.longPress(find.text('Calendar'));
+      await tester.pumpAndSettle();
+      expect(find.text('Replace "Calendar"'), findsOneWidget);
+      expect(find.text('Messenger'), findsOneWidget);
+      expect(find.text('Leave'), findsNothing); // Unauthorized Employee-only Leave excluded for Super Admin
     });
   });
 }

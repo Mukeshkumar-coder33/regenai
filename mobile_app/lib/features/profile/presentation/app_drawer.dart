@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/celadon_colors.dart';
 import '../../auth/data/user_model.dart';
+import '../../messenger/presentation/messenger_view.dart';
 import 'help_support_view.dart';
 import 'leave_request_view.dart';
 import 'settings_view.dart';
@@ -10,22 +11,26 @@ import 'team_directory_view.dart';
 ///
 /// Features:
 /// - Exact ReGen green office header with user avatar, name, designation, and close icon
-/// - 9 standard employee navigation items matching the Premium Office design
+/// - Standard navigation items including Messenger matching the Premium Office design
 /// - Dismisses via close (X) button, tapping item, or tapping barrier
 class AppDrawer extends StatelessWidget {
   final UserModel user;
   final VoidCallback onLogout;
   final void Function(int tabIndex)? onNavigateToTab;
+  final void Function(String pageId)? onNavigateToPage;
   final VoidCallback? onOpenAttendance;
   final int? currentTabIndex;
+  final String? currentPageId;
 
   const AppDrawer({
     super.key,
     required this.user,
     required this.onLogout,
     this.onNavigateToTab,
+    this.onNavigateToPage,
     this.onOpenAttendance,
     this.currentTabIndex,
+    this.currentPageId,
   });
 
   @override
@@ -177,10 +182,16 @@ class AppDrawer extends StatelessWidget {
                     context: context,
                     icon: Icons.person_outline_rounded,
                     title: 'My Profile',
-                    isSelected: currentTabIndex == 3,
+                    isSelected: currentPageId != null
+                        ? currentPageId == 'profile'
+                        : currentTabIndex == 3,
                     onTap: () {
                       Navigator.of(context).pop();
-                      onNavigateToTab?.call(3);
+                      if (onNavigateToPage != null) {
+                        onNavigateToPage!('profile');
+                      } else {
+                        onNavigateToTab?.call(3);
+                      }
                     },
                   ),
 
@@ -189,9 +200,12 @@ class AppDrawer extends StatelessWidget {
                     context: context,
                     icon: Icons.event_available_outlined,
                     title: 'Attendance',
+                    isSelected: currentPageId == 'attendance',
                     onTap: () {
                       Navigator.of(context).pop();
-                      if (onOpenAttendance != null) {
+                      if (onNavigateToPage != null) {
+                        onNavigateToPage!('attendance');
+                      } else if (onOpenAttendance != null) {
                         onOpenAttendance!();
                       } else {
                         onNavigateToTab?.call(2);
@@ -204,10 +218,16 @@ class AppDrawer extends StatelessWidget {
                     context: context,
                     icon: Icons.assignment_outlined,
                     title: 'Tasks',
-                    isSelected: currentTabIndex == 1,
+                    isSelected: currentPageId != null
+                        ? currentPageId == 'tasks'
+                        : currentTabIndex == 1,
                     onTap: () {
                       Navigator.of(context).pop();
-                      onNavigateToTab?.call(1);
+                      if (onNavigateToPage != null) {
+                        onNavigateToPage!('tasks');
+                      } else {
+                        onNavigateToTab?.call(1);
+                      }
                     },
                   ),
 
@@ -216,39 +236,80 @@ class AppDrawer extends StatelessWidget {
                     context: context,
                     icon: Icons.calendar_month_outlined,
                     title: 'Calendar',
-                    isSelected: currentTabIndex == 2,
+                    isSelected: currentPageId != null
+                        ? currentPageId == 'calendar'
+                        : currentTabIndex == 2,
                     onTap: () {
                       Navigator.of(context).pop();
-                      onNavigateToTab?.call(2);
+                      if (onNavigateToPage != null) {
+                        onNavigateToPage!('calendar');
+                      } else {
+                        onNavigateToTab?.call(2);
+                      }
                     },
                   ),
 
-                  // 5. Team
+                  // 5. Messenger (Available for Employee & Super Admin)
+                  _buildDrawerItem(
+                    context: context,
+                    icon: Icons.chat_bubble_outline_rounded,
+                    title: 'Messenger',
+                    isSelected: currentPageId == 'messenger',
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      if (onNavigateToPage != null) {
+                        onNavigateToPage!('messenger');
+                      } else {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => MessengerView(
+                              user: user,
+                              onBack: () => Navigator.of(context).pop(),
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+
+                  // 6. Team
                   _buildDrawerItem(
                     context: context,
                     icon: Icons.groups_outlined,
                     title: 'Team',
+                    isSelected: currentPageId == 'team',
                     onTap: () {
                       Navigator.of(context).pop();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => TeamDirectoryView(
-                            onBack: () => Navigator.of(context).pop(),
+                      if (onNavigateToPage != null) {
+                        onNavigateToPage!('team');
+                      } else {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => TeamDirectoryView(
+                              onBack: () => Navigator.of(context).pop(),
+                            ),
                           ),
-                        ),
-                      );
+                        );
+                      }
                     },
                   ),
 
-                  // 6. Leave Management / Apply for Leave
+                  // 7. Leave Management / Apply for Leave
                   _buildDrawerItem(
                     context: context,
                     icon: Icons.beach_access_outlined,
                     title: (user.isCompanyAdmin || user.isSuperAdmin) ? 'Leave Approvals' : 'Apply for Leave',
+                    isSelected: currentPageId == 'leave',
                     onTap: () {
                       Navigator.of(context).pop();
                       if (user.isCompanyAdmin || user.isSuperAdmin) {
-                        onNavigateToTab?.call(2);
+                        if (onNavigateToPage != null) {
+                          onNavigateToPage!('calendar');
+                        } else {
+                          onNavigateToTab?.call(2);
+                        }
+                      } else if (onNavigateToPage != null) {
+                        onNavigateToPage!('leave');
                       } else {
                         Navigator.of(context).push(
                           MaterialPageRoute(
@@ -262,37 +323,47 @@ class AppDrawer extends StatelessWidget {
                     },
                   ),
 
-                  // 7. Settings
+                  // 8. Settings
                   _buildDrawerItem(
                     context: context,
                     icon: Icons.settings_outlined,
                     title: 'Settings',
+                    isSelected: currentPageId == 'settings',
                     onTap: () {
                       Navigator.of(context).pop();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => SettingsView(
-                            onBack: () => Navigator.of(context).pop(),
+                      if (onNavigateToPage != null) {
+                        onNavigateToPage!('settings');
+                      } else {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => SettingsView(
+                              onBack: () => Navigator.of(context).pop(),
+                            ),
                           ),
-                        ),
-                      );
+                        );
+                      }
                     },
                   ),
 
-                  // 8. Help & Support
+                  // 9. Help & Support
                   _buildDrawerItem(
                     context: context,
                     icon: Icons.help_outline_rounded,
                     title: 'Help & Support',
+                    isSelected: currentPageId == 'help',
                     onTap: () {
                       Navigator.of(context).pop();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => HelpSupportView(
-                            onBack: () => Navigator.of(context).pop(),
+                      if (onNavigateToPage != null) {
+                        onNavigateToPage!('help');
+                      } else {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => HelpSupportView(
+                              onBack: () => Navigator.of(context).pop(),
+                            ),
                           ),
-                        ),
-                      );
+                        );
+                      }
                     },
                   ),
 

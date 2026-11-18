@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/navigation/bottom_nav_customizer.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/theme/celadon_colors.dart';
 import '../../../core/widgets/brand_logo.dart';
@@ -16,6 +17,7 @@ import '../../calendar/data/leave_service.dart';
 import '../../calendar/presentation/widgets/calendar_item_detail_dialog.dart';
 import '../../dashboard/data/dashboard_service.dart';
 import '../../dashboard/data/leave_model.dart';
+import '../../messenger/presentation/messenger_view.dart';
 import '../../notifications/data/notification_model.dart';
 import '../../notifications/data/notification_service.dart';
 import '../../policies/data/policy_service.dart';
@@ -109,7 +111,93 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   final AttendanceService _attendanceService = AttendanceService();
 
   int _selectedBottomTab =
-      0; // 0=Home, 1=Employees, 2=Attendance, 3=Leave, 4=Profile
+      0; // Active bottom nav slot index (0..4)
+  static const List<String> _defaultCompanySlots = [
+    'home',
+    'employees',
+    'calender',
+    'leave',
+    'profile',
+  ];
+  List<String> _bottomNavSlots = List<String>.from(_defaultCompanySlots);
+  final List<GlobalKey> _bottomNavSlotKeys =
+      List.generate(5, (_) => GlobalKey());
+  String? _overridePageId;
+
+  static const List<NavShortcutItem> _companyNavCatalog = [
+    NavShortcutItem(
+      id: 'home',
+      label: 'Home',
+      icon: Icons.home_outlined,
+      activeIcon: Icons.home_rounded,
+    ),
+    NavShortcutItem(
+      id: 'employees',
+      label: 'Employees',
+      icon: Icons.groups_outlined,
+      activeIcon: Icons.groups_rounded,
+    ),
+    NavShortcutItem(
+      id: 'calender',
+      label: 'Calender',
+      icon: Icons.calendar_month_outlined,
+      activeIcon: Icons.calendar_month_rounded,
+    ),
+    NavShortcutItem(
+      id: 'leave',
+      label: 'Leave',
+      icon: Icons.beach_access_outlined,
+      activeIcon: Icons.beach_access_rounded,
+    ),
+    NavShortcutItem(
+      id: 'profile',
+      label: 'Profile',
+      icon: Icons.person_outline_rounded,
+      activeIcon: Icons.person_rounded,
+    ),
+    NavShortcutItem(
+      id: 'tasks',
+      label: 'Tasks',
+      icon: Icons.assignment_outlined,
+      activeIcon: Icons.assignment_rounded,
+    ),
+    NavShortcutItem(
+      id: 'messenger',
+      label: 'Messenger',
+      icon: Icons.chat_bubble_outline_rounded,
+      activeIcon: Icons.chat_bubble_rounded,
+    ),
+    NavShortcutItem(
+      id: 'payroll',
+      label: 'Payroll',
+      icon: Icons.payments_outlined,
+      activeIcon: Icons.payments_rounded,
+    ),
+    NavShortcutItem(
+      id: 'reports',
+      label: 'Reports',
+      icon: Icons.bar_chart_outlined,
+      activeIcon: Icons.bar_chart_rounded,
+    ),
+    NavShortcutItem(
+      id: 'settings',
+      label: 'Settings',
+      icon: Icons.settings_outlined,
+      activeIcon: Icons.settings_rounded,
+    ),
+  ];
+
+  NavShortcutItem _companyShortcutForId(String id) {
+    return _companyNavCatalog.firstWhere(
+      (e) => e.id == id,
+      orElse: () => _companyNavCatalog.first,
+    );
+  }
+
+  String get _activeCompanyPageId =>
+      _overridePageId ??
+      _bottomNavSlots[_selectedBottomTab.clamp(0, _bottomNavSlots.length - 1)];
+
   int _selectedProfileSubTab = 0; // 0=Company, 1=My Profile, 2=Settings
   int _selectedEmployeeFilter = 0; // 0=All, 1=Active, 2=On Leave, 3=Inactive
   String _selectedEmployeeRoleFilter =
@@ -172,7 +260,70 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     super.initState();
     _dashboardService = widget.dashboardService ?? DashboardService();
     _authService = widget.authService ?? AuthService();
+    _loadCompanyBottomNavSlots();
     _loadCompanyData();
+  }
+
+  Future<void> _loadCompanyBottomNavSlots() async {
+    final validIds = _companyNavCatalog.map((e) => e.id).toSet();
+    final loaded = await BottomNavCustomizer.loadSlots(
+      roleKey: 'company',
+      defaults: _defaultCompanySlots,
+      validIds: validIds,
+    );
+    if (mounted) {
+      setState(() {
+        _bottomNavSlots = loaded;
+      });
+    }
+  }
+
+  Future<void> _handleBottomNavLongPress(int slotIndex) async {
+    final currentId = _bottomNavSlots[slotIndex];
+    final currentItem = _companyShortcutForId(currentId);
+    final activeSet = _bottomNavSlots.toSet();
+    final available = _companyNavCatalog
+        .where((item) => !activeSet.contains(item.id))
+        .toList();
+
+    final selectedId = await BottomNavCustomizer.showReplacementMenu(
+      context: context,
+      anchorKey: _bottomNavSlotKeys[slotIndex],
+      currentLabel: currentItem.label,
+      availableItems: available,
+    );
+
+    if (selectedId != null && selectedId != currentId && mounted) {
+      final updated = List<String>.from(_bottomNavSlots);
+      updated[slotIndex] = selectedId;
+      setState(() {
+        _bottomNavSlots = updated;
+        _selectedBottomTab = slotIndex;
+        _overridePageId = null;
+        if (selectedId == 'settings') {
+          _selectedProfileSubTab = 2;
+        }
+      });
+      await BottomNavCustomizer.saveSlots(
+        roleKey: 'company',
+        slots: updated,
+      );
+    }
+  }
+
+  void _navigateToCompanyPage(String pageId) {
+    final slotIdx = _bottomNavSlots.indexOf(pageId);
+    setState(() {
+      if (pageId == 'settings') {
+        _selectedProfileSubTab = 2;
+      }
+      if (slotIdx != -1) {
+        _selectedBottomTab = slotIdx;
+        _overridePageId = null;
+      } else {
+        _overridePageId = pageId;
+      }
+    });
   }
 
   @override
@@ -1385,10 +1536,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: _selectedBottomTab == 0,
+      canPop: _overridePageId == null && _activeCompanyPageId == 'home',
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop && mounted) {
-          setState(() => _selectedBottomTab = 0);
+          _navigateToCompanyPage('home');
         }
       },
       child: Scaffold(
@@ -1621,7 +1772,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                           subtitle: '$totalStaff registered team members',
                           onTap: () {
                             Navigator.of(context).pop();
-                            setState(() => _selectedBottomTab = 1);
+                            _navigateToCompanyPage('employees');
                           },
                         ),
                         _buildCompanyMenuItem(
@@ -1630,7 +1781,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                           subtitle: '$activeStaff logs recorded',
                           onTap: () {
                             Navigator.of(context).pop();
-                            setState(() => _selectedBottomTab = 2);
+                            _navigateToCompanyPage('calender');
                           },
                         ),
                         _buildCompanyMenuItem(
@@ -1639,14 +1790,40 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                           subtitle: '$_activeTasksCount open tasks in progress',
                           onTap: () {
                             Navigator.of(context).pop();
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => TasksView(
-                                  user: widget.user,
-                                  onBack: () => Navigator.of(context).pop(),
+                            final slotIdx = _bottomNavSlots.indexOf('tasks');
+                            if (slotIdx != -1) {
+                              _navigateToCompanyPage('tasks');
+                            } else {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => TasksView(
+                                    user: widget.user,
+                                    onBack: () => Navigator.of(context).pop(),
+                                  ),
                                 ),
-                              ),
-                            );
+                              );
+                            }
+                          },
+                        ),
+                        _buildCompanyMenuItem(
+                          icon: Icons.chat_bubble_outline_rounded,
+                          title: 'Messenger',
+                          subtitle: 'Team chat & direct messages',
+                          onTap: () {
+                            Navigator.of(context).pop();
+                            final slotIdx = _bottomNavSlots.indexOf('messenger');
+                            if (slotIdx != -1) {
+                              _navigateToCompanyPage('messenger');
+                            } else {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => MessengerView(
+                                    user: widget.user,
+                                    onBack: () => Navigator.of(context).pop(),
+                                  ),
+                                ),
+                              );
+                            }
                           },
                         ),
                         _buildCompanyMenuItem(
@@ -1657,7 +1834,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                               : 'Review leave approvals & company holidays',
                           onTap: () {
                             Navigator.of(context).pop();
-                            setState(() => _selectedBottomTab = 3);
+                            _navigateToCompanyPage('leave');
                           },
                         ),
                         _buildCompanyMenuItem(
@@ -1666,7 +1843,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                           subtitle: 'Automated payroll processing & slips',
                           onTap: () {
                             Navigator.of(context).pop();
-                            _showPayrollSheet();
+                            if (_bottomNavSlots.contains('payroll')) {
+                              _navigateToCompanyPage('payroll');
+                            } else {
+                              _showPayrollSheet();
+                            }
                           },
                         ),
                         _buildCompanyMenuItem(
@@ -1675,7 +1856,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                           subtitle: 'Workforce analytics & monthly summary',
                           onTap: () {
                             Navigator.of(context).pop();
-                            _showAttendanceReportSheet();
+                            if (_bottomNavSlots.contains('reports')) {
+                              _navigateToCompanyPage('reports');
+                            } else {
+                              _showAttendanceReportSheet();
+                            }
                           },
                         ),
                         _buildCompanyMenuItem(
@@ -1685,10 +1870,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                               'Company profile & working hours configuration',
                           onTap: () {
                             Navigator.of(context).pop();
-                            setState(() {
-                              _selectedBottomTab = 4;
-                              _selectedProfileSubTab = 2;
-                            });
+                            _navigateToCompanyPage('settings');
                           },
                         ),
                         if (widget.user.canSwitchToSuperAdmin) ...[
@@ -2038,8 +2220,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           // Left: Hamburger Menu Button (or Back Arrow if on subtab)
           InkWell(
             onTap: () {
-              if (_selectedBottomTab != 0) {
-                setState(() => _selectedBottomTab = 0);
+              if (_activeCompanyPageId != 'home') {
+                _navigateToCompanyPage('home');
               } else {
                 if (widget.onOpenDrawer != null) {
                   widget.onOpenDrawer!();
@@ -2051,7 +2233,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             child: Padding(
               padding: const EdgeInsets.all(6),
               child: Icon(
-                _selectedBottomTab != 0
+                _activeCompanyPageId != 'home'
                     ? Icons.arrow_back_rounded
                     : Icons.menu_rounded,
                 color: CeladonColors.textPrimary,
@@ -2131,7 +2313,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
 
               // Avatar (Tap to switch to Profile tab - matches image Screen 1)
               InkWell(
-                onTap: () => setState(() => _selectedBottomTab = 4),
+                onTap: () => _navigateToCompanyPage('profile'),
                 borderRadius: BorderRadius.circular(18),
                 child: Container(
                   width: 36,
@@ -2169,20 +2351,272 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   // MAIN BODY ROUTER FOR TABS
   // ---------------------------------------------------------
   Widget _buildCurrentTabContent() {
-    switch (_selectedBottomTab) {
-      case 0:
+    switch (_activeCompanyPageId) {
+      case 'home':
         return _buildHomeTab();
-      case 1:
+      case 'employees':
         return _buildEmployeesTab();
-      case 2:
+      case 'calender':
         return _buildAttendanceTab();
-      case 3:
+      case 'leave':
         return _buildLeaveTab();
-      case 4:
+      case 'profile':
+      case 'settings':
         return _buildProfileTab();
+      case 'tasks':
+        return TasksView(
+          user: widget.user,
+          onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer(),
+          onBack: () => _navigateToCompanyPage('home'),
+        );
+      case 'messenger':
+        return MessengerView(
+          user: widget.user,
+          embedded: true,
+          onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer(),
+          onBack: () => _navigateToCompanyPage('home'),
+        );
+      case 'payroll':
+        return _buildPayrollEmbeddedTab();
+      case 'reports':
+        return _buildReportsEmbeddedTab();
       default:
         return _buildHomeTab();
     }
+  }
+
+  Widget _buildPayrollEmbeddedTab() {
+    final totalStaff = _allNonAdminEmployees.length;
+    final now = DateTime.now();
+    final cycleLabel = _getMonthYearName(now);
+    return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Payroll & Compensation',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: CeladonColors.textPrimary,
+              letterSpacing: -0.4,
+            ),
+          ),
+          const SizedBox(height: 2),
+          const Text(
+            'Automated payroll processing & monthly slips',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF475569),
+            ),
+          ),
+          const SizedBox(height: 16),
+          _buildGlassCard(
+            borderRadius: 20,
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Active Pay Cycle',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: CeladonColors.textSecondary,
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: CeladonColors.primaryLight,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: CeladonColors.primary.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Text(
+                        cycleLabel,
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: CeladonColors.primary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Eligible Employees',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: CeladonColors.textSecondary,
+                      ),
+                    ),
+                    Text(
+                      '$totalStaff Staff Members',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: CeladonColors.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                const Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Automated Pay Slips',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: CeladonColors.textSecondary,
+                      ),
+                    ),
+                    Text(
+                      'Ready for Dispatch',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: CeladonColors.primary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                ElevatedButton.icon(
+                  onPressed: _showPayrollSheet,
+                  icon: const Icon(Icons.receipt_long_rounded, size: 18),
+                  label: const Text(
+                    'Process Monthly Payroll & Slips',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: CeladonColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReportsEmbeddedTab() {
+    final totalStaff = _allNonAdminEmployees.length;
+    return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Workforce Reports',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: CeladonColors.textPrimary,
+              letterSpacing: -0.4,
+            ),
+          ),
+          const SizedBox(height: 2),
+          const Text(
+            'Attendance analytics & monthly summary reports',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF475569),
+            ),
+          ),
+          const SizedBox(height: 16),
+          _buildGlassCard(
+            borderRadius: 20,
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Tracked Workforce',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: CeladonColors.textSecondary,
+                      ),
+                    ),
+                    Text(
+                      '$totalStaff Employees',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: CeladonColors.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Attendance Logs Recorded',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: CeladonColors.textSecondary,
+                      ),
+                    ),
+                    Text(
+                      '${_attendance.length} Records',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: CeladonColors.primary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                ElevatedButton.icon(
+                  onPressed: _showAttendanceReportSheet,
+                  icon: const Icon(Icons.bar_chart_rounded, size: 18),
+                  label: const Text(
+                    'Open Full Attendance Report',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: CeladonColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   // ---------------------------------------------------------
@@ -2391,7 +2825,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   badgeMain: '+$_joinedInSelectedYear joined',
                   badgeSuffix: 'in $_selectedYear',
                   isAmber: false,
-                  onTap: () => setState(() => _selectedBottomTab = 1),
+                  onTap: () => _navigateToCompanyPage('employees'),
                 ),
               ),
               const SizedBox(width: 12),
@@ -2404,7 +2838,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   badgeMain: 'Active',
                   badgeSuffix: 'in $_selectedYear',
                   isAmber: true,
-                  onTap: () => setState(() => _selectedBottomTab = 1),
+                  onTap: () => _navigateToCompanyPage('employees'),
                 ),
               ),
             ],
@@ -2425,7 +2859,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   subtitle: _isCurrentYear
                       ? '$_todayAttendancePct% present today'
                       : '$_yearAttendanceRate% annual average',
-                  onTap: () => setState(() => _selectedBottomTab = 2),
+                  onTap: () => _navigateToCompanyPage('calender'),
                 ),
               ),
               const SizedBox(width: 12),
@@ -2441,7 +2875,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                       ? _todayAbsentCount
                       : _yearAbsentCount,
                   lateCount: _isCurrentYear ? _todayLateCount : _yearLateCount,
-                  onTap: () => setState(() => _selectedBottomTab = 2),
+                  onTap: () => _navigateToCompanyPage('calender'),
                 ),
               ),
             ],
@@ -2465,7 +2899,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   iconBg: const Color(0xFFEAF5EF),
                   stripeColor: CeladonColors.primary,
                   waveColor: CeladonColors.primary,
-                  onTap: () => setState(() => _selectedBottomTab = 3),
+                  onTap: () => _navigateToCompanyPage('leave'),
                 ),
               ),
               const SizedBox(width: 12),
@@ -9931,25 +10365,19 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                               notif.title
                                                   .toLowerCase()
                                                   .contains('leave')) {
-                                            setState(
-                                              () => _selectedBottomTab = 3,
-                                            );
+                                            _navigateToCompanyPage('leave');
                                           } else if (notif.isAttendance ||
                                               notif.type.toLowerCase().contains(
                                                 'attendance',
                                               )) {
-                                            setState(
-                                              () => _selectedBottomTab = 2,
-                                            );
+                                            _navigateToCompanyPage('calender');
                                           } else if (notif.type
                                                   .toLowerCase()
                                                   .contains('employee') ||
                                               notif.title
                                                   .toLowerCase()
                                                   .contains('employee')) {
-                                            setState(
-                                              () => _selectedBottomTab = 1,
-                                            );
+                                            _navigateToCompanyPage('employees');
                                           }
                                         },
                                       );
@@ -10251,38 +10679,15 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         top: false,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _buildBottomNavItem(
-              0,
-              'Home',
-              Icons.home_outlined,
-              Icons.home_rounded,
-            ),
-            _buildBottomNavItem(
-              1,
-              'Employees',
-              Icons.groups_outlined,
-              Icons.groups_rounded,
-            ),
-            _buildBottomNavItem(
-              2,
-              'Calender',
-              Icons.calendar_month_outlined,
-              Icons.calendar_month_rounded,
-            ),
-            _buildBottomNavItem(
-              3,
-              'Leave',
-              Icons.beach_access_outlined,
-              Icons.beach_access_rounded,
-            ),
-            _buildBottomNavItem(
-              4,
-              'Profile',
-              Icons.person_outline_rounded,
-              Icons.person_rounded,
-            ),
-          ],
+          children: List.generate(_bottomNavSlots.length, (slotIndex) {
+            final item = _companyShortcutForId(_bottomNavSlots[slotIndex]);
+            return _buildBottomNavItem(
+              slotIndex,
+              item.label,
+              item.icon,
+              item.activeIcon,
+            );
+          }),
         ),
       ),
     );
@@ -10294,10 +10699,18 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     IconData icon,
     IconData activeIcon,
   ) {
-    final isSelected = _selectedBottomTab == index;
+    final isSelected = _overridePageId == null && _selectedBottomTab == index;
 
     return InkWell(
-      onTap: () => setState(() => _selectedBottomTab = index),
+      key: _bottomNavSlotKeys[index],
+      onTap: () => setState(() {
+        _selectedBottomTab = index;
+        _overridePageId = null;
+        if (_bottomNavSlots[index] == 'settings') {
+          _selectedProfileSubTab = 2;
+        }
+      }),
+      onLongPress: () => _handleBottomNavLongPress(index),
       borderRadius: BorderRadius.circular(16),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),

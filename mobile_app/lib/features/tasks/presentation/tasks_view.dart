@@ -29,6 +29,7 @@ class TasksView extends StatefulWidget {
   final VoidCallback? onOpenDrawer;
   final TaskService? taskService;
   final DashboardService? dashboardService;
+  final bool embedded;
 
   const TasksView({
     super.key,
@@ -37,6 +38,7 @@ class TasksView extends StatefulWidget {
     this.onOpenDrawer,
     this.taskService,
     this.dashboardService,
+    this.embedded = false,
   });
 
   /// Automatically computes End Date & Due Time from Start Date and Duration
@@ -509,14 +511,18 @@ class _TasksViewState extends State<TasksView> {
             ),
 
             SafeArea(
+              top: !widget.embedded,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // 1. Pinned Top Header with Brand, Company Name, Back Arrow & Avatar
-                  _buildHeader(),
+                  // 1. Pinned Top Header with Brand, Company Name, Back Arrow & Avatar (hidden when embedded under CompanyDashboardView header)
+                  if (!widget.embedded) _buildHeader(),
 
                   // 2. Section Header Title & Subtitle (Dashboard Style)
-                  _buildSectionHeader(),
+                  Padding(
+                    padding: EdgeInsets.only(top: widget.embedded ? 8 : 0),
+                    child: _buildSectionHeader(),
+                  ),
 
                   // 3. Primary Segment Switcher: [General Task] vs [Projects]
                   Padding(

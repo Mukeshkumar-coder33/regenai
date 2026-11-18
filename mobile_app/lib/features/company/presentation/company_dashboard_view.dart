@@ -2366,6 +2366,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       case 'tasks':
         return TasksView(
           user: widget.user,
+          embedded: true,
           onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer(),
           onBack: () => _navigateToCompanyPage('home'),
         );

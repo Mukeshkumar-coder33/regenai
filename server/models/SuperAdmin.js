@@ -15,7 +15,12 @@ const superAdminSchema = new mongoose.Schema({
   status: { type: String, enum: ['active', 'inactive'], default: 'active' },
   tokenVersion: { type: Number, default: 0 },
   lastLogin: { type: Date },
-  lastActive: { type: Date }
+  lastActive: { type: Date },
+  pushTokens: [{
+    token: { type: String, required: true },
+    platform: { type: String, enum: ['android', 'ios', 'web'], default: 'android' },
+    updatedAt: { type: Date, default: Date.now }
+  }]
 }, { timestamps: true });
 
 export default mongoose.model('SuperAdmin', superAdminSchema);

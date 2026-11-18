@@ -1,6 +1,8 @@
 import express from 'express';
 import {
+  getMessengerContacts,
   getOrCreateConversation,
+  createGroupConversation,
   getMyConversations,
   getConversationMessages,
   sendDirectMessage,
@@ -12,8 +14,12 @@ import {
 
 const router = express.Router();
 
-// Conversations
+// Authorized Contacts (server-enforced role & company scope)
+router.get('/contacts', getMessengerContacts);
+
+// Conversations (1:1 & Group)
 router.post('/conversations', getOrCreateConversation);
+router.post('/groups', createGroupConversation);
 router.get('/conversations', getMyConversations);
 
 // Messages within a conversation

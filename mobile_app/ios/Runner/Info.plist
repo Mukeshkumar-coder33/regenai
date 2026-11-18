@@ -26,6 +26,19 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>ReGen Messenger requires microphone access for voice calls, video calls, voice messages, and voice-to-text transcription.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>ReGen Messenger requires camera access for one-to-one and group video calls.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>ReGen Messenger uses speech recognition to transcribe voice recordings into editable text messages.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+		<string>voip</string>
+		<string>remote-notification</string>
+		<string>fetch</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

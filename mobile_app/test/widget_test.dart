@@ -15,6 +15,10 @@ import 'package:regen_mobile/features/company/presentation/add_employee_view.dar
 import 'package:regen_mobile/features/company/presentation/company_dashboard_view.dart';
 import 'package:regen_mobile/features/dashboard/data/dashboard_service.dart';
 import 'package:regen_mobile/features/dashboard/data/leave_model.dart';
+import 'package:regen_mobile/features/messenger/data/e2e_crypto_service.dart';
+import 'package:regen_mobile/features/messenger/data/messenger_model.dart';
+import 'package:regen_mobile/features/messenger/data/messenger_service.dart';
+import 'package:regen_mobile/features/messenger/presentation/messenger_view.dart';
 import 'package:regen_mobile/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:regen_mobile/features/dashboard/presentation/employee_dashboard_view.dart';
 import 'package:regen_mobile/features/superadmin/presentation/superadmin_dashboard_view.dart';
@@ -1782,5 +1786,254 @@ void main() {
       expect(find.text('Messenger'), findsOneWidget);
       expect(find.text('Leave'), findsNothing); // Unauthorized Employee-only Leave excluded for Super Admin
     });
+
+    test('Messenger E2E Crypto: ECDH P-256 + AES-GCM-256 encrypt/decrypt roundtrip matches website e2e.js', () async {
+      SharedPreferences.setMockInitialValues({});
+      // Simulate Party A and Party B on two conversations keys (representing two devices)
+      final pubA = await E2eCryptoService.generateKeyPair('conv_a');
+      final pubB = await E2eCryptoService.generateKeyPair('conv_b');
+
+      final sharedA = await E2eCryptoService.deriveSharedKey('conv_a', pubB);
+      final sharedB = await E2eCryptoService.deriveSharedKey('conv_b', pubA);
+      expect(sharedA, isNotNull);
+      expect(sharedB, isNotNull);
+
+      const secretMsg = 'Hello from ReGen Flutter Messenger 🔐';
+      final enc = await E2eCryptoService.encryptMessage(sharedA!, secretMsg);
+      expect(enc.ciphertext, isNotEmpty);
+      expect(enc.iv, isNotEmpty);
+      expect(enc.ciphertext, isNot(equals(secretMsg)));
+
+      final decrypted = await E2eCryptoService.decryptMessage(sharedB!, enc.ciphertext, enc.iv);
+      expect(decrypted, equals(secretMsg));
+    });
+
+    test('Messenger Models parse Group conversations, Voice attachments, Read receipts & Presence', () {
+      final group = DmConversationModel.fromJson({
+        '_id': 'grp_1',
+        'isGroup': true,
+        'name': 'Company A Leaders',
+        'scope': 'company',
+        'participants': ['ownerA', 'empA1', 'empA2'],
+        'unreadCount': 3,
+        'lastMessage': {'content': '🎤 Voice message', 'timestamp': '2026-11-18T10:00:00.000Z'},
+        'participantDetails': [
+          {'userId': 'ownerA', 'name': 'Owner A', 'role': 'owner', 'online': true},
+          {'userId': 'empA1', 'name': 'Emp A1', 'role': 'staff', 'online': false},
+        ],
+      }, currentUserId: 'ownerA');
+
+      expect(group.isGroup, isTrue);
+      expect(group.displayTitle, equals('Company A Leaders'));
+      expect(group.participants.length, equals(3));
+      expect(group.unreadCount, equals(3));
+      expect(group.participantDetails.first.online, isTrue);
+
+      final voiceMsg = DirectMessageModel.fromJson({
+        '_id': 'dm_v1',
+        'conversationId': 'grp_1',
+        'senderId': 'empA1',
+        'senderName': 'Emp A1',
+        'content': '🎤 Voice message',
+        'readBy': ['empA1', 'ownerA'],
+        'attachments': [
+          {
+            'path': '/assets/dm-voice-123.m4a',
+            'name': 'voice-123.m4a',
+            'type': 'audio/mp4',
+            'duration': 7,
+          }
+        ],
+        'createdAt': '2026-11-18T10:05:00.000Z',
+      });
+
+      expect(voiceMsg.hasAudioAttachment, isTrue);
+      expect(voiceMsg.attachments.first.isAudio, isTrue);
+      expect(voiceMsg.attachments.first.duration, equals(7));
+      expect(voiceMsg.readBy, contains('ownerA'));
+    });
+
+    testWidgets('MessengerView enforces Super Admin scope (hides Team Channel, shows Owners/Admins only)', (WidgetTester tester) async {
+      final saUser = const UserModel(
+        id: 'sa_1',
+        userId: 'Vyshwa',
+        username: 'Vyshwa',
+        name: 'Vyshwa',
+        role: 'param',
+        token: 'tok_sa',
+      );
+
+      final mockMessenger = _FakeMessengerService(
+        contacts: const [
+          MessengerContactModel(
+            id: 'o1',
+            userId: 'ownerA',
+            username: 'ownerA',
+            name: 'Alice Owner',
+            role: 'owner',
+            company: 'Alpha Corp',
+            online: true,
+          ),
+          MessengerContactModel(
+            id: 'o2',
+            userId: 'ownerB',
+            username: 'ownerB',
+            name: 'Bob Owner',
+            role: 'owner',
+            company: 'Beta Tech',
+            online: false,
+          ),
+        ],
+        conversations: const [],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MessengerView(
+            user: saUser,
+            embedded: false,
+            messengerService: mockMessenger,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Super Admin central portal hides company-wide Team Channel tab
+      expect(find.text('Team Channel'), findsNothing);
+      // No horizontal avatar/chip strip below search box
+      expect(find.text('Alice Owner'), findsNothing);
+      // Group creation & New Chat FAB are available
+      expect(find.byTooltip('New Group'), findsOneWidget);
+      expect(find.byTooltip('New Chat'), findsOneWidget);
+
+      // Opening New Chat modal displays authorized company owners
+      await tester.tap(find.byTooltip('New Chat'));
+      await tester.pumpAndSettle();
+      expect(find.text('Alice Owner'), findsOneWidget);
+      expect(find.text('Bob Owner'), findsOneWidget);
+    });
+
+    testWidgets('MessengerView resolves raw employee IDs (KRH-123) to employee name and shows call/voice controls', (WidgetTester tester) async {
+      final empUser = const UserModel(
+        id: 'e1',
+        userId: 'empA1',
+        username: 'empA1',
+        name: 'Emp A1',
+        role: 'staff',
+        companyId: 'compA',
+        company: 'Alpha Corp',
+        token: 'tok_emp',
+      );
+
+      final conv = const DmConversationModel(
+        conversationId: 'conv_a1',
+        participants: ['empA1', 'KRH-123'],
+        otherUserId: 'KRH-123',
+        otherUserName: 'KRH-123',
+        otherUserRole: 'staff',
+        otherUserOnline: true,
+        lastMessage: 'Hello team!',
+      );
+
+      final mockMessenger = _FakeMessengerService(
+        contacts: const [
+          MessengerContactModel(
+            id: 'o1',
+            userId: 'KRH-123',
+            username: 'eswaran',
+            name: 'eswaran M',
+            role: 'staff',
+            companyId: 'compA',
+            company: 'Alpha Corp',
+            online: true,
+          ),
+        ],
+        conversations: [conv],
+        messagesByConv: {
+          'conv_a1': const [
+            DirectMessageModel(
+              id: 'm1',
+              conversationId: 'conv_a1',
+              senderId: 'KRH-123',
+              senderName: 'KRH-123',
+              content: 'Hello team!',
+              timestamp: '2026-11-18T10:00:00.000Z',
+            ),
+          ],
+        },
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MessengerView(
+            user: empUser,
+            embedded: false,
+            messengerService: mockMessenger,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Employee sees both Chats and Team Channel tabs
+      expect(find.text('Team Channel'), findsOneWidget);
+      // Resolves raw ID `KRH-123` to real employee name `eswaran M`
+      expect(find.text('eswaran M'), findsOneWidget);
+      expect(find.text('KRH-123'), findsNothing);
+
+      // Open 1:1 conversation
+      await tester.tap(find.text('eswaran M'));
+      await tester.pumpAndSettle();
+
+      // Verify Voice Call, Video Call, Voice Note Recorder, and Voice-to-Text buttons
+      expect(find.byTooltip('Voice Call'), findsOneWidget);
+      expect(find.byTooltip('Video Call'), findsOneWidget);
+      expect(find.byTooltip('Record Voice Message'), findsOneWidget);
+      expect(find.byTooltip('Voice to Text'), findsOneWidget);
+    });
   });
+}
+
+class _FakeMessengerService extends MessengerService {
+  final List<MessengerContactModel> contacts;
+  final List<DmConversationModel> conversations;
+  final Map<String, List<DirectMessageModel>> messagesByConv;
+
+  _FakeMessengerService({
+    required this.contacts,
+    required this.conversations,
+    this.messagesByConv = const {},
+  });
+
+  @override
+  Future<List<MessengerContactModel>> getAuthorizedContacts({required UserModel user}) async =>
+      contacts;
+
+  @override
+  Future<List<TeamMessageModel>> getTeamMessages({required UserModel user}) async => [];
+
+  @override
+  Future<List<DmConversationModel>> getConversations({required UserModel user}) async =>
+      conversations;
+
+  @override
+  Future<List<DirectMessageModel>> getDirectMessages({
+    required UserModel user,
+    required String conversationId,
+  }) async =>
+      messagesByConv[conversationId] ?? [];
+
+  @override
+  Future<bool> markConversationRead({
+    required UserModel user,
+    required String conversationId,
+  }) async =>
+      true;
+
+  @override
+  Future<bool> storePublicKey({
+    required UserModel user,
+    required String conversationId,
+    required String publicKeyJwkJson,
+  }) async =>
+      true;
 }

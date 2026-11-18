@@ -31,7 +31,12 @@ const userSchema = new mongoose.Schema({
   pgUserId: { type: String, sparse: true, index: true },
   syncedWithPg: { type: Boolean, default: false },
   lastLogin: { type: Date },
-  lastActive: { type: Date }
+  lastActive: { type: Date },
+  pushTokens: [{
+    token: { type: String, required: true },
+    platform: { type: String, enum: ['android', 'ios', 'web'], default: 'android' },
+    updatedAt: { type: Date, default: Date.now }
+  }]
 }, { timestamps: true });
 
 export default mongoose.model('User', userSchema);

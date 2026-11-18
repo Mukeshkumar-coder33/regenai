@@ -39,6 +39,8 @@ const extFromMime = (mime) => {
   if (m.includes('ogg')) return 'ogg';
   if (m.includes('wav')) return 'wav';
   if (m.includes('mp3') || m.includes('mpeg')) return 'mp3';
+  if (m.includes('m4a')) return 'm4a';
+  if (m.includes('aac')) return 'aac';
   if (m.includes('quicktime') || m.includes('mov')) return 'mov';
   return 'bin';
 };
@@ -110,7 +112,12 @@ const normalizeAttachment = async (att, seed, index) => {
 export const createMessage = async (req, res) => {
   try {
     const body = { ...req.body };
-    body.companyId = await resolveCompanyId(req, body);
+    // Never trust client-supplied senderId or cross-company companyId
+    body.senderId = req.user?.userId || body.senderId;
+    body.companyId = req.companyId || await resolveCompanyId(req, body);
+    if (!body.companyId) {
+      return res.status(403).json({ message: 'Company context is required for team channel messages' });
+    }
     body.messageId = body.messageId || body.id;
     if (Array.isArray(body.attachments)) {
       const seed = body.messageId || body.id || body.senderId || 'message';
@@ -133,10 +140,11 @@ export const createMessage = async (req, res) => {
 
 export const getAllMessages = async (req, res) => {
   try {
-    const isEmsView = req.headers['x-portal-view'] === 'ems' || req.query.portalView === 'ems';
-    const isSuperAdmin = req.user?.role === 'param' || req.user?.role === 'admin';
-    const filter = (isSuperAdmin && !isEmsView) ? {} : (req.companyId ? { companyId: req.companyId } : {});
-    const msgs = await Message.find(filter).sort({ createdAt: 1 });
+    // Strictly isolate company team channels: never leak all companies' private team chats
+    if (!req.companyId) {
+      return res.status(200).json([]);
+    }
+    const msgs = await Message.find({ companyId: req.companyId }).sort({ createdAt: 1 });
     res.status(200).json(msgs);
   } catch (error) {
     res.status(500).json({ message: error.message });

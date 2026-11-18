@@ -2,7 +2,16 @@ import mongoose from 'mongoose';
 
 const conversationSchema = new mongoose.Schema({
   companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: false, index: true },
-  participants: [{ type: String, required: true }], // userId strings, exactly 2 for 1:1
+  participants: [{ type: String, required: true }], // userId strings (2 for 1:1, 2+ for group)
+  isGroup: { type: Boolean, default: false, index: true },
+  name: { type: String, default: '' },
+  createdBy: { type: String, default: '' },
+  scope: {
+    type: String,
+    enum: ['company', 'superadmin_owners'],
+    default: 'company',
+    index: true
+  },
   lastMessage: {
     content: { type: String, default: '' },
     senderId: { type: String },

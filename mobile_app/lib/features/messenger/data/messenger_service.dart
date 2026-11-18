@@ -5,7 +5,8 @@ import '../../../core/storage/session_storage.dart';
 import '../../auth/data/user_model.dart';
 import 'messenger_model.dart';
 
-/// Live Messenger API Service reusing ReGen's existing `/api/messages` and `/api/dm` endpoints.
+/// Live Messenger API Service reusing ReGen's existing `/api/messages`, `/api/dm`,
+/// and `/api/notifications` endpoints with strict role-based scoping.
 class MessengerService {
   final http.Client _client;
 
@@ -20,6 +21,30 @@ class MessengerService {
       if (token.isNotEmpty) 'Authorization': 'Bearer $token',
       'x-portal-view': user.isSuperAdmin ? 'superadmin' : 'ems',
     };
+  }
+
+  /// Fetch server-authorized contacts for the current role (`GET /api/dm/contacts`).
+  /// - Super Admin: company owners/admins across the platform
+  /// - Company Admin/Owner: own-company employees + Super Admin
+  /// - Employee: own-company employees + own company owner/admin
+  Future<List<MessengerContactModel>> getAuthorizedContacts({required UserModel user}) async {
+    final headers = await _getHeaders(user: user);
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/dm/contacts');
+    try {
+      final res = await _client.get(url, headers: headers).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        final raw = jsonDecode(res.body);
+        if (raw is List) {
+          return raw
+              .whereType<Map<String, dynamic>>()
+              .map(MessengerContactModel.fromJson)
+              .toList();
+        }
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
   }
 
   /// Fetch Team Chat messages (`GET /api/messages`)
@@ -41,10 +66,11 @@ class MessengerService {
     }
   }
 
-  /// Send a Team Chat message (`POST /api/messages`)
+  /// Send a Team Chat text or voice message (`POST /api/messages`)
   Future<TeamMessageModel?> sendTeamMessage({
     required UserModel user,
     required String content,
+    List<Map<String, dynamic>>? attachments,
   }) async {
     final headers = await _getHeaders(user: user);
     final url = Uri.parse('${AppConfig.activeBaseUrl}/api/messages');
@@ -58,13 +84,36 @@ class MessengerService {
       'senderName': senderName,
       'content': content.trim(),
       'timestamp': DateTime.now().toIso8601String(),
+      if (attachments != null && attachments.isNotEmpty) 'attachments': attachments,
       if (user.companyId != null && user.companyId!.isNotEmpty) 'companyId': user.companyId,
     });
     try {
       final res = await _client
           .post(url, headers: headers, body: body)
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 20));
       if (res.statusCode == 200 || res.statusCode == 201) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        return TeamMessageModel.fromJson(data);
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Edit a Team Chat message (`PUT /api/messages/:id`)
+  Future<TeamMessageModel?> editTeamMessage({
+    required UserModel user,
+    required String messageId,
+    required String content,
+  }) async {
+    final headers = await _getHeaders(user: user);
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/messages/$messageId');
+    try {
+      final res = await _client
+          .put(url, headers: headers, body: jsonEncode({'content': content.trim()}))
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         return TeamMessageModel.fromJson(data);
       }
@@ -89,7 +138,7 @@ class MessengerService {
     }
   }
 
-  /// Fetch my 1:1 DM conversations (`GET /api/dm/conversations`)
+  /// Fetch my 1:1 and Group conversations (`GET /api/dm/conversations`)
   Future<List<DmConversationModel>> getConversations({required UserModel user}) async {
     final headers = await _getHeaders(user: user);
     final url = Uri.parse('${AppConfig.activeBaseUrl}/api/dm/conversations');
@@ -98,7 +147,9 @@ class MessengerService {
       final res = await _client.get(url, headers: headers).timeout(const Duration(seconds: 10));
       if (res.statusCode == 200) {
         final raw = jsonDecode(res.body);
-        final list = raw is List ? raw : (raw is Map && raw['conversations'] is List ? raw['conversations'] as List : []);
+        final list = raw is List
+            ? raw
+            : (raw is Map && raw['conversations'] is List ? raw['conversations'] as List : []);
         return list
             .whereType<Map<String, dynamic>>()
             .map((item) => DmConversationModel.fromJson(item, currentUserId: myId))
@@ -139,7 +190,37 @@ class MessengerService {
     }
   }
 
-  /// Fetch messages in a 1:1 DM conversation (`GET /api/dm/conversations/:id/messages`)
+  /// Create a new multi-user Group conversation (`POST /api/dm/groups`)
+  Future<DmConversationModel?> createGroupConversation({
+    required UserModel user,
+    required String name,
+    required List<String> participantIds,
+  }) async {
+    final headers = await _getHeaders(user: user);
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/dm/groups');
+    final myId = user.userId.isNotEmpty ? user.userId : user.id;
+    try {
+      final res = await _client
+          .post(
+            url,
+            headers: headers,
+            body: jsonEncode({
+              'name': name.trim(),
+              'participantIds': participantIds,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        return DmConversationModel.fromJson(data, currentUserId: myId);
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Fetch messages in a 1:1 or Group conversation (`GET /api/dm/conversations/:id/messages`)
   Future<List<DirectMessageModel>> getDirectMessages({
     required UserModel user,
     required String conversationId,
@@ -150,7 +231,9 @@ class MessengerService {
       final res = await _client.get(url, headers: headers).timeout(const Duration(seconds: 10));
       if (res.statusCode == 200) {
         final raw = jsonDecode(res.body);
-        final list = raw is List ? raw : (raw is Map && raw['messages'] is List ? raw['messages'] as List : []);
+        final list = raw is List
+            ? raw
+            : (raw is Map && raw['messages'] is List ? raw['messages'] as List : []);
         return list
             .whereType<Map<String, dynamic>>()
             .map(DirectMessageModel.fromJson)
@@ -162,11 +245,16 @@ class MessengerService {
     }
   }
 
-  /// Send a 1:1 Direct Message (`POST /api/dm/conversations/:id/messages`)
+  /// Send a Direct or Group message (text, E2E ciphertext, or voice attachment)
+  /// (`POST /api/dm/conversations/:id/messages`)
   Future<DirectMessageModel?> sendDirectMessage({
     required UserModel user,
     required String conversationId,
     required String content,
+    bool isVoice = false,
+    bool encrypted = false,
+    String iv = '',
+    List<Map<String, dynamic>>? attachments,
   }) async {
     final headers = await _getHeaders(user: user);
     final url = Uri.parse('${AppConfig.activeBaseUrl}/api/dm/conversations/$conversationId/messages');
@@ -183,11 +271,15 @@ class MessengerService {
               'id': msgId,
               'senderId': senderId,
               'senderName': senderName,
-              'content': content.trim(),
+              'content': encrypted ? content : content.trim(),
+              'encrypted': encrypted,
+              if (iv.isNotEmpty) 'iv': iv,
+              'isVoice': isVoice,
+              if (attachments != null && attachments.isNotEmpty) 'attachments': attachments,
               'timestamp': DateTime.now().toIso8601String(),
             }),
           )
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 20));
       if (res.statusCode == 200 || res.statusCode == 201) {
         final raw = jsonDecode(res.body) as Map<String, dynamic>;
         final msgObj = raw['message'] is Map<String, dynamic>
@@ -200,5 +292,130 @@ class MessengerService {
       return null;
     }
   }
-}
 
+  /// Mark all messages in a conversation as read (`PUT /api/dm/conversations/:id/read`)
+  Future<bool> markConversationRead({
+    required UserModel user,
+    required String conversationId,
+  }) async {
+    final headers = await _getHeaders(user: user);
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/dm/conversations/$conversationId/read');
+    try {
+      final res = await _client.put(url, headers: headers).timeout(const Duration(seconds: 8));
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Store ECDH P-256 public key for E2E encryption (`POST /api/dm/conversations/:id/keys`)
+  Future<bool> storePublicKey({
+    required UserModel user,
+    required String conversationId,
+    required String publicKeyJwkJson,
+  }) async {
+    final headers = await _getHeaders(user: user);
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/dm/conversations/$conversationId/keys');
+    try {
+      final res = await _client
+          .post(
+            url,
+            headers: headers,
+            body: jsonEncode({'publicKey': publicKeyJwkJson}),
+          )
+          .timeout(const Duration(seconds: 8));
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Edit a direct/group message (`PUT /api/dm/messages/:messageId`)
+  Future<DirectMessageModel?> editDirectMessage({
+    required UserModel user,
+    required String messageId,
+    required String content,
+    bool encrypted = false,
+    String iv = '',
+  }) async {
+    final headers = await _getHeaders(user: user);
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/dm/messages/$messageId');
+    try {
+      final res = await _client
+          .put(
+            url,
+            headers: headers,
+            body: jsonEncode({
+              'content': encrypted ? content : content.trim(),
+              'encrypted': encrypted,
+              if (iv.isNotEmpty) 'iv': iv,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        return DirectMessageModel.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Delete a direct/group message (`DELETE /api/dm/messages/:messageId`)
+  Future<bool> deleteDirectMessage({
+    required UserModel user,
+    required String messageId,
+  }) async {
+    final headers = await _getHeaders(user: user);
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/dm/messages/$messageId');
+    try {
+      final res = await _client.delete(url, headers: headers).timeout(const Duration(seconds: 8));
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Register mobile push token (`POST /api/notifications/device-token`)
+  Future<bool> registerDeviceToken({
+    required UserModel user,
+    required String token,
+    String platform = 'android',
+  }) async {
+    final headers = await _getHeaders(user: user);
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/notifications/device-token');
+    try {
+      final res = await _client
+          .post(
+            url,
+            headers: headers,
+            body: jsonEncode({'token': token, 'platform': platform}),
+          )
+          .timeout(const Duration(seconds: 8));
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Unregister mobile push token on logout (`DELETE /api/notifications/device-token`)
+  Future<bool> unregisterDeviceToken({
+    required UserModel user,
+    required String token,
+  }) async {
+    final headers = await _getHeaders(user: user);
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/notifications/device-token');
+    try {
+      final res = await _client
+          .delete(
+            url,
+            headers: headers,
+            body: jsonEncode({'token': token}),
+          )
+          .timeout(const Duration(seconds: 8));
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+}

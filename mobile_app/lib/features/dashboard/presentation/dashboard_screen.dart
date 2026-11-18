@@ -7,6 +7,10 @@ import '../../attendance/presentation/attendance_view.dart';
 import '../../auth/data/user_model.dart';
 import '../../calendar/presentation/calendar_view.dart';
 import '../../company/presentation/company_dashboard_view.dart';
+import '../../messenger/data/call_notification_service.dart';
+import '../../messenger/data/messenger_socket_service.dart';
+import '../../messenger/data/webrtc_call_manager.dart';
+import '../../messenger/presentation/call_overlay.dart';
 import '../../messenger/presentation/messenger_view.dart';
 import '../../policies/data/policy_service.dart';
 import '../../profile/presentation/app_drawer.dart';
@@ -40,7 +44,7 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObserver {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   int _currentTabIndex = 0;
   late UserModel _currentUser;
@@ -137,11 +141,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _currentUser = widget.user;
     _loadRoleBottomNavSlots();
+    _initRealtimeCommunication(_currentUser);
     if (!_currentUser.isCompanyAdmin && !_currentUser.isSuperAdmin) {
       _checkPolicyStatus();
     }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    MessengerSocketService.instance.disconnect();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      MessengerSocketService.instance.ensureConnected();
+    }
+  }
+
+  Future<void> _initRealtimeCommunication(UserModel user) async {
+    WebRtcCallManager.instance.bindUser(user);
+    await CallNotificationService.instance.initialize();
+    await MessengerSocketService.instance.connect(user: user);
   }
 
   @override
@@ -155,6 +181,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _showAttendanceSubScreen = false;
       _bottomNavSlots = List<String>.from(_defaultSlotIds);
       _loadRoleBottomNavSlots();
+      _initRealtimeCommunication(_currentUser);
     }
   }
 
@@ -340,6 +367,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _handleLogout() async {
+    await WebRtcCallManager.instance.resetOnLogout();
+    MessengerSocketService.instance.disconnect();
     await SessionStorage.clearSession();
     try {
       widget.onLogout();
@@ -356,17 +385,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     // Dedicated high-end Company Workspace Experience matching ReGen Design Specification
     if (_currentUser.isCompanyAdmin) {
-      return CompanyDashboardView(
-        user: _currentUser,
-        onOpenDrawer: _openDrawer,
-        onLogout: _handleLogout,
-        onUserUpdated: (updatedUser) {
-          setState(() {
-            _currentUser = updatedUser;
-            _overridePageId = null;
-          });
-          _loadRoleBottomNavSlots();
-        },
+      return CallOverlay(
+        child: CompanyDashboardView(
+          user: _currentUser,
+          onOpenDrawer: _openDrawer,
+          onLogout: _handleLogout,
+          onUserUpdated: (updatedUser) {
+            setState(() {
+              _currentUser = updatedUser;
+              _overridePageId = null;
+            });
+            _loadRoleBottomNavSlots();
+            _initRealtimeCommunication(updatedUser);
+          },
+        ),
       );
     }
 
@@ -377,7 +409,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return _buildPolicyBarrierScreen();
     }
 
-    return Scaffold(
+    return CallOverlay(
+      child: Scaffold(
       key: _scaffoldKey,
       backgroundColor: CeladonColors.background,
       drawer: AppDrawer(
@@ -427,6 +460,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
       ),
+    ),
     );
   }
 
@@ -440,6 +474,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         onNavigateToTab: _navigateToTab,
         onUserUpdated: (updatedUser) {
           setState(() => _currentUser = updatedUser);
+          _initRealtimeCommunication(updatedUser);
         },
       );
     }
@@ -453,6 +488,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         onNavigateToTab: _navigateToTab,
         onUserUpdated: (updatedUser) {
           setState(() => _currentUser = updatedUser);
+          _initRealtimeCommunication(updatedUser);
         },
       );
     }

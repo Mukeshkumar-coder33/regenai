@@ -492,4 +492,55 @@ export const clearAllNotifications = async (req, res) => {
   }
 };
 
+export const registerDeviceToken = async (req, res) => {
+  try {
+    const token = String(req.body?.token || '').trim();
+    const platform = ['android', 'ios', 'web'].includes(String(req.body?.platform || '').toLowerCase())
+      ? String(req.body.platform).toLowerCase()
+      : 'android';
+    if (!token) return res.status(400).json({ message: 'Device push token is required' });
+
+    const uid = String(req.user?.userId || '').trim();
+    if (!uid) return res.status(401).json({ message: 'Unauthorized' });
+
+    if (req.user?.role === 'param') {
+      const { default: SuperAdmin } = await import('../models/SuperAdmin.js');
+      await SuperAdmin.updateOne({ adminId: uid }, { $pull: { pushTokens: { token } } });
+      await SuperAdmin.updateOne(
+        { adminId: uid },
+        { $push: { pushTokens: { token, platform, updatedAt: new Date() } } }
+      );
+    } else {
+      await User.updateOne({ userId: uid }, { $pull: { pushTokens: { token } } });
+      await User.updateOne(
+        { userId: uid },
+        { $push: { pushTokens: { token, platform, updatedAt: new Date() } } }
+      );
+    }
+
+    res.status(200).json({ success: true, message: 'Device token registered' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const unregisterDeviceToken = async (req, res) => {
+  try {
+    const token = String(req.body?.token || '').trim();
+    const uid = String(req.user?.userId || '').trim();
+    if (!uid || !token) return res.status(400).json({ message: 'Token is required' });
+
+    if (req.user?.role === 'param') {
+      const { default: SuperAdmin } = await import('../models/SuperAdmin.js');
+      await SuperAdmin.updateOne({ adminId: uid }, { $pull: { pushTokens: { token } } });
+    } else {
+      await User.updateOne({ userId: uid }, { $pull: { pushTokens: { token } } });
+    }
+
+    res.status(200).json({ success: true, message: 'Device token removed' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 

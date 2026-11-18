@@ -7,12 +7,16 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
   updateNotificationAction,
-  clearAllNotifications
+  clearAllNotifications,
+  registerDeviceToken,
+  unregisterDeviceToken
 } from '../controllers/notificationController.js';
 
 const router = express.Router();
 
 router.post('/', createNotification);
+router.post('/device-token', registerDeviceToken);
+router.delete('/device-token', unregisterDeviceToken);
 router.post('/birthday-reminders/run', runBirthdayReminders);
 router.get('/user/:userId', getUserNotifications);
 router.put('/:id/read', markNotificationRead);

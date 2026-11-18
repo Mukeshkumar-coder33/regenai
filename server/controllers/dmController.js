@@ -1,9 +1,14 @@
 import Conversation from '../models/Conversation.js';
 import DirectMessage from '../models/DirectMessage.js';
-import User from '../models/User.js';
-import { resolveCompanyId } from '../utils/resolveCompanyId.js';
-import { emitToCompany } from '../socket.js';
+import { emitToUser, getOnlineUserIds } from '../socket.js';
 import { createAndSendNotification } from './notificationController.js';
+import {
+  resolveMessengerActor,
+  canCommunicate,
+  canAccessConversation,
+  getAuthorizedContacts,
+  normalizeId
+} from '../utils/messengerAuth.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -77,61 +82,67 @@ const normalizeAttachment = async (att, seed, index) => {
     if (idx >= 0) finalPath = `/assets/${finalPath.slice(idx + marker.length)}`;
     const isVideo = (att.type && att.type.startsWith('video')) || finalPath.includes('video') || (att.name && att.name.includes('video')) || /\.(mp4|mov|mkv)$/i.test(finalPath);
     const isVoice = (att.type && att.type.startsWith('audio')) || finalPath.includes('voice') || (att.name && att.name.includes('voice'));
-    const detectedType = att.type || (isVideo ? 'video/webm' : (isVoice ? 'audio/webm' : (finalPath.endsWith('.webm') ? 'video/webm' : (finalPath.endsWith('.wav') ? 'audio/wav' : (finalPath.endsWith('.mp3') ? 'audio/mp3' : undefined)))));
-    return { path: finalPath, name: att.name || finalPath.split('/').pop(), type: detectedType, size: att.size };
+    const detectedType = att.type || (isVideo ? 'video/webm' : (isVoice ? 'audio/webm' : (finalPath.endsWith('.m4a') ? 'audio/mp4' : (finalPath.endsWith('.aac') ? 'audio/aac' : (finalPath.endsWith('.webm') ? 'video/webm' : (finalPath.endsWith('.wav') ? 'audio/wav' : (finalPath.endsWith('.mp3') ? 'audio/mp3' : undefined)))))));
+    return {
+      path: finalPath,
+      name: att.name || finalPath.split('/').pop(),
+      type: detectedType,
+      size: att.size,
+      ...(att.duration !== undefined ? { duration: att.duration } : {}),
+      ...(att.transcript ? { transcript: att.transcript } : {}),
+    };
   }
   return null;
 };
 
-const normalizeIdentifier = (value) => {
-  if (typeof value === 'string') return value.trim();
-  if (typeof value === 'number') return String(value);
-  if (!value || typeof value !== 'object') return '';
-  if (typeof value.userId === 'string') return value.userId.trim();
-  if (typeof value.id === 'string') return value.id.trim();
-  if (typeof value._text === 'string') return value._text.trim();
-  if (typeof value.toString === 'function') {
-    const text = String(value).trim();
-    if (text && text !== '[object Object]') return text;
+/** Emit a DM socket event strictly to the conversation's participants (never globally). */
+async function emitToParticipants(participants, event, payload) {
+  const unique = new Set((participants || []).map(normalizeId).filter(Boolean));
+  await Promise.all(Array.from(unique).map((pid) => emitToUser(pid, event, payload)));
+}
+
+// ─── Get server-authorized Messenger contacts for caller's role ──
+export const getMessengerContacts = async (req, res) => {
+  try {
+    const actor = await resolveMessengerActor(req.user?.userId, req.user?.role);
+    if (!actor) return res.status(401).json({ message: 'Unauthorized' });
+
+    const contacts = await getAuthorizedContacts(actor, getOnlineUserIds());
+    res.status(200).json(contacts);
+  } catch (error) {
+    console.error('[DM] getMessengerContacts error:', error);
+    res.status(500).json({ message: error.message });
   }
-  return '';
 };
 
 // ─── Get or create a 1:1 conversation ───────────────────────────
 export const getOrCreateConversation = async (req, res) => {
   try {
-    let companyId = await resolveCompanyId(req, req.body);
-    const myId = normalizeIdentifier(req.user?.userId);
-    const recipientId = normalizeIdentifier(req.body?.recipientId);
+    const actor = await resolveMessengerActor(req.user?.userId, req.user?.role);
+    if (!actor) return res.status(401).json({ message: 'Unauthorized' });
+
+    const recipientId = normalizeId(req.body?.recipientId);
     if (!recipientId) return res.status(400).json({ message: 'recipientId is required' });
-    if (recipientId === myId) return res.status(400).json({ message: 'Cannot create conversation with yourself' });
+    if (recipientId === actor.userId) return res.status(400).json({ message: 'Cannot create conversation with yourself' });
 
-    // Verify participants belong to the same company
-    const [meUser, recipientUser] = await Promise.all([
-      User.findOne({ userId: myId }).select('companyId role').lean(),
-      User.findOne({ userId: recipientId }).select('companyId role').lean()
-    ]);
-    if (meUser && recipientUser && meUser.companyId && recipientUser.companyId) {
-      if (String(meUser.companyId) !== String(recipientUser.companyId)) {
-        return res.status(403).json({ message: 'Direct messaging across different companies is not allowed' });
-      }
+    const target = await resolveMessengerActor(recipientId);
+    const authCheck = canCommunicate(actor, target);
+    if (!authCheck.allowed) {
+      return res.status(403).json({ message: authCheck.reason || 'Communication not allowed' });
     }
 
-    // Fallback companyId from recipient or sender if SuperAdmin or missing
-    if (!companyId && recipientId) {
-      if (recipientUser?.companyId) companyId = recipientUser.companyId;
-    }
-    if (!companyId && myId) {
-      if (meUser?.companyId) companyId = meUser.companyId;
-    }
-
-    const participants = [myId, recipientId].sort();
+    const participants = [actor.userId, target.userId].sort();
+    const scope = authCheck.scope || 'company';
+    const companyId = scope === 'company' ? (actor.companyId || target.companyId) : null;
 
     const query = {
-      participants: { $all: participants, $size: 2 }
+      isGroup: { $ne: true },
+      participants: { $all: participants, $size: 2 },
     };
     if (companyId) {
       query.companyId = companyId;
+    } else if (scope === 'superadmin_owners') {
+      query.scope = 'superadmin_owners';
     }
 
     let convo = await Conversation.findOne(query);
@@ -139,10 +150,14 @@ export const getOrCreateConversation = async (req, res) => {
     if (!convo) {
       convo = new Conversation({
         ...(companyId ? { companyId } : {}),
-        participants
+        participants,
+        isGroup: false,
+        scope,
+        createdBy: actor.userId,
       });
       await convo.save();
     }
+
     res.status(200).json(convo);
   } catch (error) {
     console.error('[DM] getOrCreateConversation error:', error);
@@ -150,25 +165,146 @@ export const getOrCreateConversation = async (req, res) => {
   }
 };
 
-// ─── List all conversations for the current user ────────────────
+// ─── Create a multi-user Group conversation ─────────────────────
+export const createGroupConversation = async (req, res) => {
+  try {
+    const actor = await resolveMessengerActor(req.user?.userId, req.user?.role);
+    if (!actor) return res.status(401).json({ message: 'Unauthorized' });
+
+    const name = String(req.body?.name || '').trim();
+    const rawIds = Array.isArray(req.body?.participantIds) ? req.body.participantIds : [];
+    if (!name) return res.status(400).json({ message: 'Group name is required' });
+
+    const uniquePeerIds = Array.from(
+      new Set(rawIds.map(normalizeId).filter((id) => id && id !== actor.userId))
+    );
+    if (uniquePeerIds.length < 1) {
+      return res.status(400).json({ message: 'Select at least one participant for the group' });
+    }
+
+    const verifiedParticipantIds = [actor.userId];
+    for (const pid of uniquePeerIds) {
+      const target = await resolveMessengerActor(pid);
+      const authCheck = canCommunicate(actor, target);
+      if (!authCheck.allowed) {
+        return res.status(403).json({
+          message: `Cannot add user "${pid}": ${authCheck.reason || 'Unauthorized'}`,
+        });
+      }
+      verifiedParticipantIds.push(target.userId);
+    }
+
+    const scope = actor.isSuperAdmin ? 'superadmin_owners' : 'company';
+    const companyId = scope === 'company' ? actor.companyId : null;
+
+    const convo = new Conversation({
+      ...(companyId ? { companyId } : {}),
+      participants: Array.from(new Set(verifiedParticipantIds)),
+      isGroup: true,
+      name: name.slice(0, 80),
+      createdBy: actor.userId,
+      scope,
+      lastMessage: {
+        content: `${actor.name} created group "${name.slice(0, 80)}"`,
+        senderId: actor.userId,
+        timestamp: new Date(),
+      },
+    });
+    await convo.save();
+
+    await emitToParticipants(convo.participants, 'dm:change', {
+      action: 'group_create',
+      conversationId: convo._id.toString(),
+      senderId: actor.userId,
+    });
+
+    res.status(201).json(convo);
+  } catch (error) {
+    console.error('[DM] createGroupConversation error:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ─── List all conversations (1:1 + groups) for the current user ─
 export const getMyConversations = async (req, res) => {
   try {
-    const companyId = req.companyId;
-    const myId = req.user.userId;
-    const filter = { participants: myId };
-    if (companyId) filter.companyId = companyId;
+    const actor = await resolveMessengerActor(req.user?.userId, req.user?.role);
+    if (!actor) return res.status(401).json({ message: 'Unauthorized' });
+
+    const myId = actor.userId;
+    const onlineSet = getOnlineUserIds();
+
+    let filter;
+    if (actor.isSuperAdmin) {
+      // Super Admin sees ONLY conversations they participate in with company owners/admins
+      filter = {
+        participants: myId,
+        $or: [
+          { scope: 'superadmin_owners' },
+          { companyId: null },
+          { companyId: { $exists: false } },
+        ],
+      };
+    } else if (actor.companyId) {
+      // Company owner/admin/employee sees own-company conversations PLUS any owner<->SuperAdmin convo they participate in
+      filter = {
+        participants: myId,
+        $or: [
+          { companyId: actor.companyId },
+          ...(actor.isOwnerOrAdmin ? [{ scope: 'superadmin_owners' }] : []),
+        ],
+      };
+    } else {
+      filter = { participants: myId };
+    }
 
     const convos = await Conversation.find(filter).sort({ updatedAt: -1 }).lean();
 
-    // Attach unread counts
-    const result = await Promise.all(convos.map(async (c) => {
-      const unread = await DirectMessage.countDocuments({
-        conversationId: c._id,
-        senderId: { $ne: myId },
-        readBy: { $ne: myId }
-      });
-      return { ...c, unreadCount: unread };
-    }));
+    // Resolve participant profiles & unread counts
+    const allParticipantIds = new Set();
+    for (const c of convos) {
+      for (const pid of c.participants || []) allParticipantIds.add(normalizeId(pid));
+    }
+
+    const profileMap = new Map();
+    await Promise.all(
+      Array.from(allParticipantIds).map(async (pid) => {
+        const resolved = await resolveMessengerActor(pid);
+        if (resolved) {
+          profileMap.set(pid, {
+            userId: resolved.userId,
+            username: resolved.username,
+            name: resolved.name,
+            role: resolved.role,
+            company: resolved.company,
+            avatar: resolved.avatar,
+            online: onlineSet.has(resolved.userId),
+            lastActive: resolved.lastActive ? new Date(resolved.lastActive).toISOString() : null,
+          });
+        }
+      })
+    );
+
+    const result = await Promise.all(
+      convos.map(async (c) => {
+        const unread = await DirectMessage.countDocuments({
+          conversationId: c._id,
+          senderId: { $ne: myId },
+          readBy: { $ne: myId },
+        });
+        const participantDetails = (c.participants || [])
+          .map((pid) => profileMap.get(normalizeId(pid)) || { userId: pid, name: pid, role: '', online: onlineSet.has(pid) });
+        const otherPeer = !c.isGroup
+          ? participantDetails.find((p) => p.userId !== myId) || participantDetails[0] || null
+          : null;
+        return {
+          ...c,
+          unreadCount: unread,
+          otherUser: otherPeer,
+          participantDetails,
+        };
+      })
+    );
 
     res.status(200).json(result);
   } catch (error) {
@@ -180,14 +316,17 @@ export const getMyConversations = async (req, res) => {
 export const getConversationMessages = async (req, res) => {
   try {
     const { conversationId } = req.params;
-    const myId = req.user.userId;
+    const actor = await resolveMessengerActor(req.user?.userId, req.user?.role);
+    if (!actor) return res.status(401).json({ message: 'Unauthorized' });
 
     const convo = await Conversation.findById(conversationId);
-    if (!convo) return res.status(404).json({ message: 'Conversation not found' });
-    if (!convo.participants.includes(myId)) return res.status(403).json({ message: 'Not a participant' });
+    const access = canAccessConversation(actor, convo);
+    if (!access.allowed) {
+      return res.status(convo ? 403 : 404).json({ message: access.reason });
+    }
 
     const limit = Math.min(parseInt(req.query.limit) || 100, 500);
-    const before = req.query.before; // cursor: createdAt ISO string
+    const before = req.query.before;
 
     const filter = { conversationId: convo._id };
     if (before) filter.createdAt = { $lt: new Date(before) };
@@ -197,29 +336,34 @@ export const getConversationMessages = async (req, res) => {
       .limit(limit)
       .lean();
 
-    res.status(200).json(msgs.reverse()); // return in chronological order
+    res.status(200).json(msgs.reverse());
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-// ─── Send a direct message ──────────────────────────────────────
+// ─── Send a direct or group message ─────────────────────────────
 export const sendDirectMessage = async (req, res) => {
   try {
     const { conversationId } = req.params;
-    const myId = req.user.userId;
+    const actor = await resolveMessengerActor(req.user?.userId, req.user?.role);
+    if (!actor) return res.status(401).json({ message: 'Unauthorized' });
 
     const convo = await Conversation.findById(conversationId);
-    if (!convo) return res.status(404).json({ message: 'Conversation not found' });
-    if (!convo.participants.includes(myId)) return res.status(403).json({ message: 'Not a participant' });
+    const access = canAccessConversation(actor, convo);
+    if (!access.allowed) {
+      return res.status(convo ? 403 : 404).json({ message: access.reason });
+    }
 
+    const myId = actor.userId;
     const body = { ...req.body };
     body.conversationId = convo._id;
-    body.companyId = convo.companyId;
+    body.companyId = convo.companyId || undefined;
     body.senderId = myId;
-    body.readBy = [myId]; // sender has "read" it
+    body.senderName = actor.name || actor.username || myId;
+    body.readBy = [myId];
 
-    // Handle attachments
+    // Handle attachments (voice notes, images, videos, files)
     if (Array.isArray(body.attachments)) {
       const seed = `dm-${conversationId}-${myId}`;
       const normalized = [];
@@ -233,44 +377,53 @@ export const sendDirectMessage = async (req, res) => {
     const msg = new DirectMessage(body);
     await msg.save();
 
-    // Update conversation lastMessage
-    const preview = body.encrypted ? '🔒 Encrypted message' : (body.content || '[attachment]');
+    const isVoice =
+      body.isVoice ||
+      (Array.isArray(body.attachments) &&
+        body.attachments.some((a) => a.type?.startsWith('audio') || a.isVoice));
+
+    const preview = body.encrypted
+      ? '🔒 Encrypted message'
+      : isVoice
+      ? '🎤 Voice message'
+      : body.content || '[attachment]';
     convo.lastMessage = { content: preview, senderId: myId, timestamp: msg.createdAt };
     await convo.save();
 
-    // Emit to all participants in the company room
-    emitToCompany('dm:change', convo.companyId, {
+    // Emit strictly to all participants (both website & Flutter receive instantly)
+    await emitToParticipants(convo.participants, 'dm:change', {
       action: 'create',
       conversationId: convo._id.toString(),
-      senderId: myId
+      senderId: myId,
+      message: msg,
     });
 
-    // Send persistent & real-time notification to the recipient
-    const recipientId = convo.participants.find(p => p !== myId);
-    if (recipientId) {
-      const isVoice = body.isVoice || (Array.isArray(body.attachments) && body.attachments.some(a => a.type?.startsWith('audio') || a.isVoice));
-      const senderUser = await User.findOne({ userId: myId }).select('name username').lean();
-      const senderName = senderUser?.name || senderUser?.username || req.user?.username || myId;
-
+    // Notify all other participants
+    const recipients = (convo.participants || []).filter((p) => normalizeId(p) !== myId);
+    for (const recipientId of recipients) {
       await createAndSendNotification({
-        companyId: convo.companyId,
+        companyId: convo.companyId || null,
         userId: recipientId,
         type: isVoice ? 'voice_message' : 'text_message',
-        title: senderName,
-        message: isVoice ? 'Sent a voice message' : (body.encrypted ? '🔒 Encrypted message' : (body.content || 'Sent an attachment')),
+        title: convo.isGroup ? `${convo.name} • ${actor.name}` : actor.name,
+        message: isVoice
+          ? 'Sent a voice message'
+          : body.encrypted
+          ? '🔒 Encrypted message'
+          : body.content || 'Sent an attachment',
         senderId: myId,
-        senderName,
+        senderName: actor.name,
         conversationId: convo._id.toString(),
         metadata: {
           messageId: msg._id.toString(),
           isVoice: !!isVoice,
-          encrypted: !!body.encrypted
-        }
+          encrypted: !!body.encrypted,
+          isGroup: !!convo.isGroup,
+        },
       });
     }
 
     res.status(201).json(msg);
-
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
@@ -280,16 +433,25 @@ export const sendDirectMessage = async (req, res) => {
 export const markAsRead = async (req, res) => {
   try {
     const { conversationId } = req.params;
-    const myId = req.user.userId;
+    const actor = await resolveMessengerActor(req.user?.userId, req.user?.role);
+    if (!actor) return res.status(401).json({ message: 'Unauthorized' });
 
     const convo = await Conversation.findById(conversationId);
-    if (!convo) return res.status(404).json({ message: 'Conversation not found' });
-    if (!convo.participants.includes(myId)) return res.status(403).json({ message: 'Not a participant' });
+    const access = canAccessConversation(actor, convo);
+    if (!access.allowed) {
+      return res.status(convo ? 403 : 404).json({ message: access.reason });
+    }
 
     await DirectMessage.updateMany(
-      { conversationId: convo._id, readBy: { $ne: myId } },
-      { $addToSet: { readBy: myId } }
+      { conversationId: convo._id, readBy: { $ne: actor.userId } },
+      { $addToSet: { readBy: actor.userId } }
     );
+
+    await emitToParticipants(convo.participants, 'dm:change', {
+      action: 'read',
+      conversationId: convo._id.toString(),
+      userId: actor.userId,
+    });
 
     res.status(200).json({ success: true });
   } catch (error) {
@@ -301,22 +463,24 @@ export const markAsRead = async (req, res) => {
 export const storePublicKey = async (req, res) => {
   try {
     const { conversationId } = req.params;
-    const myId = req.user.userId;
-    const { publicKey } = req.body; // JWK JSON string
+    const actor = await resolveMessengerActor(req.user?.userId, req.user?.role);
+    if (!actor) return res.status(401).json({ message: 'Unauthorized' });
 
+    const { publicKey } = req.body;
     if (!publicKey) return res.status(400).json({ message: 'publicKey is required' });
 
     const convo = await Conversation.findById(conversationId);
-    if (!convo) return res.status(404).json({ message: 'Conversation not found' });
-    if (!convo.participants.includes(myId)) return res.status(403).json({ message: 'Not a participant' });
+    const access = canAccessConversation(actor, convo);
+    if (!access.allowed) {
+      return res.status(convo ? 403 : 404).json({ message: access.reason });
+    }
 
-    convo.publicKeys.set(myId, publicKey);
+    convo.publicKeys.set(actor.userId, typeof publicKey === 'string' ? publicKey : JSON.stringify(publicKey));
     await convo.save();
 
-    // Notify the other participant that a key was stored
-    emitToCompany('dm:key-exchange', convo.companyId, {
+    await emitToParticipants(convo.participants, 'dm:key-exchange', {
       conversationId: convo._id.toString(),
-      userId: myId
+      userId: actor.userId,
     });
 
     res.status(200).json({ success: true });
@@ -329,11 +493,16 @@ export const storePublicKey = async (req, res) => {
 export const editDirectMessage = async (req, res) => {
   try {
     const { messageId } = req.params;
-    const myId = req.user.userId;
+    const actor = await resolveMessengerActor(req.user?.userId, req.user?.role);
+    if (!actor) return res.status(401).json({ message: 'Unauthorized' });
 
     const msg = await DirectMessage.findById(messageId);
     if (!msg) return res.status(404).json({ message: 'Message not found' });
-    if (msg.senderId !== myId) return res.status(403).json({ message: 'You can only edit your own messages' });
+    if (msg.senderId !== actor.userId) return res.status(403).json({ message: 'You can only edit your own messages' });
+
+    const convo = await Conversation.findById(msg.conversationId);
+    const access = canAccessConversation(actor, convo);
+    if (!access.allowed) return res.status(403).json({ message: access.reason });
 
     const { content, iv, encrypted } = req.body;
     msg.content = content;
@@ -342,12 +511,11 @@ export const editDirectMessage = async (req, res) => {
     msg.editedAt = new Date();
     await msg.save();
 
-    const convo = await Conversation.findById(msg.conversationId);
     if (convo) {
-      emitToCompany('dm:change', convo.companyId, {
+      await emitToParticipants(convo.participants, 'dm:change', {
         action: 'update',
         conversationId: msg.conversationId.toString(),
-        messageId: msg._id.toString()
+        messageId: msg._id.toString(),
       });
     }
 
@@ -361,25 +529,28 @@ export const editDirectMessage = async (req, res) => {
 export const deleteDirectMessage = async (req, res) => {
   try {
     const { messageId } = req.params;
-    const myId = req.user.userId;
-    const role = (req.user.role || '').toLowerCase();
+    const actor = await resolveMessengerActor(req.user?.userId, req.user?.role);
+    if (!actor) return res.status(401).json({ message: 'Unauthorized' });
 
     const msg = await DirectMessage.findById(messageId);
     if (!msg) return res.status(404).json({ message: 'Message not found' });
 
-    if (msg.senderId !== myId && !['param', 'owner'].includes(role)) {
+    const convo = await Conversation.findById(msg.conversationId);
+    const access = canAccessConversation(actor, convo);
+    if (!access.allowed) return res.status(403).json({ message: access.reason });
+
+    if (msg.senderId !== actor.userId && !['param', 'owner'].includes(actor.role)) {
       return res.status(403).json({ message: 'You can only delete your own messages' });
     }
 
     const convoId = msg.conversationId;
     await DirectMessage.deleteOne({ _id: msg._id });
 
-    const convo = await Conversation.findById(convoId);
     if (convo) {
-      emitToCompany('dm:change', convo.companyId, {
+      await emitToParticipants(convo.participants, 'dm:change', {
         action: 'delete',
         conversationId: convoId.toString(),
-        messageId: msg._id.toString()
+        messageId: msg._id.toString(),
       });
     }
 

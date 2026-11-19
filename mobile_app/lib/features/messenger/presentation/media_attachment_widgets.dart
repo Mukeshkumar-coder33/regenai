@@ -755,69 +755,75 @@ class _VideoPlayerDialogState extends State<_VideoPlayerDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final maxVideoHeight = MediaQuery.of(context).size.height * 0.62;
     return Dialog(
       backgroundColor: Colors.black,
       insetPadding: const EdgeInsets.all(14),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 8, 6),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    widget.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close_rounded, color: Colors.white),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ],
-            ),
-          ),
-          if (_error != null)
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
             Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(_error!, style: const TextStyle(color: Colors.redAccent)),
-            )
-          else if (!_initialized || _controller == null)
-            const Padding(
-              padding: EdgeInsets.all(42),
-              child: CircularProgressIndicator(color: Colors.white),
-            )
-          else ...[
-            AspectRatio(
-              aspectRatio: _controller!.value.aspectRatio > 0
-                  ? _controller!.value.aspectRatio
-                  : 16 / 9,
-              child: VideoPlayer(_controller!),
-            ),
-            VideoProgressIndicator(_controller!, allowScrubbing: true),
-            IconButton(
-              icon: Icon(
-                _controller!.value.isPlaying
-                    ? Icons.pause_circle_filled_rounded
-                    : Icons.play_circle_filled_rounded,
-                color: Colors.white,
-                size: 40,
+              padding: const EdgeInsets.fromLTRB(16, 10, 8, 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, color: Colors.white),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
               ),
-              onPressed: () {
-                setState(() {
-                  _controller!.value.isPlaying
-                      ? _controller!.pause()
-                      : _controller!.play();
-                });
-              },
             ),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(_error!, style: const TextStyle(color: Colors.redAccent)),
+              )
+            else if (!_initialized || _controller == null)
+              const Padding(
+                padding: EdgeInsets.all(42),
+                child: CircularProgressIndicator(color: Colors.white),
+              )
+            else ...[
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: maxVideoHeight),
+                child: AspectRatio(
+                  aspectRatio: _controller!.value.aspectRatio > 0
+                      ? _controller!.value.aspectRatio
+                      : 16 / 9,
+                  child: VideoPlayer(_controller!),
+                ),
+              ),
+              VideoProgressIndicator(_controller!, allowScrubbing: true),
+              IconButton(
+                icon: Icon(
+                  _controller!.value.isPlaying
+                      ? Icons.pause_circle_filled_rounded
+                      : Icons.play_circle_filled_rounded,
+                  color: Colors.white,
+                  size: 40,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _controller!.value.isPlaying
+                        ? _controller!.pause()
+                        : _controller!.play();
+                  });
+                },
+              ),
+            ],
+            const SizedBox(height: 8),
           ],
-          const SizedBox(height: 8),
-        ],
+        ),
       ),
     );
   }

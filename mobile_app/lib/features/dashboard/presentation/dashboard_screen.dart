@@ -208,39 +208,6 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     }
   }
 
-  Future<void> _handleBottomNavLongPress(int slotIndex) async {
-    final currentId = _bottomNavSlots[slotIndex];
-    final currentItem = _shortcutForId(currentId);
-    final activeSet = _bottomNavSlots.toSet();
-    final available = _roleNavCatalog
-        .where((item) => !activeSet.contains(item.id))
-        .toList();
-
-    final selectedId = await BottomNavCustomizer.showReplacementMenu(
-      context: context,
-      anchorKey: _bottomNavSlotKeys[slotIndex],
-      currentLabel: currentItem.label,
-      availableItems: available,
-    );
-
-    if (selectedId != null && selectedId != currentId && mounted) {
-      final updated = List<String>.from(_bottomNavSlots);
-      updated[slotIndex] = selectedId;
-      setState(() {
-        _bottomNavSlots = updated;
-        _currentTabIndex = slotIndex;
-        _overridePageId = null;
-        if (selectedId == 'calendar') {
-          _showAttendanceSubScreen = false;
-        }
-      });
-      await BottomNavCustomizer.saveSlots(
-        roleKey: _roleStorageKey,
-        slots: updated,
-      );
-    }
-  }
-
   Future<void> _checkPolicyStatus() async {
     setState(() => _isLoadingPolicy = true);
     try {
@@ -365,6 +332,13 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         );
       case 'settings':
         return SettingsView(
+          user: _currentUser,
+          currentSlots: _bottomNavSlots,
+          onNavSlotsChanged: (updated) {
+            setState(() {
+              _bottomNavSlots = updated;
+            });
+          },
           onBack: () => _navigateToPage('home'),
         );
       case 'help':
@@ -675,7 +649,6 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
       return InkWell(
         key: _bottomNavSlotKeys[index],
         onTap: handleSingleTap,
-        onLongPress: () => _handleBottomNavLongPress(index),
         borderRadius: BorderRadius.circular(16),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -716,7 +689,6 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     return InkWell(
       key: _bottomNavSlotKeys[index],
       onTap: handleSingleTap,
-      onLongPress: () => _handleBottomNavLongPress(index),
       borderRadius: BorderRadius.circular(16),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),

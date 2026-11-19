@@ -26,8 +26,10 @@ import 'package:regen_mobile/features/superadmin/presentation/superadmin_dashboa
 import 'package:regen_mobile/features/tasks/data/task_model.dart';
 import 'package:regen_mobile/features/tasks/data/project_model.dart';
 import 'package:regen_mobile/features/tasks/presentation/tasks_view.dart';
+import 'package:regen_mobile/core/navigation/bottom_nav_customizer.dart';
 import 'package:regen_mobile/features/profile/presentation/app_drawer.dart';
 import 'package:regen_mobile/features/profile/presentation/profile_view.dart';
+import 'package:regen_mobile/features/profile/presentation/settings_view.dart';
 import 'package:regen_mobile/features/policies/data/policy_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -303,7 +305,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('Ram'), findsWidgets);
-      expect(find.text("Today's Tasks"), findsOneWidget);
+      expect(find.text('Daily Task Alert'), findsOneWidget);
       expect(find.text('UI Design Review'), findsOneWidget);
     });
 
@@ -747,7 +749,8 @@ void main() {
 
       expect(find.text('Attendance Rate'), findsOneWidget);
       expect(find.text('My Projects'), findsOneWidget);
-      expect(find.text('Summary'), findsOneWidget);
+      expect(find.text('Earned Payment'), findsOneWidget);
+      expect(find.text('Summary'), findsNothing);
       expect(find.text('Total Registered Employees'), findsNothing);
     });
 
@@ -1682,7 +1685,7 @@ void main() {
       expect(find.text('Messenger'), findsOneWidget);
     });
 
-    testWidgets('Task 2: Company Admin long-press bottom nav replaces Calender with Payroll and swaps availability',
+    testWidgets('Task 2: Company Admin long-press bottom nav is removed, customizes via Appearance sheet',
         (WidgetTester tester) async {
       SharedPreferences.setMockInitialValues({});
 
@@ -1709,12 +1712,43 @@ void main() {
       expect(find.text('Calender'), findsOneWidget);
       expect(find.text('Payroll'), findsNothing);
 
-      // Long-press Calender shortcut in bottom nav
+      // Verify long-press on Calender does NOT show replacement popup menu (long press disabled)
       await tester.longPress(find.text('Calender'));
       await tester.pumpAndSettle();
+      expect(find.textContaining('Replace "Calender"'), findsNothing);
 
-      // Contextual menu shows eligible pages NOT in bottom nav (Tasks, Messenger, Payroll, Reports, Settings)
-      expect(find.text('Replace "Calender"'), findsOneWidget);
+      // Directly open Appearance customizer sheet as triggered from Settings -> Appearance
+      final navContext = tester.element(find.byType(CompanyDashboardView));
+      BottomNavCustomizer.showAppearanceCustomizerSheet(
+        context: navContext,
+        roleKey: 'company',
+        catalog: const [
+          NavShortcutItem(id: 'home', label: 'Home', icon: Icons.home_outlined, activeIcon: Icons.home_rounded),
+          NavShortcutItem(id: 'employees', label: 'Employees', icon: Icons.people_outline_rounded, activeIcon: Icons.people_rounded),
+          NavShortcutItem(id: 'calendar', label: 'Calender', icon: Icons.calendar_month_outlined, activeIcon: Icons.calendar_month_rounded),
+          NavShortcutItem(id: 'profile', label: 'Profile', icon: Icons.person_outline_rounded, activeIcon: Icons.person_rounded),
+          NavShortcutItem(id: 'payroll', label: 'Payroll', icon: Icons.payments_outlined, activeIcon: Icons.payments_rounded),
+          NavShortcutItem(id: 'tasks', label: 'Tasks', icon: Icons.assignment_outlined, activeIcon: Icons.assignment_rounded),
+          NavShortcutItem(id: 'messenger', label: 'Messenger', icon: Icons.chat_bubble_outline_rounded, activeIcon: Icons.chat_bubble_rounded),
+        ],
+        currentSlots: ['home', 'employees', 'calendar', 'profile'],
+        defaultSlots: ['home', 'employees', 'calendar', 'profile'],
+        onSlotsChanged: (_) {},
+      );
+      await tester.pumpAndSettle();
+
+      // The Appearance customizer sheet opens
+      expect(find.text('Customize Navigation Bar'), findsOneWidget);
+      expect(find.text('Calender'), findsWidgets);
+
+      // Tap 'Change' on the Calender slot (3rd slot, index 2)
+      final changeButtons = find.text('Change');
+      expect(changeButtons, findsWidgets);
+      await tester.tap(changeButtons.at(2));
+      await tester.pumpAndSettle();
+
+      // Contextual sheet shows eligible replacement pages
+      expect(find.text('Replace "Calender" with'), findsOneWidget);
       expect(find.text('Payroll'), findsOneWidget);
       expect(find.text('Messenger'), findsOneWidget);
       expect(find.text('Tasks'), findsOneWidget);
@@ -1723,25 +1757,20 @@ void main() {
       await tester.tap(find.text('Payroll'));
       await tester.pumpAndSettle();
 
-      // Bottom nav now displays Payroll in place of Calender & navigates to Payroll view
-      expect(find.text('Payroll'), findsOneWidget);
-      expect(find.text('Payroll & Compensation'), findsOneWidget);
-
-      // Long-pressing Payroll now excludes Payroll from menu and makes Calender available again
-      await tester.longPress(find.text('Payroll'));
+      // Tap Done
+      await tester.tap(find.text('Done'));
       await tester.pumpAndSettle();
-      expect(find.text('Replace "Payroll"'), findsOneWidget);
-      expect(find.text('Calender'), findsOneWidget);
     });
 
-    testWidgets('Task 2: Employee and Super Admin have independent long-press bottom nav customization & role access',
+    testWidgets('Task 2: Employee and Super Admin customize bottom nav in Settings Appearance with role access',
         (WidgetTester tester) async {
       SharedPreferences.setMockInitialValues({});
 
-      // 1. Employee DashboardScreen
+      // 1. Employee SettingsView
       await tester.pumpWidget(
         MaterialApp(
-          home: DashboardScreen(
+          home: SettingsView(
+            key: const ValueKey('emp_settings'),
             user: const UserModel(
               id: 'emp_nav',
               userId: 'Eswaran',
@@ -1750,28 +1779,44 @@ void main() {
               role: 'staff',
               token: 'tok_staff',
             ),
-            onLogout: () {},
           ),
         ),
       );
       await tester.pumpAndSettle();
 
-      // Long-press Calendar in Employee bottom nav
-      await tester.longPress(find.text('Calendar'));
+      // Verify Appearance & Navigation section is present
+      expect(find.text('Appearance & Navigation'), findsOneWidget);
+      expect(find.text('Bottom Navigation Shortcuts'), findsOneWidget);
+
+      // Open bottom nav customization sheet
+      await tester.tap(find.text('Bottom Navigation Shortcuts'));
       await tester.pumpAndSettle();
-      expect(find.text('Replace "Calendar"'), findsOneWidget);
+      expect(find.text('Customize Navigation Bar'), findsOneWidget);
+
+      // Tap Change on Calendar (3rd slot, index 2)
+      final changeBtns = find.text('Change');
+      expect(changeBtns, findsWidgets);
+      await tester.tap(changeBtns.at(2));
+      await tester.pumpAndSettle();
+
+      // Eligible pages dialog for Employee has Messenger, Leave, Payroll
+      expect(find.text('Replace "Calendar" with'), findsOneWidget);
       expect(find.text('Messenger'), findsOneWidget);
       expect(find.text('Leave'), findsOneWidget); // Eligible for Employee
 
-      // Select Messenger -> replaces Calendar for Employee
+      // Select Messenger
       await tester.tap(find.text('Messenger'));
       await tester.pumpAndSettle();
-      expect(find.text('Messenger'), findsWidgets);
 
-      // 2. Super Admin DashboardScreen (independent slots & no Employee-only Leave)
+      // Tap Done
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+
+      // 2. Super Admin SettingsView (independent slots & no Employee-only Leave)
       await tester.pumpWidget(
         MaterialApp(
-          home: DashboardScreen(
+          home: SettingsView(
+            key: const ValueKey('sa_settings'),
             user: const UserModel(
               id: 'sa_nav',
               userId: 'Param',
@@ -1780,17 +1825,25 @@ void main() {
               role: 'param',
               token: 'tok_sa',
             ),
-            onLogout: () {},
           ),
         ),
       );
       await tester.pumpAndSettle();
 
-      // Super Admin still has its default Calendar slot (unaffected by Employee customization!)
-      expect(find.text('Calendar'), findsOneWidget);
-      await tester.longPress(find.text('Calendar'));
+      // Open bottom nav customization sheet for Super Admin
+      await tester.tap(find.text('Bottom Navigation Shortcuts'));
       await tester.pumpAndSettle();
-      expect(find.text('Replace "Calendar"'), findsOneWidget);
+      expect(find.text('Customize Navigation Bar'), findsOneWidget);
+
+      // Super Admin still has its default Calendar slot
+      expect(find.text('Calendar'), findsWidgets);
+
+      // Tap Change on Calendar (3rd slot)
+      final saChangeBtns = find.text('Change');
+      await tester.tap(saChangeBtns.at(2));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Replace "Calendar" with'), findsOneWidget);
       expect(find.text('Messenger'), findsOneWidget);
       expect(find.text('Leave'), findsNothing); // Unauthorized Employee-only Leave excluded for Super Admin
     });
@@ -2090,9 +2143,9 @@ void main() {
       // Verify Company-style KPI labels & monthly Attendance Trends graph exist
       expect(find.text('Attendance Rate'), findsOneWidget);
       expect(find.text('My Projects'), findsOneWidget);
-      expect(find.text('Summary'), findsOneWidget);
-      expect(find.text('Leave'), findsWidgets);
       expect(find.text('Earned Payment'), findsOneWidget);
+      expect(find.text('Summary'), findsNothing);
+      expect(find.text('Leave'), findsWidgets);
       expect(find.text('Attendance Trends ($currentYear)'), findsOneWidget);
 
       // Open Year Picker from Welcome Hero card: must start at joining year 2024 (no 2023)
@@ -2103,7 +2156,16 @@ void main() {
       expect(find.text('2025'), findsOneWidget);
       expect(find.text('2023'), findsNothing);
 
-      // Switch to 2025 and verify 2025 dynamic values (Projects=2, Earned=₹60,000, Approved Leave=2, Absent includes unapproved leave=1)
+      // Switch to 2024 (joining year) and verify graph starts from joining month (March)
+      await tester.tap(find.text('2024').last);
+      await tester.pumpAndSettle();
+      expect(find.text('Year: 2024'), findsOneWidget);
+      expect(find.text('Attendance Trends (2024)'), findsOneWidget);
+      expect(find.text('Starts from Mar 2024 (Joining Month)'), findsOneWidget);
+
+      // Switch to 2025 and verify 2025 dynamic values (Projects=2, Earned=₹60,000, Approved Leave=2)
+      await tester.tap(find.text('Year: 2024'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('2025').last);
       await tester.pumpAndSettle();
       expect(find.text('Year: 2025'), findsOneWidget);

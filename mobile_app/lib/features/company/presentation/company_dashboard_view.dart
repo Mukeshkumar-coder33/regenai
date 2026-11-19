@@ -290,39 +290,6 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     }
   }
 
-  Future<void> _handleBottomNavLongPress(int slotIndex) async {
-    final currentId = _bottomNavSlots[slotIndex];
-    final currentItem = _companyShortcutForId(currentId);
-    final activeSet = _bottomNavSlots.toSet();
-    final available = _companyNavCatalog
-        .where((item) => !activeSet.contains(item.id))
-        .toList();
-
-    final selectedId = await BottomNavCustomizer.showReplacementMenu(
-      context: context,
-      anchorKey: _bottomNavSlotKeys[slotIndex],
-      currentLabel: currentItem.label,
-      availableItems: available,
-    );
-
-    if (selectedId != null && selectedId != currentId && mounted) {
-      final updated = List<String>.from(_bottomNavSlots);
-      updated[slotIndex] = selectedId;
-      setState(() {
-        _bottomNavSlots = updated;
-        _selectedBottomTab = slotIndex;
-        _overridePageId = null;
-        if (selectedId == 'settings') {
-          _selectedProfileSubTab = 2;
-        }
-      });
-      await BottomNavCustomizer.saveSlots(
-        roleKey: 'company',
-        slots: updated,
-      );
-    }
-  }
-
   void _navigateToCompanyPage(String pageId) {
     final slotIdx = _bottomNavSlots.indexOf(pageId);
     setState(() {
@@ -9963,8 +9930,21 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         _buildSettingsMenuCard(
           icon: Icons.palette_outlined,
           title: 'Appearance',
-          subtitle: 'Theme, language, display',
-          onTap: () {},
+          subtitle: 'Navigation bar, theme & display',
+          onTap: () {
+            BottomNavCustomizer.showAppearanceCustomizerSheet(
+              context: context,
+              roleKey: 'company',
+              catalog: _companyNavCatalog,
+              currentSlots: _bottomNavSlots,
+              defaultSlots: _defaultCompanySlots,
+              onSlotsChanged: (updated) {
+                setState(() {
+                  _bottomNavSlots = updated;
+                });
+              },
+            );
+          },
         ),
         _buildSettingsMenuCard(
           icon: Icons.notifications_none_rounded,
@@ -10736,7 +10716,6 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           _selectedProfileSubTab = 2;
         }
       }),
-      onLongPress: () => _handleBottomNavLongPress(index),
       borderRadius: BorderRadius.circular(16),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),

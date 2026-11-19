@@ -1,18 +1,30 @@
 import 'package:flutter/material.dart';
+import '../../../core/navigation/bottom_nav_customizer.dart';
 import '../../../core/theme/celadon_colors.dart';
+import '../../auth/data/user_model.dart';
 
 /// Screen: App & Profile Settings Screen
 ///
 /// Features:
 /// - Light mint background with modern corporate styling
+/// - Appearance & Navigation Bar Customizer
 /// - Notification preferences toggle
 /// - Security & biometrics toggle
 /// - Language & theme display
 /// - Account info & version details
 class SettingsView extends StatefulWidget {
   final VoidCallback? onBack;
+  final UserModel? user;
+  final List<String>? currentSlots;
+  final void Function(List<String> updatedSlots)? onNavSlotsChanged;
 
-  const SettingsView({super.key, this.onBack});
+  const SettingsView({
+    super.key,
+    this.onBack,
+    this.user,
+    this.currentSlots,
+    this.onNavSlotsChanged,
+  });
 
   @override
   State<SettingsView> createState() => _SettingsViewState();
@@ -23,6 +35,89 @@ class _SettingsViewState extends State<SettingsView> {
   bool _emailAlerts = true;
   bool _biometricLogin = false;
   bool _taskReminders = true;
+  late List<String> _activeSlots;
+
+  static const List<String> _defaultSlots = ['home', 'tasks', 'calendar', 'profile'];
+
+  String get _roleKey => widget.user?.isSuperAdmin == true ? 'superadmin' : 'employee';
+
+  List<NavShortcutItem> get _catalog {
+    final isSa = widget.user?.isSuperAdmin ?? false;
+    return [
+      const NavShortcutItem(id: 'home', label: 'Home', icon: Icons.home_outlined, activeIcon: Icons.home_rounded),
+      const NavShortcutItem(id: 'tasks', label: 'Tasks', icon: Icons.assignment_outlined, activeIcon: Icons.assignment_rounded),
+      const NavShortcutItem(id: 'calendar', label: 'Calendar', icon: Icons.calendar_today_outlined, activeIcon: Icons.calendar_today_rounded),
+      const NavShortcutItem(id: 'profile', label: 'Profile', icon: Icons.person_outline_rounded, activeIcon: Icons.person_rounded),
+      const NavShortcutItem(id: 'messenger', label: 'Messenger', icon: Icons.chat_bubble_outline_rounded, activeIcon: Icons.chat_bubble_rounded),
+      const NavShortcutItem(id: 'attendance', label: 'Attendance', icon: Icons.event_available_outlined, activeIcon: Icons.event_available_rounded),
+      const NavShortcutItem(id: 'team', label: 'Team', icon: Icons.groups_outlined, activeIcon: Icons.groups_rounded),
+      if (!isSa)
+        const NavShortcutItem(id: 'leave', label: 'Leave', icon: Icons.beach_access_outlined, activeIcon: Icons.beach_access_rounded),
+      if (!isSa)
+        const NavShortcutItem(id: 'payroll', label: 'Payroll', icon: Icons.payments_outlined, activeIcon: Icons.payments_rounded),
+      const NavShortcutItem(id: 'settings', label: 'Settings', icon: Icons.settings_outlined, activeIcon: Icons.settings_rounded),
+      const NavShortcutItem(id: 'help', label: 'Support', icon: Icons.help_outline_rounded, activeIcon: Icons.help_rounded),
+    ];
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _activeSlots = widget.currentSlots != null
+        ? List<String>.from(widget.currentSlots!)
+        : List<String>.from(_defaultSlots);
+    _loadSlots();
+  }
+
+  @override
+  void didUpdateWidget(covariant SettingsView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.user?.role != widget.user?.role ||
+        oldWidget.user?.userId != widget.user?.userId ||
+        oldWidget.currentSlots != widget.currentSlots) {
+      _activeSlots = widget.currentSlots != null
+          ? List<String>.from(widget.currentSlots!)
+          : List<String>.from(_defaultSlots);
+      _loadSlots();
+    }
+  }
+
+  Future<void> _loadSlots() async {
+    final validIds = _catalog.map((e) => e.id).toSet();
+    final loaded = await BottomNavCustomizer.loadSlots(
+      roleKey: _roleKey,
+      defaults: _defaultSlots,
+      validIds: validIds,
+    );
+    if (mounted) {
+      setState(() {
+        _activeSlots = loaded;
+      });
+    }
+  }
+
+  void _openNavCustomizer() {
+    BottomNavCustomizer.showAppearanceCustomizerSheet(
+      context: context,
+      roleKey: _roleKey,
+      catalog: _catalog,
+      currentSlots: _activeSlots,
+      defaultSlots: _defaultSlots,
+      onSlotsChanged: (updated) {
+        setState(() {
+          _activeSlots = List<String>.from(updated);
+        });
+        widget.onNavSlotsChanged?.call(updated);
+      },
+    );
+  }
+
+  String get _currentSlotsSummary {
+    return _activeSlots.map((id) {
+      final match = _catalog.where((c) => c.id == id);
+      return match.isNotEmpty ? match.first.label : id;
+    }).join(' • ');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -63,7 +158,25 @@ class _SettingsViewState extends State<SettingsView> {
               ),
               const SizedBox(height: 16),
 
-              // 2. Notifications Group
+              // 2. Appearance & Navigation Group
+              _buildSectionTitle('Appearance & Navigation'),
+              _buildSettingsCard([
+                _buildActionTile(
+                  icon: Icons.palette_outlined,
+                  title: 'Bottom Navigation Shortcuts',
+                  subtitle: _currentSlotsSummary,
+                  onTap: _openNavCustomizer,
+                ),
+                const Divider(color: CeladonColors.divider),
+                _buildInfoTile(
+                  icon: Icons.color_lens_outlined,
+                  title: 'App Theme',
+                  value: 'Premium Office (Celadon)',
+                ),
+              ]),
+              const SizedBox(height: 20),
+
+              // 3. Notifications Group
               _buildSectionTitle('Notifications'),
               _buildSettingsCard([
                 _buildSwitchTile(

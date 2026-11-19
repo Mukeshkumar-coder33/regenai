@@ -1,16 +1,17 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/theme/celadon_colors.dart';
 import '../../../core/widgets/brand_logo.dart';
 import '../../attendance/data/attendance_model.dart';
 import '../../attendance/data/attendance_service.dart';
 import '../../auth/data/user_model.dart';
+import '../../messenger/data/call_notification_service.dart';
 import '../../messenger/data/messenger_socket_service.dart';
 import '../../notifications/data/notification_model.dart';
 import '../../notifications/data/notification_service.dart';
 import '../../tasks/data/task_model.dart';
-import '../../tasks/data/task_service.dart';
 import '../data/dashboard_service.dart';
 import '../data/leave_model.dart';
 
@@ -56,7 +57,6 @@ class EmployeeDashboardView extends StatefulWidget {
 
 class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
   late final DashboardService _dashboardService;
-  final TaskService _taskService = TaskService();
   final AttendanceService _attendanceService = AttendanceService();
   final NotificationService _notificationService = NotificationService();
 
@@ -68,6 +68,8 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
   int _selectedMonthIndex = DateTime.now().month - 1; // 0..11 (Jan..Dec)
 
   List<TaskModel> _myTasks = [];
+  List<TaskModel> _dueTasksNeedingCompletion = [];
+  bool _isDailyAlertDismissed = false;
   List<Map<String, dynamic>> _allProjects = [];
   List<AttendanceModel> _myAttendance = [];
   List<LeaveModel> _myLeaves = [];
@@ -200,8 +202,20 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
 
       final rawHist = payrollPayload['history'] as List<dynamic>? ?? const [];
 
+      final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+      final activeTasks = (filteredTasks.isNotEmpty ? filteredTasks : allTasks).where((t) {
+        if (t.isCompleted) return false;
+        final due = t.dueDate?.trim() ?? '';
+        final start = t.startDate?.trim() ?? '';
+        final isDueToday = due.startsWith(todayStr);
+        final isAssignedToday = start.startsWith(todayStr);
+        final isOverdue = due.isNotEmpty && due.compareTo(todayStr) < 0;
+        return isDueToday || isAssignedToday || isOverdue;
+      }).toList();
+
       setState(() {
         _myTasks = filteredTasks.isNotEmpty ? filteredTasks : allTasks;
+        _dueTasksNeedingCompletion = activeTasks;
         _myAttendance = filteredAttendance.isNotEmpty ? filteredAttendance : allAttendance;
         _myLeaves = filteredLeaves.isNotEmpty ? filteredLeaves : allLeaves;
         _allProjects = projects;
@@ -215,6 +229,10 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
         }
         _isLoading = false;
       });
+
+      if (activeTasks.isNotEmpty) {
+        _triggerDailyTaskAlert(activeTasks, todayStr, now);
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -222,6 +240,44 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
         _errorMessage = e.toString().replaceAll('Exception: ', '');
       });
     }
+  }
+
+  Future<void> _triggerDailyTaskAlert(
+    List<TaskModel> activeTasks,
+    String todayStr,
+    DateTime now,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userKey = _profileUser.userId.isNotEmpty ? _profileUser.userId : _profileUser.id;
+      final alertKey = 'regen_daily_task_alert_${userKey}_$todayStr';
+      final alreadyAlerted = prefs.getBool(alertKey) ?? false;
+
+      if (!alreadyAlerted) {
+        await prefs.setBool(alertKey, true);
+        await CallNotificationService.instance.showTaskAlert(
+          id: 'task_daily_${now.millisecondsSinceEpoch}',
+          title: 'Daily Task Alert',
+          body: 'You have ${activeTasks.length} task(s) assigned for today or needing completion.',
+        );
+      }
+
+      final taskNotif = NotificationModel(
+        id: 'task_alert_$todayStr',
+        userId: userKey,
+        title: 'Daily Task Alert',
+        message: 'You have ${activeTasks.length} task(s) needing completion today: ${activeTasks.map((t) => t.title).take(2).join(', ')}',
+        type: 'task',
+        read: false,
+        createdAt: now.toIso8601String(),
+      );
+      if (mounted) {
+        setState(() {
+          _notifications.removeWhere((n) => n.id == taskNotif.id);
+          _notifications.insert(0, taskNotif);
+        });
+      }
+    } catch (_) {}
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -237,25 +293,27 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
     return null;
   }
 
-  /// Year selector starts strictly from the employee's joined year (e.g. 2024 -> 2024..currentYear)
-  int get _joiningYear {
-    final fromJoining = _extractYear(_profileUser.joiningDate);
-    if (fromJoining != null) return fromJoining;
-
-    final fromCreated = _extractYear(_profileUser.createdAt);
-    if (fromCreated != null) return fromCreated;
-
-    int earliest = DateTime.now().year;
-    for (final a in _myAttendance) {
-      final y = _extractYear(a.date);
-      if (y != null && y < earliest) earliest = y;
+  /// Precise DateTime when the employee joined (parsed from joiningDate, createdAt, or earliest log)
+  DateTime get _joiningDateTime {
+    for (final raw in [_profileUser.joiningDate, _profileUser.createdAt]) {
+      if (raw != null && raw.toString().trim().isNotEmpty) {
+        final dt = DateTime.tryParse(raw.toString().trim());
+        if (dt != null) {
+          return dt;
+        }
+      }
     }
-    for (final l in _myLeaves) {
-      final y = _extractYear(l.startDate);
-      if (y != null && y < earliest) earliest = y;
+    DateTime earliest = DateTime.now();
+    for (final a in _myAttendance) {
+      final dt = DateTime.tryParse(a.date);
+      if (dt != null && dt.isBefore(earliest)) earliest = dt;
     }
     return earliest;
   }
+
+  int get _joiningYear => _joiningDateTime.year;
+  int get _joiningMonth => _joiningDateTime.month;
+  int get _joiningDay => _joiningDateTime.day;
 
   List<int> get _availableYears {
     final nowYear = DateTime.now().year;
@@ -267,90 +325,117 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
     return years.isEmpty ? [nowYear] : years;
   }
 
-  List<AttendanceModel> _attendanceForYear(int year) {
-    final prefix = '$year-';
-    return _myAttendance.where((a) => a.date.startsWith(prefix)).toList();
-  }
-
-  List<AttendanceModel> _attendanceForYearMonth(int year, int month) {
-    final prefix = '$year-${month.toString().padLeft(2, '0')}-';
-    return _myAttendance.where((a) => a.date.startsWith(prefix)).toList();
-  }
-
-  /// Counts calendar days covered by a leave entry within a given year (and optional month 1..12)
-  int _leaveDaysInPeriod(LeaveModel leave, int year, {int? month}) {
-    final start = DateTime.tryParse(leave.startDate);
-    final end = DateTime.tryParse(leave.endDate.isNotEmpty ? leave.endDate : leave.startDate);
-    if (start == null || end == null) {
-      final prefix = month == null
-          ? '$year-'
-          : '$year-${month.toString().padLeft(2, '0')}-';
-      return (leave.startDate.startsWith(prefix) || leave.endDate.startsWith(prefix)) ? 1 : 0;
+  /// Start date for calculation: If joining year, starts strictly from the day joined!
+  DateTime get _evaluationStartDate {
+    if (_selectedYear == _joiningYear) {
+      return DateTime(_joiningYear, _joiningMonth, _joiningDay);
+    } else if (_selectedYear > _joiningYear) {
+      return DateTime(_selectedYear, 1, 1);
+    } else {
+      return DateTime(_selectedYear, 1, 1);
     }
-    int count = 0;
+  }
+
+  /// End date for calculation: If current year, goes up to today
+  DateTime get _evaluationEndDate {
+    final now = DateTime.now();
+    if (_selectedYear == now.year) {
+      return DateTime(now.year, now.month, now.day);
+    } else if (_selectedYear < now.year) {
+      return DateTime(_selectedYear, 12, 31);
+    } else {
+      return DateTime(now.year, now.month, now.day);
+    }
+  }
+
+  /// Unified DB-driven attendance stats calculation for any date range [start .. end]
+  ({int present, int late, int absent, int approvedLeave, int ratePct}) _computeStatsForPeriod(
+    DateTime start,
+    DateTime end,
+  ) {
+    if (start.isAfter(end)) {
+      return (present: 0, late: 0, absent: 0, approvedLeave: 0, ratePct: 0);
+    }
+
+    final logsByDate = <String, AttendanceModel>{};
+    for (final a in _myAttendance) {
+      final d = a.date.trim();
+      if (d.length >= 10) {
+        logsByDate[d.substring(0, 10)] = a;
+      }
+    }
+
+    final approvedLeaveDates = <String>{};
+    for (final l in _myLeaves) {
+      if (!l.isApproved) continue;
+      final lStart = DateTime.tryParse(l.startDate);
+      final lEnd = DateTime.tryParse(l.endDate.isNotEmpty ? l.endDate : l.startDate);
+      if (lStart == null || lEnd == null) continue;
+      DateTime cur = DateTime(lStart.year, lStart.month, lStart.day);
+      final limit = DateTime(lEnd.year, lEnd.month, lEnd.day);
+      while (!cur.isAfter(limit)) {
+        final key = "${cur.year}-${cur.month.toString().padLeft(2, '0')}-${cur.day.toString().padLeft(2, '0')}";
+        approvedLeaveDates.add(key);
+        cur = cur.add(const Duration(days: 1));
+      }
+    }
+
+    int present = 0;
+    int late = 0;
+    int absent = 0;
+    int approvedLeave = 0;
+
     DateTime cursor = DateTime(start.year, start.month, start.day);
     final limit = DateTime(end.year, end.month, end.day);
-    int safety = 0;
-    while (!cursor.isAfter(limit) && safety < 400) {
-      if (cursor.year == year && (month == null || cursor.month == month)) {
-        count++;
+
+    while (!cursor.isAfter(limit)) {
+      final isWeekend = cursor.weekday == DateTime.saturday || cursor.weekday == DateTime.sunday;
+      final key = "${cursor.year}-${cursor.month.toString().padLeft(2, '0')}-${cursor.day.toString().padLeft(2, '0')}";
+      final log = logsByDate[key];
+
+      if (log != null) {
+        final s = log.status.toLowerCase().trim();
+        if (s == 'late') {
+          late++;
+        } else if (s == 'absent') {
+          absent++;
+        } else {
+          // 'present', 'half_day', 'halfday', '0', etc.
+          present++;
+        }
+      } else if (!isWeekend) {
+        if (approvedLeaveDates.contains(key)) {
+          approvedLeave++;
+        } else {
+          absent++;
+        }
       }
+
       cursor = cursor.add(const Duration(days: 1));
-      safety++;
     }
-    return count;
+
+    final attended = present + late;
+    final total = attended + absent + approvedLeave;
+    final rate = total > 0 ? ((attended / total) * 100).round().clamp(0, 100) : 0;
+
+    return (
+      present: present,
+      late: late,
+      absent: absent,
+      approvedLeave: approvedLeave,
+      ratePct: rate,
+    );
   }
 
-  /// Approved leave days in selected year
-  int get _approvedLeaveDaysInYear {
-    int total = 0;
-    for (final l in _myLeaves) {
-      if (l.isApproved) {
-        total += _leaveDaysInPeriod(l, _selectedYear);
-      }
-    }
-    return total;
-  }
+  /// Annual statistics for `_selectedYear`
+  ({int present, int late, int absent, int approvedLeave, int ratePct}) get _yearStats =>
+      _computeStatsForPeriod(_evaluationStartDate, _evaluationEndDate);
 
-  /// Unapproved leave days in selected year (counts toward Absent)
-  int _unapprovedLeaveDaysInPeriod(int year, {int? month}) {
-    int total = 0;
-    for (final l in _myLeaves) {
-      if (!l.isApproved) {
-        total += _leaveDaysInPeriod(l, year, month: month);
-      }
-    }
-    return total;
-  }
-
-  int _presentCountInPeriod(List<AttendanceModel> logs) {
-    return logs.where((a) {
-      final s = a.status.toLowerCase();
-      return s == 'present' || s == 'half_day' || s == 'half-day' || s == 'halfday';
-    }).length;
-  }
-
-  int _lateCountInPeriod(List<AttendanceModel> logs) {
-    return logs.where((a) => a.status.toLowerCase() == 'late').length;
-  }
-
-  int _absentCountInPeriod(List<AttendanceModel> logs, int year, {int? month}) {
-    final explicitAbsent = logs.where((a) => a.status.toLowerCase() == 'absent').length;
-    final unapprovedLeaveDays = _unapprovedLeaveDaysInPeriod(year, month: month);
-    return explicitAbsent + unapprovedLeaveDays;
-  }
-
-  int get _yearPresentCount => _presentCountInPeriod(_attendanceForYear(_selectedYear));
-  int get _yearLateCount => _lateCountInPeriod(_attendanceForYear(_selectedYear));
-  int get _yearAbsentCount => _absentCountInPeriod(_attendanceForYear(_selectedYear), _selectedYear);
-
-  /// Annual attendance rate % for `_selectedYear`
-  int get _yearAttendanceRate {
-    final attended = _yearPresentCount + _yearLateCount;
-    final denominator = attended + _yearAbsentCount + _approvedLeaveDaysInYear;
-    if (denominator == 0) return 0;
-    return ((attended / denominator) * 100).round().clamp(0, 100);
-  }
+  int get _yearPresentCount => _yearStats.present;
+  int get _yearLateCount => _yearStats.late;
+  int get _yearAbsentCount => _yearStats.absent;
+  int get _yearAttendanceRate => _yearStats.ratePct;
+  int get _approvedLeaveDaysInYear => _yearStats.approvedLeave;
 
   /// Count of distinct projects this employee worked on in `_selectedYear`
   int get _myProjectsCountInYear {
@@ -456,45 +541,38 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
     return '${rounded < 0 ? '-' : ''}₹$buf,$last3';
   }
 
-  /// 12 monthly attendance rates (0.0 .. 1.0) for Jan..Dec of `_selectedYear`
-  List<double> get _monthlyRatesForSelectedYear {
-    return List.generate(12, (idx) {
-      final month = idx + 1;
-      final logs = _attendanceForYearMonth(_selectedYear, month);
-      final present = _presentCountInPeriod(logs);
-      final late = _lateCountInPeriod(logs);
-      final absent = _absentCountInPeriod(logs, _selectedYear, month: month);
-      int approvedLeave = 0;
-      for (final l in _myLeaves) {
-        if (l.isApproved) approvedLeave += _leaveDaysInPeriod(l, _selectedYear, month: month);
-      }
-      final attended = present + late;
-      final denom = attended + absent + approvedLeave;
-      if (denom == 0) return 0.0;
-      return (attended / denom).clamp(0.0, 1.0);
-    });
+  /// The starting month for graph and month selector: starts from joining month if joining year!
+  int get _startMonthForSelectedYear =>
+      (_selectedYear == _joiningYear) ? _joiningMonth.clamp(1, 12) : 1;
+
+  List<int> get _visibleMonthsForSelectedYear {
+    final start = _startMonthForSelectedYear;
+    return List<int>.generate(12 - start + 1, (i) => start + i);
   }
 
+  /// Monthly attendance stats for month index (0..11)
   ({int present, int late, int absent, int approvedLeave, int ratePct}) _monthStats(int monthIdx) {
-    final month = monthIdx + 1;
-    final logs = _attendanceForYearMonth(_selectedYear, month);
-    final present = _presentCountInPeriod(logs);
-    final late = _lateCountInPeriod(logs);
-    final absent = _absentCountInPeriod(logs, _selectedYear, month: month);
-    int approvedLeave = 0;
-    for (final l in _myLeaves) {
-      if (l.isApproved) approvedLeave += _leaveDaysInPeriod(l, _selectedYear, month: month);
+    final m = monthIdx + 1;
+    if (_selectedYear == _joiningYear && m < _joiningMonth) {
+      return (present: 0, late: 0, absent: 0, approvedLeave: 0, ratePct: 0);
     }
-    final attended = present + late;
-    final denom = attended + absent + approvedLeave;
-    final pct = denom == 0 ? 0 : ((attended / denom) * 100).round().clamp(0, 100);
-    return (
-      present: present,
-      late: late,
-      absent: absent,
-      approvedLeave: approvedLeave,
-      ratePct: pct,
-    );
+
+    final isJoinMonth = (_selectedYear == _joiningYear && m == _joiningMonth);
+    final startDay = isJoinMonth ? _joiningDay : 1;
+    final now = DateTime.now();
+    final isCurrentMonth = (_selectedYear == now.year && m == now.month);
+    final daysInMonth = DateUtils.getDaysInMonth(_selectedYear, m);
+    final endDay = isCurrentMonth ? now.day.clamp(1, daysInMonth) : daysInMonth;
+
+    final start = DateTime(_selectedYear, m, startDay);
+    final end = DateTime(_selectedYear, m, endDay);
+    return _computeStatsForPeriod(start, end);
+  }
+
+  /// Monthly attendance rates (0.0 .. 1.0) for visible months
+  List<double> get _monthlyRatesForSelectedYear {
+    final visible = _visibleMonthsForSelectedYear;
+    return visible.map((m) => _monthStats(m - 1).ratePct / 100.0).toList();
   }
 
   void _navigateToPage(String pageId, {int? fallbackTab}) {
@@ -509,15 +587,6 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
     if (fallbackTab != null && widget.onNavigateToTab != null) {
       widget.onNavigateToTab!(fallbackTab);
     }
-  }
-
-  Future<void> _toggleTaskStatus(TaskModel task) async {
-    try {
-      await _taskService.toggleTaskComplete(task.id, !task.isCompleted);
-      if (mounted) {
-        await _loadDashboardData();
-      }
-    } catch (_) {}
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -918,6 +987,11 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                                 _buildWelcomeHeroCard(displayName),
                                 const SizedBox(height: 14),
 
+                                if (_dueTasksNeedingCompletion.isNotEmpty && !_isDailyAlertDismissed) ...[
+                                  _buildDailyTaskAlertBanner(_dueTasksNeedingCompletion),
+                                  const SizedBox(height: 14),
+                                ],
+
                                 // Row 1: Attendance Rate (Donut) & My Projects (Selected Year)
                                 Row(
                                   children: [
@@ -928,26 +1002,18 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                                 ),
                                 const SizedBox(height: 12),
 
-                                // Row 2: Attendance Summary & Approved Leave (Selected Year)
+                                // Row 2: Earned Payment & Approved Leave (Selected Year)
                                 Row(
                                   children: [
-                                    Expanded(child: _buildAttendanceSummaryCard()),
+                                    Expanded(child: _buildEarnedPaymentCard()),
                                     const SizedBox(width: 12),
                                     Expanded(child: _buildApprovedLeaveCard()),
                                   ],
                                 ),
-                                const SizedBox(height: 12),
-
-                                // Row 3: Earned Payment Card (Selected Year, from MongoDB Payroll)
-                                _buildEarnedPaymentCard(),
                                 const SizedBox(height: 14),
 
-                                // Row 4: Monthly Attendance Trends Graph (Jan–Dec for Selected Year)
+                                // Attendance Trends Graph (Starts from joining month if joining year)
                                 _buildYearlyAttendanceTrendGraph(),
-                                const SizedBox(height: 14),
-
-                                // Row 5: Today's Tasks Quick Card
-                                _buildTodaysTasksCard(),
                                 const SizedBox(height: 24),
                               ],
                             ),
@@ -1285,15 +1351,17 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
     );
   }
 
-  /// Card 3: Attendance Summary (Present / Late / Absent = unapproved leave for Selected Year)
-  Widget _buildAttendanceSummaryCard() {
+  /// Card 3: Earned Payment in Selected Year (Replaced Summary, 2x2 Grid Amber Wave Style)
+  Widget _buildEarnedPaymentCard() {
+    final earned = _earnedPaymentInYear;
     return GestureDetector(
-      onTap: () => _navigateToPage('calendar', fallbackTab: 2),
+      onTap: () => _navigateToPage('payroll'),
       child: _buildAccentCard(
-        stripeColor: CeladonColors.primary,
+        stripeColor: const Color(0xFFD9822B),
         height: 142,
+        bottomWaveColor: const Color(0xFFD9822B),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+          padding: const EdgeInsets.fromLTRB(14, 12, 12, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1303,15 +1371,19 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                     width: 30,
                     height: 30,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFEAF5EF),
+                      color: const Color(0xFFFEF4E4),
                       borderRadius: BorderRadius.circular(9),
                     ),
-                    child: const Icon(Icons.fact_check_outlined, color: CeladonColors.primary, size: 17),
+                    child: const Icon(
+                      Icons.payments_rounded,
+                      color: Color(0xFFD9822B),
+                      size: 17,
+                    ),
                   ),
                   const SizedBox(width: 8),
                   const Expanded(
                     child: Text(
-                      'Summary',
+                      'Earned Payment',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -1323,18 +1395,31 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
-              _summaryMetricRow('Present', '$_yearPresentCount days', const Color(0xFF15803D)),
-              const SizedBox(height: 4),
-              _summaryMetricRow('Late', '$_yearLateCount days', const Color(0xFFD97706)),
-              const SizedBox(height: 4),
-              _summaryMetricRow('Absent', '$_yearAbsentCount days', const Color(0xFFDC2626)),
               const Spacer(),
-              const Text(
-                'Absent = unapproved leave',
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  _formatInr(earned),
+                  style: const TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0F172A),
+                    height: 1.0,
+                    letterSpacing: -0.4,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Total in $_selectedYear',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFFB45309),
+                ),
               ),
             ],
           ),
@@ -1411,81 +1496,28 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
     );
   }
 
-  /// Card 5: Earned Payment in Selected Year (Company Amber Wave Style)
-  Widget _buildEarnedPaymentCard() {
-    return GestureDetector(
-      onTap: () => _navigateToPage('payroll'),
-      child: _buildAccentCard(
-        stripeColor: const Color(0xFFD9822B),
-        bottomWaveColor: const Color(0xFFD9822B),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
-          child: Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFEF4E4),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.payments_rounded,
-                  color: Color(0xFFD9822B),
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Earned Payment',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Total earned in $_selectedYear',
-                      style: const TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF475569),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Text(
-                _formatInr(_earnedPaymentInYear),
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF0F172A),
-                  letterSpacing: -0.4,
-                ),
-              ),
-              const SizedBox(width: 4),
-              const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8), size: 20),
-            ],
-          ),
-        ),
-      ),
-    );
+  String get _trendSubtitle {
+    const monthLabels = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    if (_selectedYear == _joiningYear && _joiningMonth > 1) {
+      return 'Starts from ${monthLabels[_joiningMonth - 1]} $_joiningYear (Joining Month)';
+    }
+    return 'Monthly attendance rate (Jan – Dec $_selectedYear)';
   }
 
-  /// Row 4: Monthly Attendance Trends Graph (Jan–Dec of Selected Year, matching Company Attendance Trend)
+  /// Monthly Attendance Trends Graph (Starts from joining month if joining year, matching Company Attendance Trend)
   Widget _buildYearlyAttendanceTrendGraph() {
     const monthLabels = [
       'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
     ];
+    final startMonth = _startMonthForSelectedYear;
+    final effectiveSelectedMonth = _selectedMonthIndex.clamp(startMonth - 1, 11);
+    final painterSelectedIndex = effectiveSelectedMonth - (startMonth - 1);
     final rates = _monthlyRatesForSelectedYear;
-    final selectedStats = _monthStats(_selectedMonthIndex);
+    final selectedStats = _monthStats(effectiveSelectedMonth);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1522,7 +1554,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Monthly attendance rate (Jan – Dec $_selectedYear)',
+                      _trendSubtitle,
                       style: const TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w600,
@@ -1539,7 +1571,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
-                  '${monthLabels[_selectedMonthIndex]}: ${selectedStats.ratePct}%',
+                  '${monthLabels[effectiveSelectedMonth]}: ${selectedStats.ratePct}%',
                   style: const TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w800,
@@ -1576,7 +1608,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                   child: CustomPaint(
                     painter: _EmployeeMonthlyTrendPainter(
                       rates: rates,
-                      selectedIndex: _selectedMonthIndex,
+                      selectedIndex: painterSelectedIndex,
                     ),
                   ),
                 ),
@@ -1585,13 +1617,14 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
           ),
           const SizedBox(height: 10),
 
-          // Interactive Month Selector Strip (Jan..Dec)
+          // Interactive Month Selector Strip (visible months only)
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
-              children: List.generate(12, (idx) {
-                final isSelected = idx == _selectedMonthIndex;
-                final pct = (rates[idx] * 100).round();
+              children: _visibleMonthsForSelectedYear.map((mNum) {
+                final idx = mNum - 1;
+                final isSelected = idx == effectiveSelectedMonth;
+                final pct = _monthStats(idx).ratePct;
                 return Padding(
                   padding: const EdgeInsets.only(right: 6),
                   child: GestureDetector(
@@ -1629,7 +1662,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                     ),
                   ),
                 );
-              }),
+              }).toList(),
             ),
           ),
           const SizedBox(height: 12),
@@ -1657,99 +1690,161 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
     );
   }
 
-  /// Row 5: Today's Tasks Quick Card (Dynamic tasks with direct checkmark completion)
-  Widget _buildTodaysTasksCard() {
-    final previewTasks = _myTasks.take(4).toList();
+  /// Daily Task Alert Banner (Notifies of tasks assigned or needing completion today)
+  Widget _buildDailyTaskAlertBanner(List<TaskModel> tasks) {
+    final count = tasks.length;
     return Container(
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        color: const Color(0xFFF0FDF4),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFBBF7D0)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF16A34A).withValues(alpha: 0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
+      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                "Today's Tasks",
-                style: TextStyle(
-                  fontSize: 15.5,
-                  fontWeight: FontWeight.w800,
-                  color: CeladonColors.textPrimary,
-                ),
-              ),
-              TextButton(
-                onPressed: () => _navigateToPage('tasks', fallbackTab: 1),
-                child: const Text(
-                  'View all',
-                  style: TextStyle(fontWeight: FontWeight.w700, color: CeladonColors.primary),
-                ),
-              ),
-            ],
-          ),
-          if (previewTasks.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 14),
-              child: Text(
-                'No tasks assigned right now.',
-                style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
-              ),
-            )
-          else
-            ...previewTasks.map((task) {
-              return Container(
-                margin: const EdgeInsets.only(top: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              Container(
+                width: 32,
+                height: 32,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF8FBFA),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFE2ECE7)),
+                  color: const Color(0xFFDCFCE7),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                child: Row(
+                child: const Icon(
+                  Icons.assignment_late_rounded,
+                  color: Color(0xFF15803D),
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    GestureDetector(
-                      onTap: () => _toggleTaskStatus(task),
-                      child: Icon(
-                        task.isCompleted
-                            ? Icons.check_circle_rounded
-                            : Icons.radio_button_unchecked_rounded,
-                        color: task.isCompleted ? CeladonColors.primary : const Color(0xFF94A3B8),
-                        size: 22,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            task.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w700,
-                              decoration: task.isCompleted ? TextDecoration.lineThrough : null,
-                              color: task.isCompleted
-                                  ? const Color(0xFF94A3B8)
-                                  : CeladonColors.textPrimary,
+                    Row(
+                      children: [
+                        const Text(
+                          'Daily Task Alert',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF14532D),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF16A34A),
+                            borderRadius: BorderRadius.circular(99),
+                          ),
+                          child: Text(
+                            '$count Due / Assigned',
+                            style: const TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
                             ),
                           ),
-                          if (task.dueDate != null && task.dueDate!.isNotEmpty)
-                            Text(
-                              'Due: ${task.dueDate}',
-                              style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-                            ),
-                        ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'You have $count task${count > 1 ? 's' : ''} assigned for today or needing completion.',
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF166534),
                       ),
                     ),
                   ],
                 ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF15803D)),
+                tooltip: 'Dismiss',
+                onPressed: () => setState(() => _isDailyAlertDismissed = true),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: tasks.take(2).map((t) {
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFBBF7D0)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.circle, size: 6, color: Color(0xFF16A34A)),
+                    const SizedBox(width: 6),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 160),
+                      child: Text(
+                        t.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                    ),
+                    if (t.dueDate != null && t.dueDate!.isNotEmpty) ...[
+                      const SizedBox(width: 4),
+                      Text(
+                        '(${t.dueDate})',
+                        style: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                      ),
+                    ],
+                  ],
+                ),
               );
-            }),
+            }).toList(),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: InkWell(
+              onTap: () => _navigateToPage('tasks', fallbackTab: 1),
+              borderRadius: BorderRadius.circular(8),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Open Tasks',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF15803D),
+                      ),
+                    ),
+                    SizedBox(width: 2),
+                    Icon(Icons.arrow_forward_rounded, size: 13, color: Color(0xFF15803D)),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -1843,30 +1938,6 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
             fontSize: 11.5,
             fontWeight: FontWeight.w800,
             color: Color(0xFF0F172A),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _summaryMetricRow(String label, String value, Color color) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 11.5,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF475569),
-          ),
-        ),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
-            color: color,
           ),
         ),
       ],
@@ -2007,11 +2078,17 @@ class _EmployeeMonthlyTrendPainter extends CustomPainter {
     }
 
     final points = <Offset>[];
-    final stepX = rates.length > 1 ? size.width / (rates.length - 1) : 0.0;
-    for (int i = 0; i < rates.length; i++) {
-      final x = i * stepX;
-      final y = size.height * (1.0 - rates[i].clamp(0.0, 1.0));
-      points.add(Offset(x, y));
+    if (rates.length == 1) {
+      final y = size.height * (1.0 - rates[0].clamp(0.0, 1.0));
+      points.add(Offset(0, y));
+      points.add(Offset(size.width, y));
+    } else {
+      final stepX = size.width / (rates.length - 1);
+      for (int i = 0; i < rates.length; i++) {
+        final x = i * stepX;
+        final y = size.height * (1.0 - rates[i].clamp(0.0, 1.0));
+        points.add(Offset(x, y));
+      }
     }
 
     final linePath = Path()..moveTo(points.first.dx, points.first.dy);
@@ -2032,7 +2109,7 @@ class _EmployeeMonthlyTrendPainter extends CustomPainter {
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          CeladonColors.primary.withValues(alpha: 0.25),
+          CeladonColors.primary.withValues(alpha: 0.22),
           CeladonColors.primary.withValues(alpha: 0.02),
         ],
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
@@ -2046,14 +2123,28 @@ class _EmployeeMonthlyTrendPainter extends CustomPainter {
     canvas.drawPath(linePath, strokePaint);
 
     // Draw dots & highlight selected month
-    for (int i = 0; i < points.length; i++) {
-      final isSel = i == selectedIndex;
-      if (isSel) {
-        canvas.drawCircle(points[i], 6.5, Paint()..color = CeladonColors.primary.withValues(alpha: 0.22));
-        canvas.drawCircle(points[i], 4.2, Paint()..color = CeladonColors.primary);
-        canvas.drawCircle(points[i], 2.0, Paint()..color = Colors.white);
-      } else {
-        canvas.drawCircle(points[i], 2.5, Paint()..color = CeladonColors.primary);
+    if (rates.length == 1) {
+      final centerPt = Offset(size.width / 2, size.height * (1.0 - rates[0].clamp(0.0, 1.0)));
+      canvas.drawCircle(centerPt, 7.0, Paint()..color = CeladonColors.primary.withValues(alpha: 0.22));
+      canvas.drawCircle(centerPt, 4.2, Paint()..color = CeladonColors.primary);
+      canvas.drawCircle(centerPt, 2.0, Paint()..color = Colors.white);
+    } else {
+      for (int i = 0; i < points.length; i++) {
+        final isSel = i == selectedIndex;
+        if (isSel) {
+          // Draw subtle vertical indicator line
+          final verticalGuide = Paint()
+            ..color = CeladonColors.primary.withValues(alpha: 0.18)
+            ..strokeWidth = 1.2
+            ..style = PaintingStyle.stroke;
+          canvas.drawLine(Offset(points[i].dx, 0), Offset(points[i].dx, size.height), verticalGuide);
+
+          canvas.drawCircle(points[i], 7.0, Paint()..color = CeladonColors.primary.withValues(alpha: 0.22));
+          canvas.drawCircle(points[i], 4.2, Paint()..color = CeladonColors.primary);
+          canvas.drawCircle(points[i], 2.0, Paint()..color = Colors.white);
+        } else {
+          canvas.drawCircle(points[i], 2.8, Paint()..color = CeladonColors.primary);
+        }
       }
     }
   }

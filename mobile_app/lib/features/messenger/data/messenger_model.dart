@@ -283,6 +283,7 @@ class DmConversationModel {
   factory DmConversationModel.fromJson(
     Map<String, dynamic> json, {
     String currentUserId = '',
+    Iterable<String> currentIdentities = const [],
   }) {
     final convId = (json['conversationId'] ?? json['id'] ?? json['_id'] ?? '').toString();
     final rawParticipants = (json['participants'] as List<dynamic>? ?? [])
@@ -295,23 +296,60 @@ class DmConversationModel {
         .map(MessengerContactModel.fromJson)
         .toList();
 
+    final myIds = <String>{
+      if (currentUserId.trim().isNotEmpty) currentUserId.trim().toLowerCase(),
+      for (final id in currentIdentities)
+        if (id.trim().isNotEmpty) id.trim().toLowerCase(),
+    };
+
     final otherUser = json['otherUser'] is Map<String, dynamic>
         ? json['otherUser'] as Map<String, dynamic>
         : null;
 
-    String otherId = (otherUser?['userId'] ?? otherUser?['id'] ?? '').toString();
+    String otherId = (otherUser?['userId'] ?? otherUser?['id'] ?? '').toString().trim();
+    if (otherId.isEmpty || myIds.contains(otherId.toLowerCase())) {
+      otherId = '';
+      for (final p in rawParticipants) {
+        final pClean = p.trim();
+        if (pClean.isNotEmpty && !myIds.contains(pClean.toLowerCase())) {
+          otherId = pClean;
+          break;
+        }
+      }
+    }
     if (otherId.isEmpty) {
-      otherId = rawParticipants.firstWhere(
-        (p) => p != currentUserId,
-        orElse: () => rawParticipants.isNotEmpty ? rawParticipants.first : '',
-      );
+      for (final d in rawDetails) {
+        final dId = d.userId.trim();
+        if (dId.isNotEmpty &&
+            !myIds.contains(dId.toLowerCase()) &&
+            !myIds.contains(d.username.trim().toLowerCase()) &&
+            !myIds.contains(d.id.trim().toLowerCase())) {
+          otherId = dId;
+          break;
+        }
+      }
+    }
+    if (otherId.isEmpty && rawParticipants.isNotEmpty) {
+      otherId = rawParticipants.first;
     }
 
-    final otherName = (otherUser?['name'] ??
-            otherUser?['username'] ??
-            json['otherUserName'] ??
-            otherId)
-        .toString();
+    String otherName = '';
+    if (otherUser != null && !myIds.contains((otherUser['userId'] ?? '').toString().toLowerCase())) {
+      otherName = (otherUser['name'] ?? otherUser['username'] ?? '').toString().trim();
+    }
+    if (otherName.isEmpty) {
+      for (final d in rawDetails) {
+        if (d.userId.trim().toLowerCase() == otherId.toLowerCase() ||
+            d.id.trim().toLowerCase() == otherId.toLowerCase() ||
+            d.username.trim().toLowerCase() == otherId.toLowerCase()) {
+          otherName = d.displayName;
+          break;
+        }
+      }
+    }
+    if (otherName.isEmpty) {
+      otherName = (json['otherUserName'] ?? otherId).toString();
+    }
 
     final lastMsgObj = json['lastMessage'];
     String lastText = '';

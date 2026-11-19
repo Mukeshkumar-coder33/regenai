@@ -12,6 +12,7 @@ import '../data/messenger_model.dart';
 import '../data/messenger_service.dart';
 import '../data/messenger_socket_service.dart';
 import '../data/webrtc_call_manager.dart';
+import 'call_overlay.dart';
 import 'media_attachment_widgets.dart';
 import 'voice_recorder_sheet.dart';
 
@@ -365,7 +366,39 @@ class _MessengerViewState extends State<MessengerView> {
         );
       }
 
-      final peerPub = conv.publicKeys[conv.otherUserId];
+      String? peerPub;
+      final peerCandidates = <String>{
+        conv.otherUserId.trim().toLowerCase(),
+        conv.otherUserName.trim().toLowerCase(),
+      };
+      final contact = _findContactById(conv.otherUserId);
+      if (contact != null) {
+        peerCandidates.add(contact.userId.trim().toLowerCase());
+        peerCandidates.add(contact.username.trim().toLowerCase());
+        peerCandidates.add(contact.id.trim().toLowerCase());
+      }
+      for (final entry in conv.publicKeys.entries) {
+        if (peerCandidates.contains(entry.key.trim().toLowerCase())) {
+          peerPub = entry.value;
+          break;
+        }
+      }
+      // In 1-on-1 conversations, if still not found, any key in publicKeys not matching me is peer's key
+      if ((peerPub == null || peerPub.isEmpty) && !conv.isGroup) {
+        final myIds = <String>{
+          _myUserId.trim().toLowerCase(),
+          widget.user.userId.trim().toLowerCase(),
+          widget.user.username.trim().toLowerCase(),
+          widget.user.id.trim().toLowerCase(),
+        };
+        for (final entry in conv.publicKeys.entries) {
+          if (!myIds.contains(entry.key.trim().toLowerCase()) && entry.value.trim().isNotEmpty) {
+            peerPub = entry.value;
+            break;
+          }
+        }
+      }
+
       if (peerPub != null && peerPub.isNotEmpty) {
         final shared = await E2eCryptoService.deriveSharedKey(conv.conversationId, peerPub);
         if (mounted) {
@@ -398,14 +431,23 @@ class _MessengerViewState extends State<MessengerView> {
     List<DirectMessageModel> list,
     SecretKey? key,
   ) async {
-    if (key == null) return list;
     final out = <DirectMessageModel>[];
     for (final m in list) {
-      if (m.encrypted && m.iv.isNotEmpty) {
-        final plain = await E2eCryptoService.decryptMessage(key, m.content, m.iv);
-        out.add(m.copyWith(decryptedContent: plain));
-      } else {
+      if (!m.encrypted || m.iv.isEmpty) {
         out.add(m);
+        continue;
+      }
+      if (key == null) {
+        out.add(m);
+        continue;
+      }
+      final plain = await E2eCryptoService.decryptMessage(key, m.content, m.iv);
+      if (plain == '🔒 Unable to decrypt') {
+        // Only mark encrypted if content actually looks like long base64 ciphertext
+        final isCipher = m.content.length > 40 && !m.content.contains(' ');
+        out.add(m.copyWith(decryptedContent: isCipher ? '🔒 Encrypted message' : m.content));
+      } else {
+        out.add(m.copyWith(decryptedContent: plain));
       }
     }
     return out;
@@ -688,42 +730,46 @@ class _MessengerViewState extends State<MessengerView> {
     }
 
     try {
-      final ready = await _dictationSpeech.initialize(
-        onStatus: (status) {
-          if ((status == 'done' || status == 'notListening') && mounted) {
-            setState(() => _isDictating = false);
-          }
-        },
-        onError: (err) {
-          if (mounted) {
-            setState(() => _isDictating = false);
-            if (err.errorMsg != 'error_speech_timeout' && err.errorMsg != 'error_no_match') {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Voice-to-Text error: ${err.errorMsg}')),
-              );
+      if (!_dictationSpeech.isAvailable) {
+        final ready = await _dictationSpeech.initialize(
+          onStatus: (status) {
+            if ((status == 'done' || status == 'notListening') && mounted) {
+              setState(() => _isDictating = false);
             }
+          },
+          onError: (err) {
+            if (mounted) {
+              setState(() => _isDictating = false);
+              if (err.errorMsg != 'error_speech_timeout' && err.errorMsg != 'error_no_match') {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Voice-to-Text: ${err.errorMsg}')),
+                );
+              }
+            }
+          },
+          debugLogging: false,
+        );
+        if (!ready) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Speech recognition is unavailable. Please enable Google Speech Services / microphone access.'),
+              ),
+            );
           }
-        },
-      );
-      if (!ready) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Speech recognition is unavailable. Please enable Google Speech Services / browser mic access.'),
-            ),
-          );
+          return;
         }
-        return;
       }
 
-      final prefix = _messageController.text.trim();
+      final initialText = _messageController.text;
+      final prefix = initialText.isEmpty || initialText.endsWith(' ') ? initialText : '$initialText ';
       setState(() => _isDictating = true);
       await _dictationSpeech.listen(
         onResult: (res) {
           if (!mounted) return;
           final spoken = res.recognizedWords.trim();
           if (spoken.isEmpty) return;
-          final combined = prefix.isEmpty ? spoken : '$prefix $spoken';
+          final combined = '$prefix$spoken';
           _messageController.text = combined;
           _messageController.selection = TextSelection.fromPosition(
             TextPosition(offset: combined.length),
@@ -733,7 +779,7 @@ class _MessengerViewState extends State<MessengerView> {
           partialResults: true,
           cancelOnError: false,
           listenMode: stt.ListenMode.dictation,
-          listenFor: const Duration(seconds: 45),
+          listenFor: const Duration(seconds: 60),
           pauseFor: const Duration(seconds: 4),
         ),
       );
@@ -1420,85 +1466,85 @@ class _MessengerViewState extends State<MessengerView> {
 
   Widget _buildTopTabs() {
     final totalUnread = _conversations.fold<int>(0, (sum, c) => sum + c.unreadCount);
-    return Container(
-      color: Colors.white,
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: _buildUnderlineTab(
-                  label: 'Chats',
-                  badgeCount: totalUnread > 0 ? totalUnread : null,
-                  selected: _activeTab == 0,
-                  onTap: () => setState(() => _activeTab = 0),
-                ),
-              ),
-              Expanded(
-                child: _buildUnderlineTab(
-                  label: 'Team Channel',
-                  selected: _activeTab == 1,
-                  onTap: () => setState(() {
-                    _activeTab = 1;
-                    _activeConversation = null;
-                  }),
-                ),
-              ),
-            ],
-          ),
-          const Divider(height: 1, thickness: 1, color: _subtleDivider),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildUnderlineTab({
-    required String label,
-    int? badgeCount,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: selected ? CeladonColors.primary : Colors.transparent,
-              width: 2.5,
-            ),
-          ),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFE2ECE7)),
         ),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 13.5,
-                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                color: selected ? CeladonColors.primary : const Color(0xFF64748B),
-              ),
-            ),
-            if (badgeCount != null && badgeCount > 0) ...[
-              const SizedBox(width: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                decoration: BoxDecoration(
-                  color: CeladonColors.primary,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-                child: Text(
-                  '$badgeCount',
-                  style: const TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
+            Expanded(
+              child: GestureDetector(
+                onTap: () => setState(() => _activeTab = 0),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  decoration: BoxDecoration(
+                    color: _activeTab == 0 ? CeladonColors.primary : Colors.transparent,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.chat_bubble_outline_rounded,
+                        size: 16,
+                        color: _activeTab == 0 ? Colors.white : CeladonColors.textPrimary,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        totalUnread > 0 ? 'Chats ($totalUnread)' : 'Chats',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: _activeTab == 0 ? Colors.white : CeladonColors.textPrimary,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-            ],
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: GestureDetector(
+                onTap: () => setState(() {
+                  _activeTab = 1;
+                  _activeConversation = null;
+                }),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  decoration: BoxDecoration(
+                    color: _activeTab == 1 ? CeladonColors.primary : Colors.transparent,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.people_alt_rounded,
+                        size: 16,
+                        color: _activeTab == 1 ? Colors.white : CeladonColors.textPrimary,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Team Channel',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: _activeTab == 1 ? Colors.white : CeladonColors.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -1514,71 +1560,7 @@ class _MessengerViewState extends State<MessengerView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Embedded Top Title Header
-        if (widget.embedded)
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.fromLTRB(16, 12, 8, 6),
-            child: Row(
-              children: [
-                const Text(
-                  'Messenger',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    color: CeladonColors.textPrimary,
-                    letterSpacing: -0.4,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: _socketConnected
-                        ? const Color(0xFFDCFCE7)
-                        : const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.circle,
-                        size: 6,
-                        color: _socketConnected
-                            ? const Color(0xFF16A34A)
-                            : const Color(0xFF94A3B8),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        _socketConnected ? 'Live' : 'Sync',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: _socketConnected
-                              ? const Color(0xFF15803D)
-                              : const Color(0xFF64748B),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Spacer(),
-                IconButton(
-                  tooltip: 'New Group',
-                  icon: const Icon(Icons.group_add_outlined, color: CeladonColors.primary, size: 22),
-                  onPressed: _showCreateGroupSheet,
-                ),
-                IconButton(
-                  tooltip: 'Refresh messages',
-                  icon: const Icon(Icons.refresh_rounded, color: CeladonColors.primary, size: 21),
-                  onPressed: _loadMessengerData,
-                ),
-              ],
-            ),
-          ),
-
-        // Clean Underline Tabs (Chats | Team Channel)
+        // Rounded Pill Segmented Tabs (Chats | Team Channel)
         if (_showTeamChannelTab) _buildTopTabs(),
 
         // Main Content
@@ -1650,121 +1632,173 @@ class _MessengerViewState extends State<MessengerView> {
         ? 'COMPANY OWNERS & ADMINS'
         : (widget.user.isCompanyAdmin ? 'PEOPLE IN COMPANY & SUPER ADMIN' : 'PEOPLE IN COMPANY');
 
-    return Stack(
-      children: [
-        Container(
-          color: Colors.white,
-          child: Column(
-            children: [
-              // Sleek Full-Width Pill Search Bar
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: (v) => setState(() => _searchQuery = v),
-                  style: const TextStyle(fontSize: 14, color: CeladonColors.textPrimary),
-                  decoration: InputDecoration(
-                    hintText: widget.user.isSuperAdmin
-                        ? 'Search company owners or groups...'
-                        : 'Search people or conversations...',
-                    hintStyle: const TextStyle(fontSize: 13.5, color: Color(0xFF64748B)),
-                    prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Color(0xFF64748B)),
-                    suffixIcon: _searchQuery.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF64748B)),
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() => _searchQuery = '');
-                            },
-                          )
-                        : null,
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-                    filled: true,
-                    fillColor: _searchFill,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide.none,
+    final horizontalPeople = _contacts.where((c) {
+      if (q.isEmpty) return true;
+      return c.displayName.toLowerCase().contains(q) ||
+          c.company.toLowerCase().contains(q) ||
+          c.roleLabel.toLowerCase().contains(q);
+    }).toList();
+
+    return Container(
+      color: CeladonColors.background,
+      child: Column(
+        children: [
+          // Sleek Search Bar Row with Add Contact & New Chat
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(color: const Color(0xFFE2ECE7)),
                     ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide.none,
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide(
-                        color: CeladonColors.primary.withValues(alpha: 0.35),
-                        width: 1.2,
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (v) => setState(() => _searchQuery = v),
+                      style: const TextStyle(fontSize: 13.5, color: CeladonColors.textPrimary),
+                      decoration: InputDecoration(
+                        hintText: widget.user.isSuperAdmin
+                            ? 'Search company owners or groups...'
+                            : 'Search chats or colleagues...',
+                        hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                        prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Color(0xFF64748B)),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF64748B)),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() => _searchQuery = '');
+                                },
+                              )
+                            : null,
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                       ),
                     ),
                   ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEDF5F1),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFD2E6DC)),
+                  ),
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(Icons.person_add_alt_1_rounded, color: CeladonColors.primary, size: 20),
+                    tooltip: 'New Contact / Group',
+                    onPressed: _showCreateGroupSheet,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: CeladonColors.primary,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(Icons.add_comment_rounded, color: Colors.white, size: 20),
+                    tooltip: 'New Chat',
+                    onPressed: _showStartDmSheet,
+                  ),
+                ),
+              ],
+            ),
+          ),
 
-              Expanded(
-                child: filteredConvos.isEmpty && directoryPeople.isEmpty
-                    ? _buildEmptyConversationsState()
-                    : ListView(
-                        padding: const EdgeInsets.only(bottom: 84),
+          // Horizontal People in Company Row (matches user image 1)
+          if (horizontalPeople.isNotEmpty && q.isEmpty) ...[
+            SizedBox(
+              height: 82,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: horizontalPeople.length,
+                itemBuilder: (context, idx) {
+                  final contact = horizontalPeople[idx];
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 14),
+                    child: GestureDetector(
+                      onTap: () => _startNewChatWith(contact),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (filteredConvos.isNotEmpty) ...[
-                            for (int i = 0; i < filteredConvos.length; i++) ...[
-                              _buildConversationRow(filteredConvos[i]),
-                              if (i < filteredConvos.length - 1)
-                                const Divider(height: 1, indent: 78, endIndent: 16, color: _subtleDivider),
-                            ],
-                          ],
-                          if (directoryPeople.isNotEmpty) ...[
-                            Padding(
-                              padding: EdgeInsets.fromLTRB(
-                                16,
-                                filteredConvos.isNotEmpty ? 16 : 6,
-                                16,
-                                6,
-                              ),
-                              child: Text(
-                                peopleSectionTitle,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.7,
-                                  color: Color(0xFF64748B),
-                                ),
+                          _buildAvatar(
+                            name: contact.displayName,
+                            online: contact.online,
+                            radius: 23,
+                          ),
+                          const SizedBox(height: 5),
+                          SizedBox(
+                            width: 66,
+                            child: Text(
+                              contact.displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: CeladonColors.textPrimary,
                               ),
                             ),
-                            for (int i = 0; i < directoryPeople.length; i++) ...[
-                              _buildDirectoryContactRow(directoryPeople[i]),
-                              if (i < directoryPeople.length - 1)
-                                const Divider(
-                                  height: 1,
-                                  indent: 78,
-                                  endIndent: 16,
-                                  color: _subtleDivider,
-                                ),
-                            ],
-                          ],
+                          ),
                         ],
                       ),
+                    ),
+                  );
+                },
               ),
-            ],
-          ),
-        ),
+            ),
+            const SizedBox(height: 4),
+          ],
 
-        // Modern Floating Action Button for New Chat / New Group
-        Positioned(
-          right: 16,
-          bottom: 18,
-          child: FloatingActionButton(
-            heroTag: 'messenger_new_chat_fab',
-            backgroundColor: CeladonColors.primary,
-            foregroundColor: Colors.white,
-            elevation: 3,
-            tooltip: 'New Chat',
-            onPressed: _showStartDmSheet,
-            child: const Icon(Icons.chat_rounded, size: 22),
+          Expanded(
+            child: filteredConvos.isEmpty && directoryPeople.isEmpty
+                ? _buildEmptyConversationsState()
+                : ListView(
+                    padding: const EdgeInsets.fromLTRB(0, 2, 0, 24),
+                    children: [
+                      if (filteredConvos.isNotEmpty) ...[
+                        for (int i = 0; i < filteredConvos.length; i++)
+                          _buildConversationRow(filteredConvos[i]),
+                      ],
+                      if (directoryPeople.isNotEmpty) ...[
+                        Padding(
+                          padding: EdgeInsets.fromLTRB(
+                            16,
+                            filteredConvos.isNotEmpty ? 14 : 6,
+                            16,
+                            6,
+                          ),
+                          child: Text(
+                            peopleSectionTitle,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.7,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                        ),
+                        for (int i = 0; i < directoryPeople.length; i++)
+                          _buildDirectoryContactRow(directoryPeople[i]),
+                      ],
+                    ],
+                  ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -1803,7 +1837,7 @@ class _MessengerViewState extends State<MessengerView> {
             Text(
               widget.user.isSuperAdmin
                   ? 'Start a secure chat or call with any registered company owner.'
-                  : 'Tap the green chat button below to message a colleague or create a group.',
+                  : 'Tap the green chat button above to message a colleague or create a group.',
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontSize: 13,
@@ -1823,14 +1857,29 @@ class _MessengerViewState extends State<MessengerView> {
     final hasUnread = conv.unreadCount > 0;
     final preview = conv.lastMessage.isNotEmpty
         ? conv.lastMessage
-        : 'Start messaging $displayName';
+        : 'Tap to open conversation';
 
-    return Material(
-      color: Colors.white,
-      child: InkWell(
-        onTap: () => _openConversation(conv),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2ECE7)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: () => _openConversation(conv),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             children: [
               _buildAvatar(
@@ -1931,74 +1980,84 @@ class _MessengerViewState extends State<MessengerView> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildDirectoryContactRow(MessengerContactModel person) {
     final isSa = person.role.toLowerCase() == 'param';
     final isOwner = person.role.toLowerCase() == 'owner' || person.role.toLowerCase() == 'admin';
-    return Material(
-      color: Colors.white,
-      child: InkWell(
-        onTap: () => _startNewChatWith(person),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-          child: Row(
-            children: [
-              _buildAvatar(name: person.displayName, online: person.online, radius: 22),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            person.displayName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 14.5,
-                              fontWeight: FontWeight.w700,
-                              color: CeladonColors.textPrimary,
-                            ),
-                          ),
-                        ),
-                        if (isSa || isOwner) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                            decoration: BoxDecoration(
-                              color: isSa ? const Color(0xFFDCFCE7) : CeladonColors.softMint,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2ECE7)),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => _startNewChatWith(person),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+            child: Row(
+              children: [
+                _buildAvatar(name: person.displayName, online: person.online, radius: 22),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
                             child: Text(
-                              isSa ? 'Super Admin' : person.roleLabel,
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                color: isSa ? const Color(0xFF15803D) : CeladonColors.primary,
+                              person.displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w700,
+                                color: CeladonColors.textPrimary,
                               ),
                             ),
                           ),
+                          if (isSa || isOwner) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: isSa ? const Color(0xFFDCFCE7) : CeladonColors.softMint,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                isSa ? 'Super Admin' : person.roleLabel,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: isSa ? const Color(0xFF15803D) : CeladonColors.primary,
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      person.company.isNotEmpty
-                          ? (isSa ? 'ReGen Platform Support' : '${person.roleLabel} • ${person.company}')
-                          : (person.designation.isNotEmpty ? person.designation : person.roleLabel),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                    ),
-                  ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        person.company.isNotEmpty
+                            ? (isSa ? 'ReGen Platform Support' : '${person.roleLabel} • ${person.company}')
+                            : (person.designation.isNotEmpty ? person.designation : person.roleLabel),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const Icon(Icons.chat_bubble_outline_rounded, color: CeladonColors.primary, size: 18),
-            ],
+                const Icon(Icons.chat_bubble_outline_rounded, color: CeladonColors.primary, size: 18),
+              ],
+            ),
           ),
         ),
       ),
@@ -2011,64 +2070,48 @@ class _MessengerViewState extends State<MessengerView> {
 
   Widget _buildTeamChatView() {
     return Container(
-      color: _chatCanvasBg,
+      color: CeladonColors.background,
       child: Column(
         children: [
-          // Clean integrated Team Channel Sub-Header
+          // Clean rounded Team Channel Header card (matches user image 2)
           Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: Colors.white,
-              border: Border(bottom: BorderSide(color: _subtleDivider)),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE2ECE7)),
             ),
             child: Row(
               children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: CeladonColors.softMint,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.groups_rounded, size: 20, color: CeladonColors.primary),
-                ),
-                const SizedBox(width: 12),
+                const Icon(Icons.campaign_rounded, color: CeladonColors.primary, size: 22),
+                const SizedBox(width: 10),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.user.company?.isNotEmpty == true
-                            ? '${widget.user.company} Team'
-                            : 'Company Team Channel',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 14.5,
-                          fontWeight: FontWeight.w800,
-                          color: CeladonColors.textPrimary,
-                        ),
-                      ),
-                      Text(
-                        '${_contacts.length + 1} members • Company workspace',
-                        style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
-                      ),
-                    ],
+                  child: Text(
+                    widget.user.company?.isNotEmpty == true
+                        ? '${widget.user.company} Team'
+                        : 'Company Team Channel',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w800,
+                      color: CeladonColors.textPrimary,
+                    ),
                   ),
                 ),
-                _buildTonalCallButton(
-                  tooltip: 'Start Team Voice Call',
-                  icon: Icons.call_rounded,
-                  onTap: () => WebRtcCallManager.instance.startGroupMeeting(
+                IconButton(
+                  icon: const Icon(Icons.call_rounded, color: CeladonColors.primary, size: 21),
+                  tooltip: 'Group Voice Call',
+                  onPressed: () => WebRtcCallManager.instance.startGroupMeeting(
                     title: '${widget.user.company ?? 'Company'} Voice Meeting',
                     mediaType: 'voice',
                   ),
                 ),
-                const SizedBox(width: 8),
-                _buildTonalCallButton(
-                  tooltip: 'Start Team Video Meeting',
-                  icon: Icons.videocam_rounded,
-                  onTap: () => WebRtcCallManager.instance.startGroupMeeting(
+                IconButton(
+                  icon: const Icon(Icons.videocam_rounded, color: CeladonColors.primary, size: 22),
+                  tooltip: 'Group Video Call',
+                  onPressed: () => WebRtcCallManager.instance.startGroupMeeting(
                     title: '${widget.user.company ?? 'Company'} Video Meeting',
                     mediaType: 'video',
                   ),
@@ -2079,37 +2122,29 @@ class _MessengerViewState extends State<MessengerView> {
 
           Expanded(
             child: _teamMessages.isEmpty
-                ? Center(
+                ? const Center(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      padding: EdgeInsets.symmetric(horizontal: 32),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Container(
-                            width: 68,
-                            height: 68,
-                            decoration: const BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.forum_outlined,
-                              size: 30,
-                              color: CeladonColors.primary,
-                            ),
+                          Icon(
+                            Icons.forum_outlined,
+                            size: 48,
+                            color: Color(0xFF64748B),
                           ),
-                          const SizedBox(height: 14),
-                          const Text(
-                            'Welcome to Team Channel',
+                          SizedBox(height: 12),
+                          Text(
+                            'No team messages yet',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w800,
                               color: CeladonColors.textPrimary,
                             ),
                           ),
-                          const SizedBox(height: 6),
-                          const Text(
-                            'Share company updates, send voice notes, or start an instant team meeting.',
+                          SizedBox(height: 6),
+                          Text(
+                            'Start a conversation, send a voice note, or start a team call.',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 13,
@@ -2673,33 +2708,27 @@ class _MessengerViewState extends State<MessengerView> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.embedded) {
-      return Container(
-        color: Colors.white,
-        child: _buildBodyContent(),
-      );
-    }
-
-    return Scaffold(
-      backgroundColor: Colors.white,
+    final scaffold = Scaffold(
+      backgroundColor: CeladonColors.background,
       appBar: _activeConversation != null
           ? null
           : AppBar(
-              backgroundColor: Colors.white,
+              backgroundColor: CeladonColors.background,
               foregroundColor: CeladonColors.textPrimary,
               elevation: 0,
               scrolledUnderElevation: 0,
-              leading: widget.onBack != null
-                  ? IconButton(
-                      icon: const Icon(Icons.arrow_back_rounded, size: 22),
-                      onPressed: widget.onBack,
-                    )
-                  : (widget.onOpenDrawer != null
-                      ? IconButton(
-                          icon: const Icon(Icons.menu_rounded),
-                          onPressed: widget.onOpenDrawer,
-                        )
-                      : null),
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_rounded, size: 22),
+                onPressed: () {
+                  if (widget.onBack != null) {
+                    widget.onBack!();
+                  } else if (Navigator.of(context).canPop()) {
+                    Navigator.of(context).pop();
+                  } else if (widget.onOpenDrawer != null) {
+                    widget.onOpenDrawer!();
+                  }
+                },
+              ),
               title: Row(
                 children: [
                   const Text(
@@ -2708,6 +2737,7 @@ class _MessengerViewState extends State<MessengerView> {
                       fontWeight: FontWeight.w800,
                       fontSize: 19,
                       letterSpacing: -0.3,
+                      color: CeladonColors.textPrimary,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -2740,6 +2770,11 @@ class _MessengerViewState extends State<MessengerView> {
         bottom: false,
         child: _buildBodyContent(),
       ),
+    );
+
+    return CallOverlay(
+      onOpenMessenger: () {},
+      child: scaffold,
     );
   }
 }

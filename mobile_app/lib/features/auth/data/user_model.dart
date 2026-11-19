@@ -152,9 +152,14 @@ class UserModel {
   }
 
   // Role resolution helpers
-  bool get isSuperAdmin => role == 'param';
-  bool get isCompanyAdmin => role == 'owner' || role == 'admin';
-  bool get isEmployee => role == 'staff' || role == 'intern' || role == 'freelancer';
+  bool get isSuperAdmin => role.toLowerCase() == 'param';
+  bool get isCompanyAdmin =>
+      role.toLowerCase() == 'owner' || role.toLowerCase() == 'admin';
+  bool get isEmployee =>
+      role.toLowerCase() == 'staff' ||
+      role.toLowerCase() == 'employee' ||
+      role.toLowerCase() == 'intern' ||
+      role.toLowerCase() == 'freelancer';
 
   /// Whether this user account is authorized to toggle into SuperAdmin console
   bool get canSwitchToSuperAdmin =>

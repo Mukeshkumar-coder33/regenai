@@ -197,9 +197,14 @@ class MessengerService {
         final list = raw is List
             ? raw
             : (raw is Map && raw['conversations'] is List ? raw['conversations'] as List : []);
+        final myIdentities = [user.userId, user.id, user.username];
         return list
             .whereType<Map<String, dynamic>>()
-            .map((item) => DmConversationModel.fromJson(item, currentUserId: myId))
+            .map((item) => DmConversationModel.fromJson(
+                  item,
+                  currentUserId: myId,
+                  currentIdentities: myIdentities,
+                ))
             .toList();
       }
       return [];
@@ -229,7 +234,11 @@ class MessengerService {
         final convObj = data['conversation'] is Map<String, dynamic>
             ? data['conversation'] as Map<String, dynamic>
             : data;
-        return DmConversationModel.fromJson(convObj, currentUserId: myId);
+        return DmConversationModel.fromJson(
+          convObj,
+          currentUserId: myId,
+          currentIdentities: [user.userId, user.id, user.username],
+        );
       }
       return null;
     } catch (_) {
@@ -259,7 +268,11 @@ class MessengerService {
           .timeout(const Duration(seconds: 10));
       if (res.statusCode == 200 || res.statusCode == 201) {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
-        return DmConversationModel.fromJson(data, currentUserId: myId);
+        return DmConversationModel.fromJson(
+          data,
+          currentUserId: myId,
+          currentIdentities: [user.userId, user.id, user.username],
+        );
       }
       return null;
     } catch (_) {

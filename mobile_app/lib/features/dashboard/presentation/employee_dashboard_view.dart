@@ -336,7 +336,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
     }
   }
 
-  /// End date for calculation: If current year, goes up to today
+  /// End date for calculation: If current year, goes up to today; if past/future, goes to Dec 31
   DateTime get _evaluationEndDate {
     final now = DateTime.now();
     if (_selectedYear == now.year) {
@@ -344,17 +344,26 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
     } else if (_selectedYear < now.year) {
       return DateTime(_selectedYear, 12, 31);
     } else {
-      return DateTime(now.year, now.month, now.day);
+      return DateTime(_selectedYear, 12, 31);
     }
   }
 
   /// Unified DB-driven attendance stats calculation for any date range [start .. end]
-  ({int present, int late, int absent, int approvedLeave, int ratePct}) _computeStatsForPeriod(
+  /// Future weekdays after today are calculated dynamically as scheduled working days.
+  ({int present, int late, int absent, int approvedLeave, int scheduled, int ratePct, bool isFutureOnly}) _computeStatsForPeriod(
     DateTime start,
     DateTime end,
   ) {
     if (start.isAfter(end)) {
-      return (present: 0, late: 0, absent: 0, approvedLeave: 0, ratePct: 0);
+      return (
+        present: 0,
+        late: 0,
+        absent: 0,
+        approvedLeave: 0,
+        scheduled: 0,
+        ratePct: 0,
+        isFutureOnly: false,
+      );
     }
 
     final logsByDate = <String, AttendanceModel>{};
@@ -384,6 +393,10 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
     int late = 0;
     int absent = 0;
     int approvedLeave = 0;
+    int scheduled = 0;
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
 
     DateTime cursor = DateTime(start.year, start.month, start.day);
     final limit = DateTime(end.year, end.month, end.day);
@@ -406,7 +419,14 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
       } else if (!isWeekend) {
         if (approvedLeaveDates.contains(key)) {
           approvedLeave++;
+        } else if (cursor.isAfter(today)) {
+          // Future weekdays dynamically treated as scheduled working days
+          scheduled++;
+        } else if (cursor.isAtSameMomentAs(today)) {
+          // Today with no punch yet
+          scheduled++;
         } else {
+          // Past unexcused weekday
           absent++;
         }
       }
@@ -415,20 +435,34 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
     }
 
     final attended = present + late;
-    final total = attended + absent + approvedLeave;
-    final rate = total > 0 ? ((attended / total) * 100).round().clamp(0, 100) : 0;
+    final completedDays = attended + absent + approvedLeave;
+    final int rate;
+    final bool isFutureOnly;
+
+    if (completedDays > 0) {
+      rate = ((attended / completedDays) * 100).round().clamp(0, 100);
+      isFutureOnly = false;
+    } else if (scheduled > 0) {
+      rate = 100;
+      isFutureOnly = true;
+    } else {
+      rate = 0;
+      isFutureOnly = false;
+    }
 
     return (
       present: present,
       late: late,
       absent: absent,
       approvedLeave: approvedLeave,
+      scheduled: scheduled,
       ratePct: rate,
+      isFutureOnly: isFutureOnly,
     );
   }
 
   /// Annual statistics for `_selectedYear`
-  ({int present, int late, int absent, int approvedLeave, int ratePct}) get _yearStats =>
+  ({int present, int late, int absent, int approvedLeave, int scheduled, int ratePct, bool isFutureOnly}) get _yearStats =>
       _computeStatsForPeriod(_evaluationStartDate, _evaluationEndDate);
 
   int get _yearPresentCount => _yearStats.present;
@@ -551,21 +585,26 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
   }
 
   /// Monthly attendance stats for month index (0..11)
-  ({int present, int late, int absent, int approvedLeave, int ratePct}) _monthStats(int monthIdx) {
+  ({int present, int late, int absent, int approvedLeave, int scheduled, int ratePct, bool isFutureOnly}) _monthStats(int monthIdx) {
     final m = monthIdx + 1;
     if (_selectedYear == _joiningYear && m < _joiningMonth) {
-      return (present: 0, late: 0, absent: 0, approvedLeave: 0, ratePct: 0);
+      return (
+        present: 0,
+        late: 0,
+        absent: 0,
+        approvedLeave: 0,
+        scheduled: 0,
+        ratePct: 0,
+        isFutureOnly: false,
+      );
     }
 
     final isJoinMonth = (_selectedYear == _joiningYear && m == _joiningMonth);
     final startDay = isJoinMonth ? _joiningDay : 1;
-    final now = DateTime.now();
-    final isCurrentMonth = (_selectedYear == now.year && m == now.month);
     final daysInMonth = DateUtils.getDaysInMonth(_selectedYear, m);
-    final endDay = isCurrentMonth ? now.day.clamp(1, daysInMonth) : daysInMonth;
 
     final start = DateTime(_selectedYear, m, startDay);
-    final end = DateTime(_selectedYear, m, endDay);
+    final end = DateTime(_selectedYear, m, daysInMonth);
     return _computeStatsForPeriod(start, end);
   }
 
@@ -1496,11 +1535,17 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
     );
   }
 
-  String get _trendSubtitle {
+  String _getTrendSubtitle(int effectiveMonth, ({int present, int late, int absent, int approvedLeave, int scheduled, int ratePct, bool isFutureOnly}) stats) {
     const monthLabels = [
       'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
     ];
+    if (stats.isFutureOnly) {
+      return '${monthLabels[effectiveMonth]} $_selectedYear • ${stats.scheduled} Scheduled Work Days (Updated daily)';
+    }
+    if (stats.scheduled > 0) {
+      return '${monthLabels[effectiveMonth]} $_selectedYear • ${stats.scheduled} Future Days Scheduled (Updated daily)';
+    }
     if (_selectedYear == _joiningYear && _joiningMonth > 1) {
       return 'Starts from ${monthLabels[_joiningMonth - 1]} $_joiningYear (Joining Month)';
     }
@@ -1518,6 +1563,10 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
     final painterSelectedIndex = effectiveSelectedMonth - (startMonth - 1);
     final rates = _monthlyRatesForSelectedYear;
     final selectedStats = _monthStats(effectiveSelectedMonth);
+
+    final headerBadgeText = selectedStats.isFutureOnly
+        ? '${monthLabels[effectiveSelectedMonth]}: ${selectedStats.scheduled} Scheduled'
+        : '${monthLabels[effectiveSelectedMonth]}: ${selectedStats.ratePct}%';
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1554,7 +1603,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      _trendSubtitle,
+                      _getTrendSubtitle(effectiveSelectedMonth, selectedStats),
                       style: const TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w600,
@@ -1571,7 +1620,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
-                  '${monthLabels[effectiveSelectedMonth]}: ${selectedStats.ratePct}%',
+                  headerBadgeText,
                   style: const TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w800,
@@ -1624,7 +1673,8 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
               children: _visibleMonthsForSelectedYear.map((mNum) {
                 final idx = mNum - 1;
                 final isSelected = idx == effectiveSelectedMonth;
-                final pct = _monthStats(idx).ratePct;
+                final mStats = _monthStats(idx);
+                final labelText = mStats.isFutureOnly ? '${mStats.scheduled}d' : '${mStats.ratePct}%';
                 return Padding(
                   padding: const EdgeInsets.only(right: 6),
                   child: GestureDetector(
@@ -1650,7 +1700,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                             ),
                           ),
                           Text(
-                            '$pct%',
+                            labelText,
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
@@ -1682,6 +1732,8 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                 _miniStat('Late', '${selectedStats.late}', const Color(0xFFD97706)),
                 _miniStat('Absent', '${selectedStats.absent}', const Color(0xFFDC2626)),
                 _miniStat('Leave', '${selectedStats.approvedLeave}', CeladonColors.primary),
+                if (selectedStats.scheduled > 0)
+                  _miniStat('Scheduled', '${selectedStats.scheduled}', const Color(0xFF2563EB)),
               ],
             ),
           ),

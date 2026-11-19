@@ -131,17 +131,67 @@ class MessengerMediaPicker {
     );
   }
 
-  /// Opens the live in-app Camera Video Recorder (Web, Android & iOS) so tapping
-  /// the camera icon ALWAYS opens the live camera immediately instead of file explorer.
+  /// Opens camera to record video (Android, iOS & Web) so tapping
+  /// the camera icon ALWAYS opens the camera immediately instead of documents.
   static Future<PickedMediaAttachment?> recordVideo(BuildContext context) async {
     if (!await _ensureCameraAndMicPermissions(context)) return null;
     if (!context.mounted) return null;
 
-    return showDialog<PickedMediaAttachment>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const LiveVideoRecorderDialog(),
-    );
+    if (kIsWeb) {
+      return showDialog<PickedMediaAttachment>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const LiveVideoRecorderDialog(),
+      );
+    }
+
+    try {
+      final XFile? file = await _picker.pickVideo(
+        source: ImageSource.camera,
+        maxDuration: const Duration(minutes: 2),
+      );
+      if (file == null || !context.mounted) return null;
+
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty) {
+        if (context.mounted) {
+          _showError(context, 'Recorded video was empty. Please try again.');
+        }
+        return null;
+      }
+      if (bytes.length > _maxVideoBytes) {
+        if (context.mounted) {
+          _showError(context, 'Video exceeds 20 MB limit. Please record a shorter clip.');
+        }
+        return null;
+      }
+
+      final name = file.name.isNotEmpty
+          ? file.name
+          : 'video-${DateTime.now().millisecondsSinceEpoch}.mp4';
+      final mime = _mimeFromFilename(name, MediaAttachKind.video);
+
+      if (!context.mounted) return null;
+      return await _showPreviewConfirmSheet(
+        context,
+        PickedMediaAttachment(
+          name: name,
+          mimeType: mime,
+          bytes: bytes,
+          kind: MediaAttachKind.video,
+        ),
+      );
+    } catch (e) {
+      if (context.mounted) {
+        // Fallback to in-app dialog if native camera pick fails
+        return showDialog<PickedMediaAttachment>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => const LiveVideoRecorderDialog(),
+        );
+      }
+      return null;
+    }
   }
 
   /// Pick a photo from local gallery (or camera).
@@ -1064,6 +1114,11 @@ class _LiveVideoRecorderDialogState extends State<LiveVideoRecorderDialog> {
         final path = _nativeOutputPath ?? stopResult?.toString() ?? '';
         if (path.isEmpty) throw Exception('Recorded video path missing');
         final file = File(path);
+        int flushTries = 0;
+        while (flushTries < 15 && (!await file.exists() || await file.length() == 0)) {
+          await Future.delayed(const Duration(milliseconds: 100));
+          flushTries++;
+        }
         if (!await file.exists()) throw Exception('Recorded video file not found');
         bytes = await file.readAsBytes();
         mime = 'video/mp4';

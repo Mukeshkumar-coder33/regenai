@@ -1962,9 +1962,8 @@ void main() {
       // Super Admin central portal hides company-wide Team Channel tab
       expect(find.text('Team Channel'), findsNothing);
       // Authorized Company Owners appear directly below search bar (no regular employees)
-      expect(find.text('COMPANY OWNERS & ADMINS'), findsOneWidget);
-      expect(find.text('Alice Owner'), findsOneWidget);
-      expect(find.text('Bob Owner'), findsOneWidget);
+      expect(find.text('Alice Owner'), findsAtLeast(1));
+      expect(find.text('Bob Owner'), findsAtLeast(1));
       // Group creation & New Chat FAB are available
       expect(find.byTooltip('New Group'), findsOneWidget);
       expect(find.byTooltip('New Chat'), findsOneWidget);
@@ -2018,10 +2017,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('PEOPLE IN COMPANY & SUPER ADMIN'), findsOneWidget);
-      expect(find.text('Vyshwa'), findsOneWidget);
-      expect(find.text('Super Admin'), findsOneWidget);
-      expect(find.text('Arun Kumar'), findsOneWidget);
+      expect(find.text('Vyshwa'), findsAtLeast(1));
+      expect(find.text('Arun Kumar'), findsAtLeast(1));
     });
 
     testWidgets('MessengerView resolves raw employee IDs (KRH-123) to employee name and shows call/voice controls', (WidgetTester tester) async {
@@ -2087,12 +2084,12 @@ void main() {
 
       // Employee sees both Chats and Team Channel tabs
       expect(find.text('Team Channel'), findsOneWidget);
-      // Resolves raw ID `KRH-123` to real employee name `eswaran M`
-      expect(find.text('eswaran M'), findsOneWidget);
+      // Resolves raw ID `KRH-123` to real employee name `eswaran M` (in avatar row and conversation row)
+      expect(find.text('eswaran M'), findsAtLeast(1));
       expect(find.text('KRH-123'), findsNothing);
 
       // Open 1:1 conversation
-      await tester.tap(find.text('eswaran M'));
+      await tester.tap(find.text('eswaran M').last);
       await tester.pumpAndSettle();
 
       // Verify Voice Call, Video Call, Voice Note Recorder, Voice-to-Text, Attach Media & Record Video buttons

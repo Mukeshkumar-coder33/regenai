@@ -18,7 +18,10 @@ import '../../calendar/data/leave_service.dart';
 import '../../calendar/presentation/widgets/calendar_item_detail_dialog.dart';
 import '../../dashboard/data/dashboard_service.dart';
 import '../../dashboard/data/leave_model.dart';
+import '../../messenger/data/call_notification_service.dart';
 import '../../messenger/data/messenger_socket_service.dart';
+import '../../messenger/data/webrtc_call_manager.dart';
+import '../../messenger/presentation/call_overlay.dart';
 import '../../messenger/presentation/messenger_view.dart';
 import '../../notifications/data/notification_model.dart';
 import '../../notifications/data/notification_service.dart';
@@ -263,6 +266,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     super.initState();
     _dashboardService = widget.dashboardService ?? DashboardService();
     _authService = widget.authService ?? AuthService();
+    _initRealtimeCommunication(widget.user);
     _loadCompanyBottomNavSlots();
     _loadCompanyData();
     _liveNotifSub = MessengerSocketService.instance.onNotification.listen((raw) {
@@ -274,6 +278,12 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         _notifications.insert(0, incoming);
       });
     });
+  }
+
+  Future<void> _initRealtimeCommunication(UserModel user) async {
+    WebRtcCallManager.instance.bindUser(user);
+    await CallNotificationService.instance.initialize();
+    await MessengerSocketService.instance.connect(user: user);
   }
 
   Future<void> _loadCompanyBottomNavSlots() async {
@@ -1522,33 +1532,36 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           _navigateToCompanyPage('home');
         }
       },
-      child: Scaffold(
-        key: _scaffoldKey,
-        backgroundColor: CeladonColors.background,
-        drawer: _buildCompanyDrawer(),
-        body: SafeArea(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Top Common Executive Header (☰, Logo, Bell, Avatar)
-              _buildTopAppBar(),
+      child: CallOverlay(
+        onOpenMessenger: () => _navigateToCompanyPage('messenger'),
+        child: Scaffold(
+          key: _scaffoldKey,
+          backgroundColor: CeladonColors.background,
+          drawer: _buildCompanyDrawer(),
+          body: SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Top Common Executive Header (☰, Logo, Bell, Avatar)
+                _buildTopAppBar(),
 
-              // Tab Content Body
-              Expanded(
-                child: _isLoading
-                    ? _buildLoadingState()
-                    : _errorMessage != null
-                    ? _buildErrorState()
-                    : RefreshIndicator(
-                        onRefresh: _loadCompanyData,
-                        color: CeladonColors.primary,
-                        child: _buildCurrentTabContent(),
-                      ),
-              ),
-            ],
+                // Tab Content Body
+                Expanded(
+                  child: _isLoading
+                      ? _buildLoadingState()
+                      : _errorMessage != null
+                      ? _buildErrorState()
+                      : RefreshIndicator(
+                          onRefresh: _loadCompanyData,
+                          color: CeladonColors.primary,
+                          child: _buildCurrentTabContent(),
+                        ),
+                ),
+              ],
+            ),
           ),
+          bottomNavigationBar: _buildCompanyBottomNav(),
         ),
-        bottomNavigationBar: _buildCompanyBottomNav(),
       ),
     );
   }

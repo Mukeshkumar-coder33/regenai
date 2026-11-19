@@ -8,6 +8,7 @@ import '../../dashboard/data/leave_model.dart';
 import '../../tasks/data/task_model.dart';
 import '../data/calendar_event_model.dart';
 import '../data/calendar_service.dart';
+import '../data/holiday_model.dart';
 import '../data/leave_service.dart';
 import 'widgets/calendar_item_detail_dialog.dart';
 
@@ -50,7 +51,6 @@ class _CalendarViewState extends State<CalendarView> {
 
   late DateTime _selectedDate;
   late DateTime _currentMonth;
-  int _selectedViewPill = 0; // 0=Month, 1=Week (preserves test compatibility)
 
   bool _isLoading = true;
   String? _errorMessage;
@@ -128,13 +128,119 @@ class _CalendarViewState extends State<CalendarView> {
     final user = widget.user;
 
     try {
-      final results = await Future.wait([
-        _calendarService.fetchEvents(
-          user: user ?? const UserModel(id: '', userId: '', username: '', name: '', role: 'staff', token: ''),
-        ),
-        _attendanceService.getUserAttendanceHistory(
-          user?.userId.isNotEmpty == true ? user!.userId : (user?.id ?? ''),
-        ),
+      // 1. Fetch holidays from attendance service (matches Company Calendar exactly)
+      List<HolidayModel> holidayModels = [];
+      try {
+        holidayModels = await _attendanceService.getHolidays();
+      } catch (_) {}
+
+      if (holidayModels.isEmpty) {
+        try {
+          final calEvents = await _calendarService.fetchEvents(
+            user: user ?? const UserModel(id: '', userId: '', username: '', name: '', role: 'staff', token: ''),
+          );
+          for (final ce in calEvents) {
+            holidayModels.add(HolidayModel(
+              id: ce.id,
+              name: ce.title,
+              date: '${ce.dateTime.year}-${ce.dateTime.month.toString().padLeft(2, '0')}-${ce.dateTime.day.toString().padLeft(2, '0')}',
+              description: ce.description,
+              isEvent: ce.category.toLowerCase() == 'event',
+              salaryDeduction: ce.salaryDeduction,
+            ));
+          }
+        } catch (_) {}
+      }
+
+      final eventsOnly = <CalendarEventModel>[];
+      final holidaysOnly = <CalendarEventModel>[];
+
+      for (final h in holidayModels) {
+        DateTime? dt;
+        try {
+          dt = DateTime.parse(h.date);
+        } catch (_) {}
+        if (dt != null) {
+          final calEvent = CalendarEventModel(
+            id: h.id,
+            title: h.name,
+            dateTime: dt,
+            time: h.isEvent ? 'Company Event • Working Day' : 'All Day • Official Holiday',
+            category: h.isEvent ? 'Event' : 'Holiday',
+            description: h.description,
+            companyId: h.companyId,
+            roleAccess: 'all',
+            salaryDeduction: h.salaryDeduction,
+          );
+          if (h.isEvent) {
+            eventsOnly.add(calEvent);
+          } else {
+            holidaysOnly.add(calEvent);
+          }
+        }
+      }
+
+      // 2. Comprehensive Attendance Fetching (by userId, id, company roster, and today)
+      final attList = <AttendanceModel>[];
+      final seenAttDates = <String>{};
+
+      // 2a. Fetch by user.userId
+      if (user?.userId.isNotEmpty == true) {
+        try {
+          final list = await _attendanceService.getUserAttendanceHistory(user!.userId);
+          for (final a in list) {
+            final d = a.date.contains('T') ? a.date.split('T').first : a.date;
+            if (seenAttDates.add(d)) {
+              attList.add(a);
+            }
+          }
+        } catch (_) {}
+      }
+
+      // 2b. Fetch by user.id if distinct
+      if (user?.id.isNotEmpty == true && user!.id != user.userId) {
+        try {
+          final list = await _attendanceService.getUserAttendanceHistory(user.id);
+          for (final a in list) {
+            final d = a.date.contains('T') ? a.date.split('T').first : a.date;
+            if (seenAttDates.add(d)) {
+              attList.add(a);
+            }
+          }
+        } catch (_) {}
+      }
+
+      // 2c. Fetch Company Attendance roster fallback
+      try {
+        final companyAtt = await _attendanceService.getCompanyAttendance();
+        for (final a in companyAtt) {
+          final matchesUser = (user != null) &&
+              (a.userId == user.userId ||
+               a.userId == user.id ||
+               (user.username.isNotEmpty && a.userId == user.username));
+          if (matchesUser) {
+            final d = a.date.contains('T') ? a.date.split('T').first : a.date;
+            if (seenAttDates.add(d)) {
+              attList.add(a);
+            }
+          }
+        }
+      } catch (_) {}
+
+      // 2d. Explicit Today's Attendance Fetch
+      try {
+        final todayAtt = await _attendanceService.getTodayAttendance(
+          userId: user?.userId.isNotEmpty == true ? user!.userId : user?.id,
+        );
+        if (todayAtt != null) {
+          final d = todayAtt.date.contains('T') ? todayAtt.date.split('T').first : todayAtt.date;
+          attList.removeWhere((a) => (a.date.contains('T') ? a.date.split('T').first : a.date) == d);
+          attList.add(todayAtt);
+        }
+      } catch (_) {}
+
+      // 3. Concurrent Tasks, Leaves, and Team Members Fetching
+      final remaining = await Future.wait([
         _dashboardService.getTasks(),
         _leaveService.getUserLeaves(
           user?.userId.isNotEmpty == true ? user!.userId : (user?.id ?? ''),
@@ -144,22 +250,9 @@ class _CalendarViewState extends State<CalendarView> {
 
       if (!mounted) return;
 
-      final allEvents = results[0] as List<CalendarEventModel>;
-      final attList = results[1] as List<AttendanceModel>;
-      final taskList = results[2] as List<TaskModel>;
-      final leaveList = results[3] as List<LeaveModel>;
-      final userList = results[4] as List<UserModel>;
-
-      final eventsOnly = <CalendarEventModel>[];
-      final holidaysOnly = <CalendarEventModel>[];
-
-      for (final e in allEvents) {
-        if (e.category.toLowerCase() == 'event') {
-          eventsOnly.add(e);
-        } else {
-          holidaysOnly.add(e);
-        }
-      }
+      final taskList = remaining[0] as List<TaskModel>;
+      final leaveList = remaining[1] as List<LeaveModel>;
+      final userList = remaining[2] as List<UserModel>;
 
       setState(() {
         _companyEvents = eventsOnly;
@@ -229,10 +322,16 @@ class _CalendarViewState extends State<CalendarView> {
   }
 
   CalendarEventModel? _getCompanyEventOnDate(DateTime date) {
+    final targetStr =
+        '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
     for (final e in _companyEvents) {
       if (e.dateTime.year == date.year &&
           e.dateTime.month == date.month &&
           e.dateTime.day == date.day) {
+        return e;
+      }
+      final eStr = e.dateTime.toIso8601String();
+      if (eStr.startsWith(targetStr)) {
         return e;
       }
     }
@@ -240,10 +339,16 @@ class _CalendarViewState extends State<CalendarView> {
   }
 
   CalendarEventModel? _getHolidayOnDate(DateTime date) {
+    final targetStr =
+        '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
     for (final h in _holidays) {
       if (h.dateTime.year == date.year &&
           h.dateTime.month == date.month &&
           h.dateTime.day == date.day) {
+        return h;
+      }
+      final hStr = h.dateTime.toIso8601String();
+      if (hStr.startsWith(targetStr)) {
         return h;
       }
     }
@@ -254,7 +359,8 @@ class _CalendarViewState extends State<CalendarView> {
     final targetStr =
         '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
     for (final att in _attendance) {
-      if (att.date == targetStr || att.date.startsWith(targetStr)) {
+      final cleanDate = att.date.contains('T') ? att.date.split('T').first : att.date;
+      if (cleanDate == targetStr || att.date.startsWith(targetStr)) {
         return att;
       }
       final parsed = DateTime.tryParse(att.date);
@@ -305,15 +411,7 @@ class _CalendarViewState extends State<CalendarView> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: CeladonColors.background,
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'calendar_fab_main',
-        onPressed: _showCalendarDatePickerDialog,
-        backgroundColor: CeladonColors.primary,
-        elevation: 4,
-        shape: const CircleBorder(),
-        tooltip: 'Select Date',
-        child: const Icon(Icons.calendar_month_rounded, color: Colors.white, size: 26),
-      ),
+      floatingActionButton: null,
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _loadAllBackendData,
@@ -406,8 +504,8 @@ class _CalendarViewState extends State<CalendarView> {
 
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
+              children: const [
+                Text(
                   'WORKSPACE',
                   style: TextStyle(
                     fontSize: 10.5,
@@ -418,7 +516,7 @@ class _CalendarViewState extends State<CalendarView> {
                 ),
                 Text(
                   'Calendar',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 21,
                     fontWeight: FontWeight.w800,
                     color: Color(0xFF17231F),
@@ -429,46 +527,7 @@ class _CalendarViewState extends State<CalendarView> {
             ),
           ],
         ),
-
-        // View Segment Filter (Month / Week - preserving test compatibility)
-        Container(
-          padding: const EdgeInsets.all(3),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFFE1E8E4)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildViewPill('Month', 0),
-              _buildViewPill('Week', 1),
-            ],
-          ),
-        ),
       ],
-    );
-  }
-
-  Widget _buildViewPill(String label, int index) {
-    final isSelected = _selectedViewPill == index;
-    return GestureDetector(
-      onTap: () => setState(() => _selectedViewPill = index),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: isSelected ? CeladonColors.primary : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 11.5,
-            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-            color: isSelected ? Colors.white : const Color(0xFF829089),
-          ),
-        ),
-      ),
     );
   }
 
@@ -538,8 +597,8 @@ class _CalendarViewState extends State<CalendarView> {
                       ),
                       const SizedBox(width: 6),
                       const Icon(
-                        Icons.edit_calendar_rounded,
-                        size: 16,
+                        Icons.calendar_today_rounded,
+                        size: 15,
                         color: CeladonColors.primary,
                       ),
                     ],
@@ -603,6 +662,14 @@ class _CalendarViewState extends State<CalendarView> {
                   dayDate.month == _selectedDate.month &&
                   dayDate.day == _selectedDate.day;
 
+              final now = DateTime.now();
+              final today = DateTime(now.year, now.month, now.day);
+              final isToday = dayDate.year == today.year &&
+                  dayDate.month == today.month &&
+                  dayDate.day == today.day;
+              final isPast = dayDate.isBefore(today);
+              final isSunday = dayDate.weekday == DateTime.sunday;
+
               // 1. Birthday Check
               final birthdayEmployees = _getBirthdayEmployees(dayDate);
               final hasBirthday = birthdayEmployees.isNotEmpty;
@@ -615,11 +682,36 @@ class _CalendarViewState extends State<CalendarView> {
               final holiday = _getHolidayOnDate(dayDate);
               final isHoliday = holiday != null;
 
-              // 4. Attendance Check
+              // 4. Approved Leave Check
+              final leaves = _getLeavesOnDate(dayDate);
+              final hasApprovedLeave = leaves.any((l) => l.isApproved);
+
+              // 5. Attendance Check
               final att = _getAttendanceOnDate(dayDate);
-              final isAbsent = att?.isAbsent == true;
-              final isLate = att?.isLate == true;
-              final isPresent = (att?.isPresent == true || att?.isHalfDay == true) && !isLate;
+              bool isLate = false;
+              bool isPresent = false;
+              bool isAbsent = false;
+
+              if (att != null) {
+                if (att.isLate || att.status.toLowerCase() == 'late') {
+                  isLate = true;
+                } else if (att.status.toLowerCase() == 'absent') {
+                  isAbsent = true;
+                } else if (att.isPresent ||
+                    att.isHalfDay ||
+                    att.status.toLowerCase() == 'present' ||
+                    att.status == '0' ||
+                    att.status.toLowerCase() == 'half_day' ||
+                    (att.checkIn != null && att.checkIn!.isNotEmpty)) {
+                  isPresent = true;
+                }
+              } else if (!isSunday && !isHoliday && !hasApprovedLeave) {
+                if (!dayDate.isBefore(_startMonthDate)) {
+                  if (isPast || isToday) {
+                    isAbsent = true;
+                  }
+                }
+              }
 
               // Attendance Color
               Color? attendanceColor;
@@ -642,7 +734,6 @@ class _CalendarViewState extends State<CalendarView> {
               }
 
               final bool isDualColor = attendanceColor != null && specialDayColor != null;
-              final bool isSunday = dayDate.weekday == DateTime.sunday;
 
               BoxDecoration cellDecoration;
               Color textColor = CeladonColors.textPrimary;
@@ -781,7 +872,7 @@ class _CalendarViewState extends State<CalendarView> {
                               shape: BoxShape.circle,
                             ),
                           )
-                        else if (isLate)
+                        else if (isLate || isPresent || isAbsent)
                           Container(
                             margin: const EdgeInsets.only(top: 1.5),
                             width: 4,
@@ -852,15 +943,40 @@ class _CalendarViewState extends State<CalendarView> {
     final birthdays = _getBirthdayEmployees(_selectedDate);
     final tasks = _getTasksOnDate(_selectedDate);
     final leaves = _getLeavesOnDate(_selectedDate);
+    final hasApprovedLeave = leaves.any((l) => l.isApproved);
 
     final now = DateTime.now();
-    final isToday = _selectedDate.year == now.year &&
-        _selectedDate.month == now.month &&
-        _selectedDate.day == now.day;
+    final today = DateTime(now.year, now.month, now.day);
+    final isToday = _selectedDate.year == today.year &&
+        _selectedDate.month == today.month &&
+        _selectedDate.day == today.day;
+    final isPast = _selectedDate.isBefore(today);
+    final isSunday = _selectedDate.weekday == DateTime.sunday;
 
-    final isAbsent = att?.isAbsent == true;
-    final isLate = att?.isLate == true;
-    final isPresent = (att?.isPresent == true || att?.isHalfDay == true) && !isLate;
+    bool isLate = false;
+    bool isPresent = false;
+    bool isAbsent = false;
+
+    if (att != null) {
+      if (att.isLate || att.status.toLowerCase() == 'late') {
+        isLate = true;
+      } else if (att.status.toLowerCase() == 'absent') {
+        isAbsent = true;
+      } else if (att.isPresent ||
+          att.isHalfDay ||
+          att.status.toLowerCase() == 'present' ||
+          att.status == '0' ||
+          att.status.toLowerCase() == 'half_day' ||
+          (att.checkIn != null && att.checkIn!.isNotEmpty)) {
+        isPresent = true;
+      }
+    } else if (!isSunday && holiday == null && !hasApprovedLeave) {
+      if (!_selectedDate.isBefore(_startMonthDate)) {
+        if (isPast || isToday) {
+          isAbsent = true;
+        }
+      }
+    }
 
     return Container(
       decoration: BoxDecoration(
@@ -950,12 +1066,24 @@ class _CalendarViewState extends State<CalendarView> {
           if (att != null) ...[
             _buildAttendanceDetailItem(att),
             const SizedBox(height: 12),
-          ] else if (!isToday && _selectedDate.isBefore(now) && _selectedDate.weekday != DateTime.sunday) ...[
+          ] else if (isAbsent) ...[
+            _buildDetailCard(
+              icon: Icons.cancel_outlined,
+              header: 'Attendance Status (ABSENT)',
+              headerColor: const Color(0xFFEF4444),
+              title: isToday ? 'Absent Today' : 'Marked Absent',
+              subtitle: isToday
+                  ? 'No check-in recorded for today yet. Employee is currently absent.'
+                  : 'No punch-in was recorded on this past working day.',
+              tag: isToday ? 'Pending Check-In' : 'Unexcused Absence',
+            ),
+            const SizedBox(height: 12),
+          ] else if (isSunday) ...[
             _buildInfoCard(
-              icon: Icons.info_outline_rounded,
-              color: const Color(0xFF94A3B8),
-              title: 'No Attendance Recorded',
-              subtitle: 'No punch-in or check-in was recorded on this past date.',
+              icon: Icons.weekend_outlined,
+              color: CeladonColors.holidayGrey,
+              title: 'Weekly Off (Sunday)',
+              subtitle: 'Official non-working weekend day for all team members.',
             ),
             const SizedBox(height: 12),
           ],

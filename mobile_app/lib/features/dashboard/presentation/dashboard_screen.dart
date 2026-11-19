@@ -15,11 +15,9 @@ import '../../messenger/presentation/call_overlay.dart';
 import '../../messenger/presentation/messenger_view.dart';
 import '../../policies/data/policy_service.dart';
 import '../../profile/presentation/app_drawer.dart';
-import '../../profile/presentation/help_support_view.dart';
 import '../../profile/presentation/leave_request_view.dart';
 import '../../profile/presentation/profile_view.dart';
 import '../../profile/presentation/settings_view.dart';
-import '../../profile/presentation/team_directory_view.dart';
 import '../../superadmin/presentation/superadmin_dashboard_view.dart';
 import '../../tasks/presentation/tasks_view.dart';
 import 'employee_dashboard_view.dart';
@@ -236,10 +234,6 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
           onOpenDrawer: _openDrawer,
           onBack: () => _navigateToPage('home'),
         );
-      case 'team':
-        return TeamDirectoryView(
-          onBack: () => _navigateToPage('home'),
-        );
       case 'leave':
         return LeaveRequestView(
           user: _currentUser,
@@ -260,10 +254,6 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
               _bottomNavSlots = updated;
             });
           },
-          onBack: () => _navigateToPage('home'),
-        );
-      case 'help':
-        return HelpSupportView(
           onBack: () => _navigateToPage('home'),
         );
       default:
@@ -342,36 +332,33 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
           ? null
           : Container(
               decoration: const BoxDecoration(
-          color: Colors.white,
-          border: Border(
-            top: BorderSide(color: Color(0xFFE1E8E4), width: 1.0),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Color(0x06000000),
-              blurRadius: 10,
-              offset: Offset(0, -2),
+                color: Colors.white,
+                border: Border(top: BorderSide(color: Color(0xFFE2E8F0), width: 1.0)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Color(0x0A000000),
+                    blurRadius: 16,
+                    offset: Offset(0, -3),
+                  ),
+                ],
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+              child: SafeArea(
+                top: false,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: List.generate(_bottomNavSlots.length, (slotIndex) {
+                    final item = _shortcutForId(_bottomNavSlots[slotIndex]);
+                    return _buildNavItem(
+                      index: slotIndex,
+                      label: item.label,
+                      icon: item.icon,
+                      activeIcon: item.activeIcon,
+                    );
+                  }),
+                ),
+              ),
             ),
-          ],
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: List.generate(_bottomNavSlots.length, (slotIndex) {
-                final item = _shortcutForId(_bottomNavSlots[slotIndex]);
-                return _buildNavItem(
-                  index: slotIndex,
-                  label: item.label,
-                  icon: item.icon,
-                  activeIcon: item.activeIcon,
-                );
-              }),
-            ),
-          ),
-        ),
-      ),
     ),
     );
   }
@@ -429,75 +416,55 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     required IconData activeIcon,
   }) {
     final isSelected = _overridePageId == null && _currentTabIndex == index;
-    void handleSingleTap() {
-      setState(() {
-        _currentTabIndex = index;
-        _overridePageId = null;
-      });
-    }
-
-    if (isSelected) {
-      return InkWell(
-        key: _bottomNavSlotKeys[index],
-        onTap: handleSingleTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: CeladonColors.primaryGradient,
-            ),
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: CeladonColors.primaryDark.withValues(alpha: 0.28),
-                blurRadius: 8,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(activeIcon, size: 20, color: Colors.white),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
 
     return InkWell(
       key: _bottomNavSlotKeys[index],
-      onTap: handleSingleTap,
+      onTap: () => setState(() {
+        _currentTabIndex = index;
+        _overridePageId = null;
+      }),
       borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: 64,
+        height: 54,
+        alignment: Alignment.center,
+        decoration: isSelected
+            ? BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFF064E3B), Color(0xFF047857)],
+                ),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF064E3B).withValues(alpha: 0.30),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              )
+            : const BoxDecoration(color: Colors.transparent),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              icon,
+              isSelected ? activeIcon : icon,
+              color: isSelected ? Colors.white : const Color(0xFF475569),
               size: 22,
-              color: CeladonColors.textSecondary,
             ),
             const SizedBox(height: 2),
             Text(
               label,
-              style: const TextStyle(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w500,
-                color: CeladonColors.textSecondary,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                color: isSelected ? Colors.white : const Color(0xFF475569),
+                letterSpacing: 0.1,
               ),
             ),
           ],

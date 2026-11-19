@@ -529,7 +529,7 @@ void main() {
       expect(find.text('Check In'), findsWidgets);
     });
 
-    testWidgets('CalendarView renders header, month controls, and Floating Action Button',
+    testWidgets('CalendarView renders header and month controls without Month/Week pills or FAB (view-only)',
         (WidgetTester tester) async {
       await tester.pumpWidget(
         const MaterialApp(
@@ -540,10 +540,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Calendar'), findsOneWidget);
-      expect(find.text('Month'), findsOneWidget);
-      expect(find.text('Week'), findsOneWidget);
-      
-      expect(find.byType(FloatingActionButton), findsOneWidget);
+      expect(find.text('Month'), findsNothing);
+      expect(find.text('Week'), findsNothing);
+      expect(find.byType(FloatingActionButton), findsNothing);
     });
   });
 
@@ -2248,8 +2247,8 @@ void main() {
       // 2. Verified month is November 2026 matching joining month and year
       expect(find.textContaining('November 2026'), findsOneWidget);
 
-      // 3. Floating action button for date selection exists
-      expect(find.byType(FloatingActionButton), findsOneWidget);
+      // 3. Floating action button is removed for Employee (view-only)
+      expect(find.byType(FloatingActionButton), findsNothing);
     });
 
     test('RoleMenuRegistry dynamically aligns menu items and navigation catalog per role', () {
@@ -2277,11 +2276,13 @@ void main() {
       expect(companyMenu.map((e) => e.id), containsAll(['home', 'employees', 'calender', 'leave', 'reports', 'settings']));
       expect(companyNav.map((e) => e.id), equals(companyMenu.map((e) => e.id)));
 
-      // 2. Employee Role Catalog & Menu (excludes Reports)
+      // 2. Employee Role Catalog & Menu (excludes Reports, Team, Support)
       final employeeMenu = RoleMenuRegistry.getMenuItemsForRole(employeeUser);
       final employeeNav = RoleMenuRegistry.getNavCatalogForRole(employeeUser);
       expect(employeeMenu.map((e) => e.id), containsAll(['home', 'tasks', 'calendar', 'profile', 'attendance', 'messenger', 'payroll']));
       expect(employeeMenu.map((e) => e.id), isNot(contains('reports')));
+      expect(employeeMenu.map((e) => e.id), isNot(contains('team')));
+      expect(employeeMenu.map((e) => e.id), isNot(contains('help')));
       expect(employeeNav.map((e) => e.id), equals(employeeMenu.map((e) => e.id)));
     });
 
@@ -2427,6 +2428,97 @@ void main() {
       expect(find.byTooltip('Voice to Text'), findsNothing);
       // 5. Send button is present
       expect(find.byIcon(Icons.send_rounded), findsOneWidget);
+    });
+
+    testWidgets('Employee Calendar: Month/Week and FAB removed, Present/Late/Absent & Holidays properly mapped',
+        (WidgetTester tester) async {
+      final empUser = const UserModel(
+        id: 'emp_cal_test',
+        userId: 'EMP-CAL-99',
+        username: 'cal_tester',
+        name: 'Calendar Tester',
+        role: 'staff',
+        company: 'krish Tech Computer',
+        joiningDate: '2026-11-01',
+        token: 'tok_cal_test',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarView(
+            user: empUser,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 1. Header has "Calendar" and NO "Month" or "Week" pills
+      expect(find.text('Calendar'), findsOneWidget);
+      expect(find.text('Month'), findsNothing);
+      expect(find.text('Week'), findsNothing);
+
+      // 2. No edit option or FloatingActionButton on calendar view itself
+      expect(find.byType(FloatingActionButton), findsNothing);
+
+      // 3. Complete legend with Present, Late, Absent, Event, Holiday, Birthday
+      expect(find.text('Present'), findsOneWidget);
+      expect(find.text('Late'), findsOneWidget);
+      expect(find.text('Absent'), findsOneWidget);
+      expect(find.text('Event ★'), findsOneWidget);
+      expect(find.text('Holiday'), findsOneWidget);
+      expect(find.text('Birthday 🎂'), findsOneWidget);
+    });
+
+    testWidgets('Employee Lower Nav & Drawer: squircle active tile parity, Team & Support removed, Executive Drawer matches Company UI',
+        (WidgetTester tester) async {
+      final empUser = const UserModel(
+        id: 'emp_dock_test',
+        userId: 'EMP-DOCK-1',
+        username: 'dock_emp',
+        name: 'Dock Employee',
+        role: 'staff',
+        company: 'krish Tech Computer',
+        token: 'tok_dock_test',
+      );
+
+      // 1. Verify RoleMenuRegistry excludes team & help
+      final menuItems = RoleMenuRegistry.getMenuItemsForRole(empUser);
+      final itemIds = menuItems.map((e) => e.id).toList();
+      expect(itemIds, isNot(contains('team')));
+      expect(itemIds, isNot(contains('help')));
+      expect(itemIds, containsAll(['home', 'tasks', 'calendar', 'profile', 'messenger', 'attendance', 'payroll']));
+
+      // 2. Verify Employee Drawer matches Company Drawer visual structure
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AppDrawer(
+              user: empUser,
+              onLogout: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Brand & header
+      expect(find.text('ReGen'), findsOneWidget);
+      expect(find.byIcon(Icons.close_rounded), findsOneWidget);
+      expect(find.text('Dock Employee'), findsOneWidget);
+      expect(find.text('krish Tech Computer • Employee'), findsOneWidget);
+      expect(find.text('WORKSPACE OPERATIONS'), findsOneWidget);
+
+      // Operations list items
+      expect(find.text('Tasks'), findsOneWidget);
+      expect(find.text('Calendar'), findsOneWidget);
+      expect(find.text('Messenger'), findsOneWidget);
+      expect(find.text('Payroll'), findsOneWidget);
+      expect(find.text('Team'), findsNothing);
+      expect(find.text('Support'), findsNothing);
+
+      // Solid Bright Red Sign Out Button
+      expect(find.text('Sign Out'), findsOneWidget);
+      expect(find.byIcon(Icons.logout_rounded), findsOneWidget);
     });
   });
 }

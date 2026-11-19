@@ -159,13 +159,6 @@ class RoleMenuRegistry {
       activeIcon: Icons.event_available_rounded,
     ),
     RoleMenuItem(
-      id: 'team',
-      label: 'Team',
-      subtitle: 'Colleagues & directory',
-      icon: Icons.groups_outlined,
-      activeIcon: Icons.groups_rounded,
-    ),
-    RoleMenuItem(
       id: 'leave',
       label: 'Leave',
       subtitle: 'Apply for leave & time off',
@@ -185,13 +178,6 @@ class RoleMenuRegistry {
       subtitle: 'Appearance & app settings',
       icon: Icons.settings_outlined,
       activeIcon: Icons.settings_rounded,
-    ),
-    RoleMenuItem(
-      id: 'help',
-      label: 'Support',
-      subtitle: 'FAQs & contact support',
-      icon: Icons.help_outline_rounded,
-      activeIcon: Icons.help_rounded,
     ),
   ];
 

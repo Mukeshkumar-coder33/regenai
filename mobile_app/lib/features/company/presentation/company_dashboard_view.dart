@@ -125,6 +125,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   final List<GlobalKey> _bottomNavSlotKeys =
       List.generate(5, (_) => GlobalKey());
   String? _overridePageId;
+  bool _companyMessengerInChat = false;
 
   static List<NavShortcutItem> get _companyNavCatalog =>
       RoleMenuRegistry.companyPages.map((p) => p.toNavShortcutItem()).toList();
@@ -240,6 +241,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   void _navigateToCompanyPage(String pageId) {
     final slotIdx = _bottomNavSlots.indexOf(pageId);
     setState(() {
+      if (pageId != 'messenger') {
+        _companyMessengerInChat = false;
+      }
       if (pageId == 'settings') {
         _selectedProfileSubTab = 2;
       }
@@ -1480,7 +1484,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // Top Common Executive Header (☰, Logo, Bell, Avatar)
-                _buildTopAppBar(),
+                if (_activeCompanyPageId != 'messenger')
+                  _buildTopAppBar(),
 
                 // Tab Content Body
                 Expanded(
@@ -1497,7 +1502,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               ],
             ),
           ),
-          bottomNavigationBar: _activeCompanyPageId == 'messenger'
+          bottomNavigationBar: (_activeCompanyPageId == 'messenger' && _companyMessengerInChat)
               ? null
               : _buildCompanyBottomNav(),
         ),
@@ -2122,7 +2127,65 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   // ---------------------------------------------------------
   // TOP COMMON APP BAR (Image 1 Header)
   // ---------------------------------------------------------
+  String _pageTitleForCompanyPage(String id) {
+    switch (id) {
+      case 'employees':
+        return 'Employees';
+      case 'calender':
+        return 'Calendar';
+      case 'leave':
+        return 'Leave';
+      case 'profile':
+        return 'Profile';
+      case 'tasks':
+        return 'Tasks';
+      case 'payroll':
+        return 'Payroll';
+      case 'reports':
+        return 'Reports';
+      case 'settings':
+        return 'Settings';
+      default:
+        return id.isNotEmpty ? '${id[0].toUpperCase()}${id.substring(1)}' : '';
+    }
+  }
+
   Widget _buildTopAppBar() {
+    // If not on Home page: Show only Left Arrow redirecting to Home + Page Title
+    // (menu, regen heading, notification, and profile avatar show on Home alone)
+    if (_activeCompanyPageId != 'home') {
+      return Container(
+        color: CeladonColors.cardBackground,
+        padding: const EdgeInsets.fromLTRB(10, 8, 18, 10),
+        child: Row(
+          children: [
+            InkWell(
+              onTap: () => _navigateToCompanyPage('home'),
+              borderRadius: BorderRadius.circular(22),
+              child: const Padding(
+                padding: EdgeInsets.all(8),
+                child: Icon(
+                  Icons.arrow_back_rounded,
+                  color: CeladonColors.textPrimary,
+                  size: 24,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _pageTitleForCompanyPage(_activeCompanyPageId),
+              style: const TextStyle(
+                fontSize: 19,
+                fontWeight: FontWeight.w800,
+                color: CeladonColors.textPrimary,
+                letterSpacing: -0.2,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final companyName =
         _company?.name ?? widget.user.companyName ?? 'krish Tech Computer';
     final displayName = widget.user.name.isNotEmpty
@@ -2295,6 +2358,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           embedded: true,
           onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer(),
           onBack: () => _navigateToCompanyPage('home'),
+          onChatStateChanged: (inChat) {
+            if (_companyMessengerInChat != inChat && mounted) {
+              setState(() => _companyMessengerInChat = inChat);
+            }
+          },
         );
       case 'payroll':
         return _buildPayrollEmbeddedTab();

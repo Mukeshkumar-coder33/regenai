@@ -513,8 +513,17 @@ class _AttendanceViewState extends State<AttendanceView> {
                       // 1. Top Navigation Bar
                       Row(
                         children: [
-                          if (widget.onOpenDrawer != null) ...[
-                            Container(
+                          InkWell(
+                            onTap: widget.onBack ??
+                                () {
+                                  if (Navigator.of(context).canPop()) {
+                                    Navigator.of(context).pop();
+                                  } else if (widget.onOpenDrawer != null) {
+                                    widget.onOpenDrawer!();
+                                  }
+                                },
+                            borderRadius: BorderRadius.circular(10),
+                            child: Container(
                               width: 38,
                               height: 38,
                               margin: const EdgeInsets.only(right: 8),
@@ -522,29 +531,13 @@ class _AttendanceViewState extends State<AttendanceView> {
                                 color: CeladonColors.primary.withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(10),
                               ),
-                              child: IconButton(
-                                padding: EdgeInsets.zero,
-                                icon: const Icon(
-                                  Icons.menu_rounded,
-                                  color: CeladonColors.primaryDark,
-                                  size: 22,
-                                ),
-                                tooltip: 'Menu',
-                                onPressed: widget.onOpenDrawer,
+                              child: const Icon(
+                                Icons.arrow_back_rounded,
+                                color: CeladonColors.primaryDark,
+                                size: 21,
                               ),
                             ),
-                          ],
-                          if (widget.onBack != null)
-                            IconButton(
-                              icon: const Icon(
-                                Icons.arrow_back_ios_new_rounded,
-                                size: 20,
-                                color: CeladonColors.textPrimary,
-                              ),
-                              onPressed: widget.onBack,
-                            )
-                          else
-                            const SizedBox(width: 4),
+                          ),
                           const Expanded(
                             child: Text(
                               'Attendance',

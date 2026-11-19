@@ -2,11 +2,8 @@ import 'dart:async';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter/material.dart';
 import '../../../core/theme/celadon_colors.dart';
-import '../../../core/widgets/brand_logo.dart';
 import '../../auth/data/user_model.dart';
 import '../../dashboard/data/dashboard_service.dart';
-import '../../notifications/data/notification_model.dart';
-import '../../notifications/data/notification_service.dart';
 import '../data/e2e_crypto_service.dart';
 import '../data/messenger_model.dart';
 import '../data/messenger_service.dart';
@@ -28,6 +25,7 @@ class MessengerView extends StatefulWidget {
   final bool embedded;
   final MessengerService? messengerService;
   final DashboardService? dashboardService;
+  final void Function(bool inChatOrTeam)? onChatStateChanged;
 
   const MessengerView({
     super.key,
@@ -37,6 +35,7 @@ class MessengerView extends StatefulWidget {
     this.embedded = false,
     this.messengerService,
     this.dashboardService,
+    this.onChatStateChanged,
   });
 
   @override
@@ -47,8 +46,6 @@ class _MessengerViewState extends State<MessengerView> {
   late MessengerService _messengerService;
   late DashboardService _dashboardService;
 
-  final NotificationService _notificationService = NotificationService();
-  List<NotificationModel> _notifications = [];
 
   // Tab 0 = Chats (1:1 & Groups), Tab 1 = Team Channel (hidden for Super Admin central portal)
   int _activeTab = 0;
@@ -60,6 +57,7 @@ class _MessengerViewState extends State<MessengerView> {
   List<DmConversationModel> _conversations = [];
   List<MessengerContactModel> _contacts = [];
   String _searchQuery = '';
+  int _chatFilterIndex = 0; // 0 = All, 1 = Unread, 2 = Group
 
   DmConversationModel? _activeConversation;
   List<DirectMessageModel> _directMessages = [];
@@ -82,6 +80,13 @@ class _MessengerViewState extends State<MessengerView> {
 
   bool get _showTeamChannelTab => !widget.user.isSuperAdmin;
 
+  bool get _isInChatOrTeam =>
+      _activeConversation != null || (_activeTab == 1 && _showTeamChannelTab);
+
+  void _notifyChatState() {
+    widget.onChatStateChanged?.call(_isInChatOrTeam);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -92,11 +97,17 @@ class _MessengerViewState extends State<MessengerView> {
     _activeTab = 0;
     _attachSocketListeners();
     _loadMessengerData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _notifyChatState();
+    });
   }
 
   @override
   void didUpdateWidget(MessengerView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _notifyChatState();
+    });
     final userChanged = widget.user.userId != oldWidget.user.userId ||
         widget.user.id != oldWidget.user.id ||
         widget.user.role != oldWidget.user.role ||
@@ -304,12 +315,6 @@ class _MessengerViewState extends State<MessengerView> {
 
   Future<void> _loadMessengerData() async {
     setState(() => _isLoading = true);
-    final myId = widget.user.userId.isNotEmpty ? widget.user.userId : widget.user.id;
-    if (myId.isNotEmpty) {
-      _notificationService.getUserNotifications(myId).then((notifs) {
-        if (mounted) setState(() => _notifications = notifs);
-      }).catchError((_) {});
-    }
     try {
       final results = await Future.wait([
         _showTeamChannelTab
@@ -594,6 +599,7 @@ class _MessengerViewState extends State<MessengerView> {
       _activeSharedKey = null;
       _e2eActive = false;
     });
+    _notifyChatState();
 
     await _setupE2eForConversation(conv);
     final rawMsgs = await _messengerService.getDirectMessages(
@@ -897,161 +903,6 @@ class _MessengerViewState extends State<MessengerView> {
     }
   }
 
-  void _showNotificationsSheet() {
-    final myId = widget.user.userId.isNotEmpty ? widget.user.userId : widget.user.id;
-    if (myId.isNotEmpty) {
-      _notificationService.getUserNotifications(myId).then((notifs) {
-        if (mounted) setState(() => _notifications = notifs);
-      }).catchError((_) {});
-    }
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: CeladonColors.cardBackground,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setSheetState) {
-          return SizedBox(
-            height: MediaQuery.of(context).size.height * 0.75,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: CeladonColors.border,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Notifications',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          color: CeladonColors.textPrimary,
-                        ),
-                      ),
-                      if (_notifications.any((n) => !n.read))
-                        TextButton(
-                          onPressed: () async {
-                            final unread = _notifications.where((n) => !n.read).toList();
-                            for (final n in unread) {
-                              await _notificationService.markAsRead(n.id);
-                            }
-                            if (mounted) {
-                              setState(() {
-                                _notifications = _notifications.map((n) => n.copyWith(read: true)).toList();
-                              });
-                              setSheetState(() {});
-                            }
-                          },
-                          child: const Text(
-                            'Mark all read',
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w700,
-                              color: CeladonColors.primary,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Expanded(
-                    child: _notifications.isEmpty
-                        ? const Center(
-                            child: Text(
-                              'No notifications',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Color(0xFF64748B),
-                              ),
-                            ),
-                          )
-                        : ListView.separated(
-                            itemCount: _notifications.length,
-                            separatorBuilder: (_, _) => const Divider(height: 1, color: Color(0xFFE2E8F0)),
-                            itemBuilder: (_, i) {
-                              final notif = _notifications[i];
-                              return ListTile(
-                                dense: true,
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                                leading: Container(
-                                  width: 36,
-                                  height: 36,
-                                  decoration: BoxDecoration(
-                                    color: notif.read ? const Color(0xFFF1F5F9) : CeladonColors.softMint,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(
-                                    notif.isMessenger ? Icons.chat_bubble_outline_rounded : Icons.notifications_none_rounded,
-                                    size: 18,
-                                    color: notif.read ? const Color(0xFF64748B) : CeladonColors.primary,
-                                  ),
-                                ),
-                                title: Text(
-                                  notif.title,
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: notif.read ? FontWeight.w500 : FontWeight.w700,
-                                    color: CeladonColors.textPrimary,
-                                  ),
-                                ),
-                                subtitle: Text(
-                                  notif.message,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 11.5,
-                                    color: Color(0xFF64748B),
-                                  ),
-                                ),
-                                trailing: Text(
-                                  notif.formattedDate,
-                                  style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
-                                ),
-                                onTap: () async {
-                                  if (!notif.read) {
-                                    await _notificationService.markAsRead(notif.id);
-                                    if (mounted) {
-                                      setState(() {
-                                        _notifications = _notifications.map((n) => n.id == notif.id ? n.copyWith(read: true) : n).toList();
-                                      });
-                                    }
-                                  }
-                                  if (!ctx.mounted) return;
-                                  Navigator.of(ctx).pop();
-                                  if (notif.conversationId != null && notif.conversationId!.isNotEmpty) {
-                                    final found = _conversations.where((c) => c.conversationId == notif.conversationId).firstOrNull;
-                                    if (found != null) {
-                                      _openConversation(found);
-                                    }
-                                  }
-                                },
-                              );
-                            },
-                          ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
 
   // ═══════════════════════════════════════════════════════════════
   // MODALS: NEW CHAT, CREATE GROUP, GROUP MEMBERS, EDIT/DELETE
@@ -1059,6 +910,9 @@ class _MessengerViewState extends State<MessengerView> {
 
   void _showStartDmSheet() {
     String modalSearch = '';
+    List<MessengerContactModel> modalContacts = List.from(_contacts);
+    bool isFetchingFresh = true;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1068,12 +922,32 @@ class _MessengerViewState extends State<MessengerView> {
       ),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) {
-          final filtered = _contacts.where((c) {
+          if (isFetchingFresh) {
+            _loadAuthorizedContacts().then((fresh) {
+              if (ctx.mounted) {
+                setModalState(() {
+                  modalContacts = fresh;
+                  isFetchingFresh = false;
+                });
+              }
+              if (mounted) {
+                setState(() => _contacts = fresh);
+              }
+            }).catchError((_) {
+              if (ctx.mounted) {
+                setModalState(() => isFetchingFresh = false);
+              }
+            });
+          }
+
+          final filtered = modalContacts.where((c) {
             if (modalSearch.trim().isEmpty) return true;
             final q = modalSearch.toLowerCase();
             return c.displayName.toLowerCase().contains(q) ||
                 c.company.toLowerCase().contains(q) ||
-                c.roleLabel.toLowerCase().contains(q);
+                c.roleLabel.toLowerCase().contains(q) ||
+                c.department.toLowerCase().contains(q) ||
+                c.designation.toLowerCase().contains(q);
           }).toList();
 
           return SafeArea(
@@ -1210,6 +1084,8 @@ class _MessengerViewState extends State<MessengerView> {
     final nameCtrl = TextEditingController();
     final selectedIds = <String>{};
     String search = '';
+    List<MessengerContactModel> modalContacts = List.from(_contacts);
+    bool isFetchingFresh = true;
 
     showModalBottomSheet(
       context: context,
@@ -1220,11 +1096,30 @@ class _MessengerViewState extends State<MessengerView> {
       ),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) {
-          final filtered = _contacts.where((c) {
+          if (isFetchingFresh) {
+            _loadAuthorizedContacts().then((fresh) {
+              if (ctx.mounted) {
+                setModalState(() {
+                  modalContacts = fresh;
+                  isFetchingFresh = false;
+                });
+              }
+              if (mounted) {
+                setState(() => _contacts = fresh);
+              }
+            }).catchError((_) {
+              if (ctx.mounted) {
+                setModalState(() => isFetchingFresh = false);
+              }
+            });
+          }
+
+          final filtered = modalContacts.where((c) {
             if (search.trim().isEmpty) return true;
             final q = search.toLowerCase();
             return c.displayName.toLowerCase().contains(q) ||
-                c.company.toLowerCase().contains(q);
+                c.company.toLowerCase().contains(q) ||
+                c.roleLabel.toLowerCase().contains(q);
           }).toList();
 
           return SafeArea(
@@ -1701,7 +1596,10 @@ class _MessengerViewState extends State<MessengerView> {
           children: [
             Expanded(
               child: GestureDetector(
-                onTap: () => setState(() => _activeTab = 0),
+                onTap: () {
+                  setState(() => _activeTab = 0);
+                  _notifyChatState();
+                },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 180),
                   padding: const EdgeInsets.symmetric(vertical: 10),
@@ -1734,10 +1632,13 @@ class _MessengerViewState extends State<MessengerView> {
             const SizedBox(width: 4),
             Expanded(
               child: GestureDetector(
-                onTap: () => setState(() {
-                  _activeTab = 1;
-                  _activeConversation = null;
-                }),
+                onTap: () {
+                  setState(() {
+                    _activeTab = 1;
+                    _activeConversation = null;
+                  });
+                  _notifyChatState();
+                },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 180),
                   padding: const EdgeInsets.symmetric(vertical: 10),
@@ -1802,72 +1703,28 @@ class _MessengerViewState extends State<MessengerView> {
   Widget _buildConversationsListView() {
     final q = _searchQuery.trim().toLowerCase();
     final filteredConvos = _conversations.where((c) {
-      if (q.isEmpty) return true;
-      final resolvedName = _resolveConversationName(c).toLowerCase();
-      return resolvedName.contains(q) || c.lastMessage.toLowerCase().contains(q);
-    }).toList();
-
-    // Collect userIds that already have an active 1:1 conversation shown above (avoid duplicates)
-    final activePeerIds = <String>{};
-    for (final c in _conversations) {
-      if (!c.isGroup && c.otherUserId.isNotEmpty) {
-        activePeerIds.add(c.otherUserId.trim().toLowerCase());
+      if (_chatFilterIndex == 1 && c.unreadCount <= 0) {
+        return false;
       }
-    }
-
-    // Always list all authorized people directly below the search bar (not hidden behind + button):
-    // - Company Owner/Admin: Super Admin + all own-company employees
-    // - Employee: own-company owner/admin + all own-company employees
-    // - Super Admin: all registered company owners/admins (no regular employees)
-    final directoryPeople = _contacts.where((c) {
-      final key = c.userId.trim().toLowerCase();
-      final altKey = c.username.trim().toLowerCase();
-      if (q.isEmpty && (activePeerIds.contains(key) || activePeerIds.contains(altKey))) {
+      if (_chatFilterIndex == 2 && !c.isGroup) {
         return false;
       }
       if (q.isNotEmpty) {
-        return c.displayName.toLowerCase().contains(q) ||
-            c.company.toLowerCase().contains(q) ||
-            c.roleLabel.toLowerCase().contains(q);
+        final resolvedName = _resolveConversationName(c).toLowerCase();
+        final matchesName = resolvedName.contains(q);
+        final matchesMessage = c.lastMessage.toLowerCase().contains(q);
+        if (!matchesName && !matchesMessage) return false;
       }
       return true;
-    }).toList()
-      ..sort((a, b) {
-        // Pin Super Admin at top for Company Owners, then Owners/Admins, then alphabetical
-        int rank(String r) {
-          switch (r.toLowerCase()) {
-            case 'param':
-              return 0;
-            case 'owner':
-              return 1;
-            case 'admin':
-              return 2;
-            default:
-              return 3;
-          }
-        }
-        final diff = rank(a.role) - rank(b.role);
-        return diff != 0 ? diff : a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
-      });
-
-    final peopleSectionTitle = widget.user.isSuperAdmin
-        ? 'COMPANY OWNERS & ADMINS'
-        : (widget.user.isCompanyAdmin ? 'PEOPLE IN COMPANY & SUPER ADMIN' : 'PEOPLE IN COMPANY');
-
-    final horizontalPeople = _contacts.where((c) {
-      if (q.isEmpty) return true;
-      return c.displayName.toLowerCase().contains(q) ||
-          c.company.toLowerCase().contains(q) ||
-          c.roleLabel.toLowerCase().contains(q);
     }).toList();
 
     return Container(
       color: CeladonColors.background,
       child: Column(
         children: [
-          // Sleek Full-Width Search Bar
+          // Sleek Full-Width Search Bar: strictly searches already messaged people/chats and text
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
             child: Container(
               height: 44,
               decoration: BoxDecoration(
@@ -1880,9 +1737,7 @@ class _MessengerViewState extends State<MessengerView> {
                 onChanged: (v) => setState(() => _searchQuery = v),
                 style: const TextStyle(fontSize: 13.5, color: CeladonColors.textPrimary),
                 decoration: InputDecoration(
-                  hintText: widget.user.isSuperAdmin
-                      ? 'Search company owners or groups...'
-                      : 'Search chats or colleagues...',
+                  hintText: 'Search chats or message text...',
                   hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
                   prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Color(0xFF64748B)),
                   suffixIcon: _searchQuery.isNotEmpty
@@ -1901,88 +1756,68 @@ class _MessengerViewState extends State<MessengerView> {
             ),
           ),
 
-          // Horizontal People in Company Row (matches user image 1)
-          if (horizontalPeople.isNotEmpty && q.isEmpty) ...[
-            SizedBox(
-              height: 82,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: horizontalPeople.length,
-                itemBuilder: (context, idx) {
-                  final contact = horizontalPeople[idx];
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 14),
-                    child: GestureDetector(
-                      onTap: () => _startNewChatWith(contact),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _buildAvatar(
-                            name: contact.displayName,
-                            online: contact.online,
-                            radius: 23,
-                          ),
-                          const SizedBox(height: 5),
-                          SizedBox(
-                            width: 66,
-                            child: Text(
-                              contact.displayName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: CeladonColors.textPrimary,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 4),
-          ],
+          // 3 Filter Chips: All, Unread, Group
+          _buildChatFilterChips(),
 
           Expanded(
-            child: filteredConvos.isEmpty && directoryPeople.isEmpty
+            child: filteredConvos.isEmpty
                 ? _buildEmptyConversationsState()
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(0, 2, 0, 24),
-                    children: [
-                      if (filteredConvos.isNotEmpty) ...[
-                        for (int i = 0; i < filteredConvos.length; i++)
-                          _buildConversationRow(filteredConvos[i]),
-                      ],
-                      if (directoryPeople.isNotEmpty) ...[
-                        Padding(
-                          padding: EdgeInsets.fromLTRB(
-                            16,
-                            filteredConvos.isNotEmpty ? 14 : 6,
-                            16,
-                            6,
-                          ),
-                          child: Text(
-                            peopleSectionTitle,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.7,
-                              color: Color(0xFF64748B),
-                            ),
-                          ),
-                        ),
-                        for (int i = 0; i < directoryPeople.length; i++)
-                          _buildDirectoryContactRow(directoryPeople[i]),
-                      ],
-                    ],
+                : ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(0, 4, 0, 80),
+                    itemCount: filteredConvos.length,
+                    itemBuilder: (context, i) => _buildConversationRow(filteredConvos[i]),
                   ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildChatFilterChips() {
+    final filters = ['All', 'Unread', 'Group'];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
+      child: Row(
+        children: List.generate(filters.length, (idx) {
+          final isSelected = _chatFilterIndex == idx;
+          final label = filters[idx];
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: InkWell(
+              onTap: () => setState(() => _chatFilterIndex = idx),
+              borderRadius: BorderRadius.circular(18),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+                decoration: BoxDecoration(
+                  color: isSelected ? CeladonColors.primary : Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: isSelected ? CeladonColors.primary : const Color(0xFFD3E6DC),
+                    width: 1,
+                  ),
+                  boxShadow: isSelected
+                      ? [
+                          BoxShadow(
+                            color: CeladonColors.primary.withValues(alpha: 0.22),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                    color: isSelected ? Colors.white : CeladonColors.textPrimary,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }),
       ),
     );
   }
@@ -2169,85 +2004,6 @@ class _MessengerViewState extends State<MessengerView> {
   );
 }
 
-  Widget _buildDirectoryContactRow(MessengerContactModel person) {
-    final isSa = person.role.toLowerCase() == 'param';
-    final isOwner = person.role.toLowerCase() == 'owner' || person.role.toLowerCase() == 'admin';
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2ECE7)),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () => _startNewChatWith(person),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-            child: Row(
-              children: [
-                _buildAvatar(name: person.displayName, online: person.online, radius: 22),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              person.displayName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 14.5,
-                                fontWeight: FontWeight.w700,
-                                color: CeladonColors.textPrimary,
-                              ),
-                            ),
-                          ),
-                          if (isSa || isOwner) ...[
-                            const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                              decoration: BoxDecoration(
-                                color: isSa ? const Color(0xFFDCFCE7) : CeladonColors.softMint,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                isSa ? 'Super Admin' : person.roleLabel,
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  color: isSa ? const Color(0xFF15803D) : CeladonColors.primary,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        person.company.isNotEmpty
-                            ? (isSa ? 'ReGen Platform Support' : '${person.roleLabel} • ${person.company}')
-                            : (person.designation.isNotEmpty ? person.designation : person.roleLabel),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                      ),
-                    ],
-                  ),
-                ),
-                const Icon(Icons.chat_bubble_outline_rounded, color: CeladonColors.primary, size: 18),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 
   // ═══════════════════════════════════════════════════════════════
   // TEAM CHANNEL VIEW (CLEAN INTEGRATED HEADER + CHAT CANVAS)
@@ -2405,7 +2161,10 @@ class _MessengerViewState extends State<MessengerView> {
                     size: 22,
                     color: CeladonColors.textPrimary,
                   ),
-                  onPressed: () => setState(() => _activeConversation = null),
+                  onPressed: () {
+                    setState(() => _activeConversation = null);
+                    _notifyChatState();
+                  },
                 ),
                 _buildAvatar(
                   name: displayName,
@@ -2890,36 +2649,6 @@ class _MessengerViewState extends State<MessengerView> {
     );
   }
 
-  Widget _buildNotificationBellButton() {
-    final unreadCount = _notifications.where((n) => !n.read).length;
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        IconButton(
-          tooltip: 'Notifications',
-          icon: const Icon(
-            Icons.notifications_outlined,
-            color: CeladonColors.primary,
-            size: 22,
-          ),
-          onPressed: _showNotificationsSheet,
-        ),
-        if (unreadCount > 0)
-          Positioned(
-            right: 8,
-            top: 8,
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: const BoxDecoration(
-                color: Color(0xFFEF4444),
-                shape: BoxShape.circle,
-              ),
-              constraints: const BoxConstraints(minWidth: 8, minHeight: 8),
-            ),
-          ),
-      ],
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -2952,50 +2681,28 @@ class _MessengerViewState extends State<MessengerView> {
               titleSpacing: 0,
               title: Row(
                 children: [
-                  const BrandLogo(size: 28, borderRadius: 8),
-                  const SizedBox(width: 8),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text(
-                            'ReGen',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                              color: CeladonColors.textPrimary,
-                              letterSpacing: -0.2,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          if (_socketConnected)
-                            Container(
-                              width: 7,
-                              height: 7,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFF22C55E),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                        ],
-                      ),
-                      const Text(
-                        'Messenger',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: CeladonColors.textMuted,
-                        ),
-                      ),
-                    ],
+                  const Text(
+                    'Messenger',
+                    style: TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                      color: CeladonColors.textPrimary,
+                      letterSpacing: -0.2,
+                    ),
                   ),
+                  const SizedBox(width: 8),
+                  if (_socketConnected)
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF22C55E),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
                 ],
               ),
               actions: [
-                _buildNotificationBellButton(),
                 IconButton(
                   tooltip: 'New Group',
                   icon: const Icon(Icons.group_add_outlined, color: CeladonColors.primary, size: 22),
@@ -3032,6 +2739,7 @@ class _MessengerViewState extends State<MessengerView> {
         if (didPop) return;
         if (_activeConversation != null) {
           setState(() => _activeConversation = null);
+          _notifyChatState();
         } else if (widget.onBack != null) {
           widget.onBack!();
         } else if (Navigator.of(context).canPop()) {

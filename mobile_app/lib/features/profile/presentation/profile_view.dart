@@ -610,12 +610,18 @@ class _ProfileViewState extends State<ProfileView> {
                 children: [
                   IconButton(
                     icon: const Icon(
-                      Icons.menu_rounded,
+                      Icons.arrow_back_rounded,
                       color: Colors.white,
-                      size: 26,
+                      size: 24,
                     ),
-                    tooltip: 'Open navigation menu',
-                    onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+                    tooltip: 'Back to Home',
+                    onPressed: () {
+                      if (widget.onNavigateToTab != null) {
+                        widget.onNavigateToTab!(0);
+                      } else {
+                        Navigator.maybePop(context);
+                      }
+                    },
                   ),
                   const Expanded(
                     child: Text(

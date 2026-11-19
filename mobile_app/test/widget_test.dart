@@ -1453,8 +1453,9 @@ void main() {
       }
     });
 
-    testWidgets('TasksView header renders BrandLogo, ReGen, and dark glass search bar without white fill',
+    testWidgets('TasksView header renders left arrow redirecting to home, Tasks title, and search bar',
         (WidgetTester tester) async {
+      bool backCalled = false;
       await tester.pumpWidget(
         MaterialApp(
           home: TasksView(
@@ -1468,15 +1469,21 @@ void main() {
               token: 'tok_owner',
             ),
             dashboardService: MockDashboardService(),
+            onBack: () => backCalled = true,
           ),
         ),
       );
 
       await tester.pumpAndSettle();
 
-      expect(find.text('ReGen'), findsOneWidget);
+      expect(find.byIcon(Icons.arrow_back_rounded), findsOneWidget);
+      expect(find.text('Tasks'), findsOneWidget);
+      expect(find.text('ReGen'), findsNothing);
       expect(find.text('Tasks & Schedules'), findsOneWidget);
       expect(find.text('Search by title, description, or assigned person...'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.arrow_back_rounded));
+      expect(backCalled, isTrue);
     });
 
     test('CompanyPolicyItem and PolicyReviewModel properly serialize and parse JSON', () {
@@ -1961,12 +1968,15 @@ void main() {
 
       // Super Admin central portal hides company-wide Team Channel tab
       expect(find.text('Team Channel'), findsNothing);
-      // Authorized Company Owners appear directly below search bar (no regular employees)
-      expect(find.text('Alice Owner'), findsAtLeast(1));
-      expect(find.text('Bob Owner'), findsAtLeast(1));
       // Group creation & New Chat FAB are available
       expect(find.byTooltip('New Group'), findsOneWidget);
       expect(find.byTooltip('New Chat'), findsOneWidget);
+
+      // Tapping New Chat searches all authorized company owners dynamically
+      await tester.tap(find.byTooltip('New Chat'));
+      await tester.pumpAndSettle();
+      expect(find.text('Alice Owner'), findsAtLeast(1));
+      expect(find.text('Bob Owner'), findsAtLeast(1));
     });
 
     testWidgets('MessengerView Company Owner sees Super Admin + company employees below search bar & Notifications shows Messenger (no System)', (WidgetTester tester) async {
@@ -2015,6 +2025,10 @@ void main() {
           ),
         ),
       );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(FloatingActionButton), findsOneWidget);
+      await tester.tap(find.byType(FloatingActionButton));
       await tester.pumpAndSettle();
 
       expect(find.text('Vyshwa'), findsAtLeast(1));
@@ -2349,11 +2363,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Header has ReGen brand, Messenger title, back arrow, and notification bell
-      expect(find.text('ReGen'), findsOneWidget);
+      // Header has Messenger title and left arrow redirecting to Home (no ReGen or notification bell on non-home pages)
       expect(find.text('Messenger'), findsOneWidget);
       expect(find.byIcon(Icons.arrow_back_rounded), findsOneWidget);
-      expect(find.byIcon(Icons.notifications_outlined), findsOneWidget);
+      expect(find.text('ReGen'), findsNothing);
+      expect(find.byIcon(Icons.notifications_outlined), findsNothing);
 
       // Re-pump widget with user B to verify didUpdateWidget adapts cleanly
       await tester.pumpWidget(
@@ -2616,6 +2630,146 @@ void main() {
       // Solid Bright Red Sign Out Button
       expect(find.text('Sign Out'), findsOneWidget);
       expect(find.byIcon(Icons.logout_rounded), findsOneWidget);
+    });
+
+    testWidgets('Non-home pages have only left arrow redirecting to Home, Messenger lower nav and filter chips work', (WidgetTester tester) async {
+      final user = const UserModel(
+        id: 'u1',
+        userId: 'EMP-1',
+        username: 'emp1',
+        name: 'Employee One',
+        role: 'staff',
+        companyId: 'comp1',
+        company: 'Krish Tech',
+        token: 'tok_emp1',
+      );
+
+      final conv1 = const DmConversationModel(
+        conversationId: 'c1',
+        participants: ['EMP-1', 'EMP-2'],
+        otherUserId: 'EMP-2',
+        otherUserName: 'Bob Developer',
+        otherUserRole: 'staff',
+        otherUserOnline: true,
+        lastMessage: 'Let us meet tomorrow',
+        unreadCount: 2,
+      );
+
+      final convGroup = const DmConversationModel(
+        conversationId: 'cg1',
+        participants: ['EMP-1', 'EMP-2', 'EMP-3'],
+        isGroup: true,
+        name: 'Dev Team',
+        otherUserId: '',
+        otherUserName: 'Dev Team',
+        otherUserRole: 'group',
+        lastMessage: 'Sprint demo at 4pm',
+        unreadCount: 0,
+      );
+
+      bool inChatReported = false;
+
+      final mockMessenger = _FakeMessengerService(
+        contacts: const [
+          MessengerContactModel(
+            id: 'c_bob',
+            userId: 'EMP-2',
+            username: 'bob',
+            name: 'Bob Developer',
+            role: 'staff',
+            companyId: 'comp1',
+            company: 'Krish Tech',
+            online: true,
+          ),
+          MessengerContactModel(
+            id: 'c_new',
+            userId: 'EMP-NEW',
+            username: 'alice_new',
+            name: 'Alice Newly Added',
+            role: 'staff',
+            companyId: 'comp1',
+            company: 'Krish Tech',
+            online: false,
+          ),
+        ],
+        conversations: [conv1, convGroup],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MessengerView(
+              user: user,
+              embedded: true,
+              messengerService: mockMessenger,
+              onChatStateChanged: (inChat) => inChatReported = inChat,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Top app bar has left arrow to Home and Messenger title (NO menu, NO ReGen, NO notification bell)
+      expect(find.byIcon(Icons.arrow_back_rounded), findsOneWidget);
+      expect(find.text('Messenger'), findsOneWidget);
+      expect(find.text('ReGen'), findsNothing);
+      expect(find.byIcon(Icons.notifications_none_rounded), findsNothing);
+
+      // Filter chips: All, Unread, Group
+      expect(find.text('All'), findsOneWidget);
+      expect(find.text('Unread'), findsOneWidget);
+      expect(find.text('Group'), findsOneWidget);
+
+      // Initially 'All' shows both conversations
+      expect(find.text('Bob Developer'), findsOneWidget);
+      expect(find.text('Dev Team'), findsOneWidget);
+
+      // Tap 'Unread' chip
+      await tester.tap(find.text('Unread'));
+      await tester.pumpAndSettle();
+      expect(find.text('Bob Developer'), findsOneWidget);
+      expect(find.text('Dev Team'), findsNothing);
+
+      // Tap 'Group' chip
+      await tester.tap(find.text('Group'));
+      await tester.pumpAndSettle();
+      expect(find.text('Dev Team'), findsOneWidget);
+      expect(find.text('Bob Developer'), findsNothing);
+
+      // Return to 'All'
+      await tester.tap(find.text('All'));
+      await tester.pumpAndSettle();
+
+      // Search in existing messaged people and message text
+      final searchField = find.byType(TextField).first;
+      await tester.enterText(searchField, 'meet tomorrow');
+      await tester.pumpAndSettle();
+      expect(find.text('Bob Developer'), findsOneWidget);
+      expect(find.text('Dev Team'), findsNothing);
+
+      await tester.enterText(searchField, '');
+      await tester.pumpAndSettle();
+
+      // Tapping a conversation enters individual chat and triggers onChatStateChanged(true)
+      await tester.tap(find.text('Bob Developer'));
+      await tester.pumpAndSettle();
+      expect(inChatReported, isTrue);
+
+      // In individual chat: ReGen heading is removed, peer name is next to back arrow
+      expect(find.text('ReGen'), findsNothing);
+      expect(find.text('Bob Developer'), findsAtLeast(1));
+
+      // Back arrow returns to conversations list and triggers onChatStateChanged(false)
+      await tester.tap(find.byIcon(Icons.arrow_back_rounded));
+      await tester.pumpAndSettle();
+      expect(inChatReported, isFalse);
+
+      // New Chat option dynamically displays all contacts (including newly added employees)
+      expect(find.byTooltip('New Chat'), findsOneWidget);
+      await tester.tap(find.byTooltip('New Chat'));
+      await tester.pumpAndSettle();
+      expect(find.text('Alice Newly Added'), findsOneWidget);
+      expect(find.text('Bob Developer'), findsAtLeast(1));
     });
   });
 }

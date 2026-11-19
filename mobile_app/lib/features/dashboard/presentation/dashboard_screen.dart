@@ -55,6 +55,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   late List<String> _bottomNavSlots;
   final List<GlobalKey> _bottomNavSlotKeys = List.generate(5, (_) => GlobalKey());
   String? _overridePageId;
+  bool _messengerInChat = false;
 
   final PolicyService _policyService = PolicyService();
   EmployeePolicyStatus? _policyStatus;
@@ -188,27 +189,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   }
 
   void _navigateToPage(String pageId) {
-    if (pageId == 'messenger') {
-      final slotIdx = _bottomNavSlots.indexOf('messenger');
-      if (slotIdx != -1) {
-        setState(() {
-          _currentTabIndex = slotIdx;
-          _overridePageId = null;
-        });
-      } else {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => MessengerView(
-              key: ValueKey('messenger_${_currentUser.userId}_${_currentUser.role}'),
-              user: _currentUser,
-              embedded: true,
-              onBack: () => Navigator.of(context).pop(),
-              onOpenDrawer: _openDrawer,
-            ),
-          ),
-        );
-      }
-      return;
+    if (pageId != 'messenger') {
+      _messengerInChat = false;
     }
     final slotIdx = _bottomNavSlots.indexOf(pageId);
     if (slotIdx != -1) {
@@ -275,6 +257,11 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
           embedded: true,
           onOpenDrawer: _openDrawer,
           onBack: () => _navigateToPage('home'),
+          onChatStateChanged: (inChat) {
+            if (_messengerInChat != inChat && mounted) {
+              setState(() => _messengerInChat = inChat);
+            }
+          },
         );
       case 'attendance':
         return AttendanceView(
@@ -375,7 +362,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
               index: _currentTabIndex.clamp(0, _bottomNavSlots.length - 1),
               children: _bottomNavSlots.map(_buildPageById).toList(),
             ),
-      bottomNavigationBar: _activePageId == 'messenger'
+      bottomNavigationBar: (_activePageId == 'messenger' && _messengerInChat)
           ? null
           : Container(
               decoration: const BoxDecoration(

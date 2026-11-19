@@ -534,8 +534,17 @@ class _CalendarViewState extends State<CalendarView> {
       children: [
         Row(
           children: [
-            if (widget.onOpenDrawer != null)
-              Container(
+            InkWell(
+              onTap: widget.onBack ??
+                  () {
+                    if (Navigator.of(context).canPop()) {
+                      Navigator.of(context).pop();
+                    } else if (widget.onOpenDrawer != null) {
+                      widget.onOpenDrawer!();
+                    }
+                  },
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
                 width: 38,
                 height: 38,
                 margin: const EdgeInsets.only(right: 10),
@@ -543,18 +552,13 @@ class _CalendarViewState extends State<CalendarView> {
                   color: CeladonColors.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: IconButton(
-                  padding: EdgeInsets.zero,
-                  icon: const Icon(Icons.menu_rounded, color: CeladonColors.primary, size: 22),
-                  tooltip: 'Menu',
-                  onPressed: widget.onOpenDrawer,
+                child: const Icon(
+                  Icons.arrow_back_rounded,
+                  color: CeladonColors.primary,
+                  size: 22,
                 ),
-              )
-            else if (widget.onBack != null)
-              IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: CeladonColors.primary),
-                onPressed: widget.onBack,
               ),
+            ),
 
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,

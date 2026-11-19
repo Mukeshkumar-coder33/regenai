@@ -7,7 +7,6 @@ import '../data/project_model.dart';
 import '../data/task_model.dart';
 import '../data/task_service.dart';
 import '../../../core/theme/celadon_colors.dart';
-import '../../../core/widgets/brand_logo.dart';
 
 /// Screen: Enterprise Tasks, Projects & Schedules
 ///
@@ -557,14 +556,6 @@ class _TasksViewState extends State<TasksView> {
 
   // 1. Top App Bar (Matches Company Dashboard App Bar Exactly)
   Widget _buildHeader() {
-    final currentUser = widget.user ?? _loggedInUser;
-    final companyName = (currentUser?.companyName?.isNotEmpty == true)
-        ? currentUser!.companyName!
-        : 'Enterprise Workspace';
-    final userChar = (currentUser?.name.isNotEmpty == true)
-        ? currentUser!.name[0].toUpperCase()
-        : ((currentUser?.username.isNotEmpty == true) ? currentUser!.username[0].toUpperCase() : 'U');
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
       child: Row(
@@ -603,85 +594,43 @@ class _TasksViewState extends State<TasksView> {
             ),
           ),
 
-          // Center: Logo + "ReGen" Brand + Subtitle (Company Name)
-          Row(
-            children: [
-              const BrandLogo(size: 28, borderRadius: 8),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'ReGen',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: CeladonColors.textPrimary,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                  SizedBox(
-                    width: 130,
-                    child: Text(
-                      companyName,
-                      style: const TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w600,
-                        color: CeladonColors.textSecondary,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-
-          // Right: Refresh Button & Avatar in Squircle Containers
-          Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: InkWell(
-                  onTap: _loadInitialData,
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: CeladonColors.searchBackground,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: CeladonColors.border),
-                    ),
-                    child: const Icon(
-                      Icons.refresh_rounded,
-                      color: CeladonColors.primary,
-                      size: 20,
-                    ),
-                  ),
+          // Title: "Tasks"
+          const Expanded(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12),
+              child: Text(
+                'Tasks',
+                style: TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.w800,
+                  color: CeladonColors.textPrimary,
+                  letterSpacing: -0.2,
                 ),
               ),
-              const SizedBox(width: 8),
-              Container(
+            ),
+          ),
+
+          // Right: Refresh Button in Squircle Container
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: InkWell(
+              onTap: _loadInitialData,
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: CeladonColors.lightGreen,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: CeladonColors.primary, width: 1.5),
+                  color: CeladonColors.searchBackground,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: CeladonColors.border),
                 ),
-                alignment: Alignment.center,
-                child: Text(
-                  userChar,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    color: CeladonColors.primary,
-                  ),
+                child: const Icon(
+                  Icons.refresh_rounded,
+                  color: CeladonColors.primary,
+                  size: 20,
                 ),
               ),
-            ],
+            ),
           ),
         ],
       ),

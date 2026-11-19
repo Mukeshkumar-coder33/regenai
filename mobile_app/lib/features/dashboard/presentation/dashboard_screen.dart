@@ -1,6 +1,7 @@
 import '../../auth/presentation/login_screen.dart';
 import 'package:flutter/material.dart';
 import '../../../core/navigation/bottom_nav_customizer.dart';
+import '../../../core/navigation/role_menu_registry.dart';
 import '../../../core/storage/session_storage.dart';
 import '../../../core/theme/celadon_colors.dart';
 import '../../attendance/presentation/attendance_view.dart';
@@ -49,11 +50,10 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   int _currentTabIndex = 0;
   late UserModel _currentUser;
-  bool _showAttendanceSubScreen = false;
 
   // Independent role-based bottom nav shortcut customization (Employee & Super Admin)
-  static const List<String> _defaultSlotIds = ['home', 'tasks', 'calendar', 'profile'];
-  List<String> _bottomNavSlots = List<String>.from(_defaultSlotIds);
+  List<String> get _defaultSlotIds => RoleMenuRegistry.getDefaultSlotsForRole(_currentUser);
+  late List<String> _bottomNavSlots;
   final List<GlobalKey> _bottomNavSlotKeys = List.generate(4, (_) => GlobalKey());
   String? _overridePageId;
 
@@ -62,81 +62,9 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   bool _isLoadingPolicy = false;
   bool _isPolicySubmitting = false;
 
-  String get _roleStorageKey => _currentUser.isSuperAdmin ? 'superadmin' : 'employee';
+  String get _roleStorageKey => RoleMenuRegistry.getRoleStorageKey(_currentUser);
 
-  List<NavShortcutItem> get _roleNavCatalog {
-    final items = <NavShortcutItem>[
-      const NavShortcutItem(
-        id: 'home',
-        label: 'Home',
-        icon: Icons.home_outlined,
-        activeIcon: Icons.home_rounded,
-      ),
-      const NavShortcutItem(
-        id: 'tasks',
-        label: 'Tasks',
-        icon: Icons.assignment_outlined,
-        activeIcon: Icons.assignment_rounded,
-      ),
-      const NavShortcutItem(
-        id: 'calendar',
-        label: 'Calendar',
-        icon: Icons.calendar_today_outlined,
-        activeIcon: Icons.calendar_today_rounded,
-      ),
-      const NavShortcutItem(
-        id: 'profile',
-        label: 'Profile',
-        icon: Icons.person_outline_rounded,
-        activeIcon: Icons.person_rounded,
-      ),
-      const NavShortcutItem(
-        id: 'messenger',
-        label: 'Messenger',
-        icon: Icons.chat_bubble_outline_rounded,
-        activeIcon: Icons.chat_bubble_rounded,
-      ),
-      const NavShortcutItem(
-        id: 'attendance',
-        label: 'Attendance',
-        icon: Icons.event_available_outlined,
-        activeIcon: Icons.event_available_rounded,
-      ),
-      const NavShortcutItem(
-        id: 'team',
-        label: 'Team',
-        icon: Icons.groups_outlined,
-        activeIcon: Icons.groups_rounded,
-      ),
-      if (!_currentUser.isSuperAdmin)
-        const NavShortcutItem(
-          id: 'leave',
-          label: 'Leave',
-          icon: Icons.beach_access_outlined,
-          activeIcon: Icons.beach_access_rounded,
-        ),
-      if (!_currentUser.isSuperAdmin)
-        const NavShortcutItem(
-          id: 'payroll',
-          label: 'Payroll',
-          icon: Icons.payments_outlined,
-          activeIcon: Icons.payments_rounded,
-        ),
-      const NavShortcutItem(
-        id: 'settings',
-        label: 'Settings',
-        icon: Icons.settings_outlined,
-        activeIcon: Icons.settings_rounded,
-      ),
-      const NavShortcutItem(
-        id: 'help',
-        label: 'Support',
-        icon: Icons.help_outline_rounded,
-        activeIcon: Icons.help_rounded,
-      ),
-    ];
-    return items;
-  }
+  List<NavShortcutItem> get _roleNavCatalog => RoleMenuRegistry.getNavCatalogForRole(_currentUser);
 
   NavShortcutItem _shortcutForId(String id) {
     final catalog = _roleNavCatalog;
@@ -151,6 +79,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _currentUser = widget.user;
+    _bottomNavSlots = List<String>.from(_defaultSlotIds);
     _loadRoleBottomNavSlots();
     _initRealtimeCommunication(_currentUser);
     if (!_currentUser.isCompanyAdmin && !_currentUser.isSuperAdmin) {
@@ -186,7 +115,6 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
       _currentUser = widget.user;
       _currentTabIndex = 0;
       _overridePageId = null;
-      _showAttendanceSubScreen = false;
       _bottomNavSlots = List<String>.from(_defaultSlotIds);
       _loadRoleBottomNavSlots();
       _initRealtimeCommunication(_currentUser);
@@ -233,7 +161,6 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     setState(() {
       _currentTabIndex = index.clamp(0, _bottomNavSlots.length - 1);
       _overridePageId = null;
-      _showAttendanceSubScreen = false;
     });
   }
 
@@ -243,7 +170,6 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
       setState(() {
         _currentTabIndex = slotIdx;
         _overridePageId = null;
-        if (pageId == 'calendar') _showAttendanceSubScreen = false;
       });
       return;
     }
@@ -253,7 +179,6 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     }
     setState(() {
       _overridePageId = pageId;
-      if (pageId == 'calendar') _showAttendanceSubScreen = false;
     });
   }
 
@@ -263,15 +188,6 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
       setState(() {
         _currentTabIndex = attIdx;
         _overridePageId = null;
-      });
-      return;
-    }
-    final calIdx = _bottomNavSlots.indexOf('calendar');
-    if (calIdx != -1) {
-      setState(() {
-        _currentTabIndex = calIdx;
-        _overridePageId = null;
-        _showAttendanceSubScreen = true;
       });
       return;
     }
@@ -291,7 +207,11 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
           onBack: () => _navigateToPage('home'),
         );
       case 'calendar':
-        return _buildCalendarAndAttendanceTab();
+        return CalendarView(
+          user: _currentUser,
+          onOpenDrawer: _openDrawer,
+          onBack: () => _navigateToPage('home'),
+        );
       case 'profile':
         return ProfileView(
           user: _currentUser,
@@ -499,137 +419,6 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     );
   }
 
-  Widget _buildCalendarAndAttendanceTab() {
-    return Column(
-      children: [
-        // Top Dual Navigation Bar (Toggle between Calendar & Attendance)
-        SafeArea(
-          bottom: false,
-          child: Container(
-            margin: const EdgeInsets.fromLTRB(16, 8, 16, 6),
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE1E8E4), width: 1.0),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x06000000),
-                  blurRadius: 6,
-                  offset: Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: InkWell(
-                    onTap: () => setState(() => _showAttendanceSubScreen = false),
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 9),
-                      decoration: BoxDecoration(
-                        color: !_showAttendanceSubScreen ? const Color(0xFF087A4B) : Colors.transparent,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: !_showAttendanceSubScreen
-                            ? [
-                                BoxShadow(
-                                  color: const Color(0xFF087A4B).withValues(alpha: 0.25),
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 2),
-                                )
-                              ]
-                            : null,
-                      ),
-                      alignment: Alignment.center,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.calendar_month_rounded,
-                            size: 16,
-                            color: !_showAttendanceSubScreen ? Colors.white : const Color(0xFF829089),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Calendar',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: !_showAttendanceSubScreen ? Colors.white : const Color(0xFF829089),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: InkWell(
-                    onTap: () => setState(() => _showAttendanceSubScreen = true),
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 9),
-                      decoration: BoxDecoration(
-                        color: _showAttendanceSubScreen ? const Color(0xFF087A4B) : Colors.transparent,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: _showAttendanceSubScreen
-                            ? [
-                                BoxShadow(
-                                  color: const Color(0xFF087A4B).withValues(alpha: 0.25),
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 2),
-                                )
-                              ]
-                            : null,
-                      ),
-                      alignment: Alignment.center,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.fingerprint_rounded,
-                            size: 17,
-                            color: _showAttendanceSubScreen ? Colors.white : const Color(0xFF829089),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Attendance (5m GPS)',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: _showAttendanceSubScreen ? Colors.white : const Color(0xFF829089),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        Expanded(
-          child: MediaQuery.removePadding(
-            context: context,
-            removeTop: true,
-            child: _showAttendanceSubScreen
-                ? AttendanceView(
-                    onOpenDrawer: _openDrawer,
-                    onBack: () => setState(() => _showAttendanceSubScreen = false),
-                  )
-                : CalendarView(
-                    user: _currentUser,
-                    onOpenDrawer: _openDrawer,
-                    onBack: () => _navigateToTab(0),
-                  ),
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildNavItem({
     required int index,
     required String label,
@@ -641,7 +430,6 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
       setState(() {
         _currentTabIndex = index;
         _overridePageId = null;
-        _showAttendanceSubScreen = false;
       });
     }
 

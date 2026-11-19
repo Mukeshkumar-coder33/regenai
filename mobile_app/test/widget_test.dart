@@ -27,6 +27,7 @@ import 'package:regen_mobile/features/tasks/data/task_model.dart';
 import 'package:regen_mobile/features/tasks/data/project_model.dart';
 import 'package:regen_mobile/features/tasks/presentation/tasks_view.dart';
 import 'package:regen_mobile/core/navigation/bottom_nav_customizer.dart';
+import 'package:regen_mobile/core/navigation/role_menu_registry.dart';
 import 'package:regen_mobile/features/profile/presentation/app_drawer.dart';
 import 'package:regen_mobile/features/profile/presentation/profile_view.dart';
 import 'package:regen_mobile/features/profile/presentation/settings_view.dart';
@@ -2211,6 +2212,77 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('My Payroll'), findsOneWidget);
       expect(find.textContaining('Earned Payment'), findsOneWidget);
+    });
+
+    testWidgets('Employee Calendar starts from joining date and year, renders dual color legend and selected day details',
+        (WidgetTester tester) async {
+      const joiningUser = UserModel(
+        id: 'emp_cal',
+        userId: 'EMP-CAL-1',
+        username: 'cal_user',
+        name: 'Calendar Tester',
+        role: 'staff',
+        company: 'krish Tech Computer',
+        joiningDate: '2026-11-01',
+        token: 'tok_cal',
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: CalendarView(
+            user: joiningUser,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 1. Calendar title and legend
+      expect(find.text('Calendar'), findsOneWidget);
+      expect(find.text('Present'), findsOneWidget);
+      expect(find.text('Late'), findsOneWidget);
+      expect(find.text('Absent'), findsOneWidget);
+      expect(find.text('Event ★'), findsOneWidget);
+      expect(find.text('Holiday'), findsOneWidget);
+      expect(find.text('Birthday 🎂'), findsOneWidget);
+
+      // 2. Verified month is November 2026 matching joining month and year
+      expect(find.textContaining('November 2026'), findsOneWidget);
+
+      // 3. Floating action button for date selection exists
+      expect(find.byType(FloatingActionButton), findsOneWidget);
+    });
+
+    test('RoleMenuRegistry dynamically aligns menu items and navigation catalog per role', () {
+      const companyUser = UserModel(
+        id: 'c1',
+        userId: 'owner_1',
+        username: 'owner_usr',
+        name: 'Owner',
+        role: 'owner',
+        token: 'tok_c',
+      );
+
+      const employeeUser = UserModel(
+        id: 'e1',
+        userId: 'emp_1',
+        username: 'emp_usr',
+        name: 'Staff',
+        role: 'staff',
+        token: 'tok_e',
+      );
+
+      // 1. Company Role Catalog & Menu
+      final companyMenu = RoleMenuRegistry.getMenuItemsForRole(companyUser);
+      final companyNav = RoleMenuRegistry.getNavCatalogForRole(companyUser);
+      expect(companyMenu.map((e) => e.id), containsAll(['home', 'employees', 'calender', 'leave', 'reports', 'settings']));
+      expect(companyNav.map((e) => e.id), equals(companyMenu.map((e) => e.id)));
+
+      // 2. Employee Role Catalog & Menu (excludes Reports)
+      final employeeMenu = RoleMenuRegistry.getMenuItemsForRole(employeeUser);
+      final employeeNav = RoleMenuRegistry.getNavCatalogForRole(employeeUser);
+      expect(employeeMenu.map((e) => e.id), containsAll(['home', 'tasks', 'calendar', 'profile', 'attendance', 'messenger', 'payroll']));
+      expect(employeeMenu.map((e) => e.id), isNot(contains('reports')));
+      expect(employeeNav.map((e) => e.id), equals(employeeMenu.map((e) => e.id)));
     });
   });
 }

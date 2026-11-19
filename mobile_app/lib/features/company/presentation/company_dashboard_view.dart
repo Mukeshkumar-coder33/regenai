@@ -5,6 +5,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../../../core/navigation/bottom_nav_customizer.dart';
+import '../../../core/navigation/role_menu_registry.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/theme/celadon_colors.dart';
 import '../../../core/widgets/brand_logo.dart';
@@ -117,80 +118,16 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
 
   int _selectedBottomTab =
       0; // Active bottom nav slot index (0..4)
-  static const List<String> _defaultCompanySlots = [
-    'home',
-    'employees',
-    'calender',
-    'leave',
-    'profile',
-  ];
-  List<String> _bottomNavSlots = List<String>.from(_defaultCompanySlots);
+  static List<String> get _defaultCompanySlots =>
+      RoleMenuRegistry.companyPages.where((p) => p.isDefaultBottomNav).map((p) => p.id).toList();
+  List<String> _bottomNavSlots = List<String>.from(
+      RoleMenuRegistry.companyPages.where((p) => p.isDefaultBottomNav).map((p) => p.id));
   final List<GlobalKey> _bottomNavSlotKeys =
       List.generate(5, (_) => GlobalKey());
   String? _overridePageId;
 
-  static const List<NavShortcutItem> _companyNavCatalog = [
-    NavShortcutItem(
-      id: 'home',
-      label: 'Home',
-      icon: Icons.home_outlined,
-      activeIcon: Icons.home_rounded,
-    ),
-    NavShortcutItem(
-      id: 'employees',
-      label: 'Employees',
-      icon: Icons.groups_outlined,
-      activeIcon: Icons.groups_rounded,
-    ),
-    NavShortcutItem(
-      id: 'calender',
-      label: 'Calender',
-      icon: Icons.calendar_month_outlined,
-      activeIcon: Icons.calendar_month_rounded,
-    ),
-    NavShortcutItem(
-      id: 'leave',
-      label: 'Leave',
-      icon: Icons.beach_access_outlined,
-      activeIcon: Icons.beach_access_rounded,
-    ),
-    NavShortcutItem(
-      id: 'profile',
-      label: 'Profile',
-      icon: Icons.person_outline_rounded,
-      activeIcon: Icons.person_rounded,
-    ),
-    NavShortcutItem(
-      id: 'tasks',
-      label: 'Tasks',
-      icon: Icons.assignment_outlined,
-      activeIcon: Icons.assignment_rounded,
-    ),
-    NavShortcutItem(
-      id: 'messenger',
-      label: 'Messenger',
-      icon: Icons.chat_bubble_outline_rounded,
-      activeIcon: Icons.chat_bubble_rounded,
-    ),
-    NavShortcutItem(
-      id: 'payroll',
-      label: 'Payroll',
-      icon: Icons.payments_outlined,
-      activeIcon: Icons.payments_rounded,
-    ),
-    NavShortcutItem(
-      id: 'reports',
-      label: 'Reports',
-      icon: Icons.bar_chart_outlined,
-      activeIcon: Icons.bar_chart_rounded,
-    ),
-    NavShortcutItem(
-      id: 'settings',
-      label: 'Settings',
-      icon: Icons.settings_outlined,
-      activeIcon: Icons.settings_rounded,
-    ),
-  ];
+  static List<NavShortcutItem> get _companyNavCatalog =>
+      RoleMenuRegistry.companyPages.map((p) => p.toNavShortcutItem()).toList();
 
   NavShortcutItem _companyShortcutForId(String id) {
     return _companyNavCatalog.firstWhere(
@@ -1748,7 +1685,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   ),
                 ),
 
-                // The 7 Operations List (Exact Match to User Image 2)
+                // The Operations List driven dynamically by RoleMenuRegistry
                 Expanded(
                   child: SingleChildScrollView(
                     physics: const ClampingScrollPhysics(),
@@ -1759,113 +1696,99 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _buildCompanyMenuItem(
-                          icon: Icons.assignment_ind_outlined,
-                          title: 'Employee Management',
-                          subtitle: '$totalStaff registered team members',
-                          onTap: () {
+                        ...RoleMenuRegistry.companyPages
+                            .where((p) => p.id != 'home' && p.id != 'profile')
+                            .map((item) {
+                          String title = item.label;
+                          String subtitle = item.subtitle ?? '';
+                          VoidCallback onTap = () {
                             Navigator.of(context).pop();
-                            _navigateToCompanyPage('employees');
-                          },
-                        ),
-                        _buildCompanyMenuItem(
-                          icon: Icons.calendar_today_outlined,
-                          title: 'Calender',
-                          subtitle: '$activeStaff logs recorded',
-                          onTap: () {
-                            Navigator.of(context).pop();
-                            _navigateToCompanyPage('calender');
-                          },
-                        ),
-                        _buildCompanyMenuItem(
-                          icon: Icons.assignment_outlined,
-                          title: 'Tasks',
-                          subtitle: '$_activeTasksCount open tasks in progress',
-                          onTap: () {
-                            Navigator.of(context).pop();
-                            final slotIdx = _bottomNavSlots.indexOf('tasks');
-                            if (slotIdx != -1) {
-                              _navigateToCompanyPage('tasks');
-                            } else {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => TasksView(
-                                    user: widget.user,
-                                    onBack: () => Navigator.of(context).pop(),
+                            _navigateToCompanyPage(item.id);
+                          };
+
+                          if (item.id == 'employees') {
+                            title = 'Employee Management';
+                            subtitle = '$totalStaff registered team members';
+                          } else if (item.id == 'calender') {
+                            title = 'Calender';
+                            subtitle = '$activeStaff logs recorded';
+                          } else if (item.id == 'tasks') {
+                            title = 'Tasks';
+                            subtitle = '$_activeTasksCount open tasks in progress';
+                            onTap = () {
+                              Navigator.of(context).pop();
+                              final slotIdx = _bottomNavSlots.indexOf('tasks');
+                              if (slotIdx != -1) {
+                                _navigateToCompanyPage('tasks');
+                              } else {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => TasksView(
+                                      user: widget.user,
+                                      onBack: () => Navigator.of(context).pop(),
+                                    ),
                                   ),
-                                ),
-                              );
-                            }
-                          },
-                        ),
-                        _buildCompanyMenuItem(
-                          icon: Icons.chat_bubble_outline_rounded,
-                          title: 'Messenger',
-                          subtitle: 'Team chat & direct messages',
-                          onTap: () {
-                            Navigator.of(context).pop();
-                            final slotIdx = _bottomNavSlots.indexOf('messenger');
-                            if (slotIdx != -1) {
-                              _navigateToCompanyPage('messenger');
-                            } else {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => MessengerView(
-                                    user: widget.user,
-                                    onBack: () => Navigator.of(context).pop(),
+                                );
+                              }
+                            };
+                          } else if (item.id == 'messenger') {
+                            title = 'Messenger';
+                            subtitle = 'Team chat & direct messages';
+                            onTap = () {
+                              Navigator.of(context).pop();
+                              final slotIdx = _bottomNavSlots.indexOf('messenger');
+                              if (slotIdx != -1) {
+                                _navigateToCompanyPage('messenger');
+                              } else {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => MessengerView(
+                                      user: widget.user,
+                                      onBack: () => Navigator.of(context).pop(),
+                                    ),
                                   ),
-                                ),
-                              );
-                            }
-                          },
-                        ),
-                        _buildCompanyMenuItem(
-                          icon: Icons.event_busy_outlined,
-                          title: 'Leaves & Holidays',
-                          subtitle: pendingLeavesCount > 0
-                              ? '$pendingLeavesCount pending • Review approvals'
-                              : 'Review leave approvals & company holidays',
-                          onTap: () {
-                            Navigator.of(context).pop();
-                            _navigateToCompanyPage('leave');
-                          },
-                        ),
-                        _buildCompanyMenuItem(
-                          icon: Icons.payments_outlined,
-                          title: 'Payroll',
-                          subtitle: 'Automated payroll processing & slips',
-                          onTap: () {
-                            Navigator.of(context).pop();
-                            if (_bottomNavSlots.contains('payroll')) {
-                              _navigateToCompanyPage('payroll');
-                            } else {
-                              _showPayrollSheet();
-                            }
-                          },
-                        ),
-                        _buildCompanyMenuItem(
-                          icon: Icons.bar_chart_rounded,
-                          title: 'Reports',
-                          subtitle: 'Workforce analytics & monthly summary',
-                          onTap: () {
-                            Navigator.of(context).pop();
-                            if (_bottomNavSlots.contains('reports')) {
-                              _navigateToCompanyPage('reports');
-                            } else {
-                              _showAttendanceReportSheet();
-                            }
-                          },
-                        ),
-                        _buildCompanyMenuItem(
-                          icon: Icons.settings_outlined,
-                          title: 'Settings',
-                          subtitle:
-                              'Company profile & working hours configuration',
-                          onTap: () {
-                            Navigator.of(context).pop();
-                            _navigateToCompanyPage('settings');
-                          },
-                        ),
+                                );
+                              }
+                            };
+                          } else if (item.id == 'leave') {
+                            title = 'Leaves & Holidays';
+                            subtitle = pendingLeavesCount > 0
+                                ? '$pendingLeavesCount pending • Review approvals'
+                                : 'Review leave approvals & company holidays';
+                          } else if (item.id == 'payroll') {
+                            title = 'Payroll';
+                            subtitle = 'Automated payroll processing & slips';
+                            onTap = () {
+                              Navigator.of(context).pop();
+                              if (_bottomNavSlots.contains('payroll')) {
+                                _navigateToCompanyPage('payroll');
+                              } else {
+                                _showPayrollSheet();
+                              }
+                            };
+                          } else if (item.id == 'reports') {
+                            title = 'Reports';
+                            subtitle = 'Workforce analytics & monthly summary';
+                            onTap = () {
+                              Navigator.of(context).pop();
+                              if (_bottomNavSlots.contains('reports')) {
+                                _navigateToCompanyPage('reports');
+                              } else {
+                                _showAttendanceReportSheet();
+                              }
+                            };
+                          } else if (item.id == 'settings') {
+                            title = 'Settings';
+                            subtitle = 'Company profile & working hours configuration';
+                          }
+
+                          return _buildCompanyMenuItem(
+                            icon: item.icon,
+                            title: title,
+                            subtitle: subtitle,
+                            onTap: onTap,
+                          );
+                        }),
                         if (widget.user.canSwitchToSuperAdmin) ...[
                           const SizedBox(height: 10),
                           Padding(

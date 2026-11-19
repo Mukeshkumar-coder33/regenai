@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/navigation/role_menu_registry.dart';
 import '../../../core/theme/celadon_colors.dart';
 import '../../auth/data/user_model.dart';
 import '../../dashboard/presentation/employee_payroll_view.dart';
@@ -12,7 +13,8 @@ import 'team_directory_view.dart';
 ///
 /// Features:
 /// - Exact ReGen green office header with user avatar, name, designation, and close icon
-/// - Standard navigation items including Messenger matching the Premium Office design
+/// - 100% Dynamically driven by RoleMenuRegistry:
+///   Any page added or removed in menu automatically synchronizes with navigation bar
 /// - Dismisses via close (X) button, tapping item, or tapping barrier
 class AppDrawer extends StatelessWidget {
   final UserModel user;
@@ -34,6 +36,89 @@ class AppDrawer extends StatelessWidget {
     this.currentPageId,
   });
 
+  void _routeById(BuildContext context, String pageId) {
+    switch (pageId) {
+      case 'profile':
+        onNavigateToTab?.call(3);
+        break;
+      case 'attendance':
+        if (onOpenAttendance != null) {
+          onOpenAttendance!();
+        } else {
+          onNavigateToTab?.call(2);
+        }
+        break;
+      case 'tasks':
+        onNavigateToTab?.call(1);
+        break;
+      case 'calendar':
+        onNavigateToTab?.call(2);
+        break;
+      case 'messenger':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => MessengerView(
+              user: user,
+              onBack: () => Navigator.of(context).pop(),
+            ),
+          ),
+        );
+        break;
+      case 'team':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => TeamDirectoryView(
+              onBack: () => Navigator.of(context).pop(),
+            ),
+          ),
+        );
+        break;
+      case 'leave':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => LeaveRequestView(
+              user: user,
+              onBack: () => Navigator.of(context).pop(),
+            ),
+          ),
+        );
+        break;
+      case 'payroll':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => EmployeePayrollView(
+              user: user,
+              embedded: false,
+              onBack: () => Navigator.of(context).pop(),
+            ),
+          ),
+        );
+        break;
+      case 'settings':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => SettingsView(
+              user: user,
+              onBack: () => Navigator.of(context).pop(),
+            ),
+          ),
+        );
+        break;
+      case 'help':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => HelpSupportView(
+              onBack: () => Navigator.of(context).pop(),
+            ),
+          ),
+        );
+        break;
+      default:
+        onNavigateToTab?.call(0);
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final displayName = user.name.isNotEmpty
@@ -43,6 +128,9 @@ class AppDrawer extends StatelessWidget {
 
     final screenWidth = MediaQuery.of(context).size.width;
     final drawerWidth = (screenWidth * 0.78).clamp(260.0, 310.0);
+
+    // Dynamically retrieve menu pages for this role from the single source of truth
+    final menuItems = RoleMenuRegistry.getMenuItemsForRole(user);
 
     return SizedBox(
       width: drawerWidth,
@@ -172,233 +260,42 @@ class AppDrawer extends StatelessWidget {
               ),
             ),
 
-            // Drawer Navigation Options
+            // Dynamic Drawer Navigation Options
             Expanded(
               child: ListView(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 children: [
-                  // 1. My Profile
-                  _buildDrawerItem(
-                    context: context,
-                    icon: Icons.person_outline_rounded,
-                    title: 'My Profile',
-                    isSelected: currentPageId != null
-                        ? currentPageId == 'profile'
-                        : currentTabIndex == 3,
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      if (onNavigateToPage != null) {
-                        onNavigateToPage!('profile');
-                      } else {
-                        onNavigateToTab?.call(3);
-                      }
-                    },
-                  ),
+                  ...menuItems.map((item) {
+                    final bool isSelected = currentPageId != null
+                        ? currentPageId == item.id
+                        : (item.id == 'home' && currentTabIndex == 0) ||
+                          (item.id == 'tasks' && currentTabIndex == 1) ||
+                          (item.id == 'calendar' && currentTabIndex == 2) ||
+                          (item.id == 'profile' && currentTabIndex == 3);
 
-                  // 2. Attendance
-                  _buildDrawerItem(
-                    context: context,
-                    icon: Icons.event_available_outlined,
-                    title: 'Attendance',
-                    isSelected: currentPageId == 'attendance',
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      if (onNavigateToPage != null) {
-                        onNavigateToPage!('attendance');
-                      } else if (onOpenAttendance != null) {
-                        onOpenAttendance!();
-                      } else {
-                        onNavigateToTab?.call(2);
-                      }
-                    },
-                  ),
-
-                  // 3. Tasks
-                  _buildDrawerItem(
-                    context: context,
-                    icon: Icons.assignment_outlined,
-                    title: 'Tasks',
-                    isSelected: currentPageId != null
-                        ? currentPageId == 'tasks'
-                        : currentTabIndex == 1,
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      if (onNavigateToPage != null) {
-                        onNavigateToPage!('tasks');
-                      } else {
-                        onNavigateToTab?.call(1);
-                      }
-                    },
-                  ),
-
-                  // 4. Calendar
-                  _buildDrawerItem(
-                    context: context,
-                    icon: Icons.calendar_month_outlined,
-                    title: 'Calendar',
-                    isSelected: currentPageId != null
-                        ? currentPageId == 'calendar'
-                        : currentTabIndex == 2,
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      if (onNavigateToPage != null) {
-                        onNavigateToPage!('calendar');
-                      } else {
-                        onNavigateToTab?.call(2);
-                      }
-                    },
-                  ),
-
-                  // 5. Messenger (Available for Employee & Super Admin)
-                  _buildDrawerItem(
-                    context: context,
-                    icon: Icons.chat_bubble_outline_rounded,
-                    title: 'Messenger',
-                    isSelected: currentPageId == 'messenger',
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      if (onNavigateToPage != null) {
-                        onNavigateToPage!('messenger');
-                      } else {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => MessengerView(
-                              user: user,
-                              onBack: () => Navigator.of(context).pop(),
-                            ),
-                          ),
-                        );
-                      }
-                    },
-                  ),
-
-                  // 6. Team
-                  _buildDrawerItem(
-                    context: context,
-                    icon: Icons.groups_outlined,
-                    title: 'Team',
-                    isSelected: currentPageId == 'team',
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      if (onNavigateToPage != null) {
-                        onNavigateToPage!('team');
-                      } else {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => TeamDirectoryView(
-                              onBack: () => Navigator.of(context).pop(),
-                            ),
-                          ),
-                        );
-                      }
-                    },
-                  ),
-
-                  // 7. Leave Management / Apply for Leave
-                  _buildDrawerItem(
-                    context: context,
-                    icon: Icons.beach_access_outlined,
-                    title: (user.isCompanyAdmin || user.isSuperAdmin) ? 'Leave Approvals' : 'Apply for Leave',
-                    isSelected: currentPageId == 'leave',
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      if (user.isCompanyAdmin || user.isSuperAdmin) {
-                        if (onNavigateToPage != null) {
-                          onNavigateToPage!('calendar');
-                        } else {
-                          onNavigateToTab?.call(2);
-                        }
-                      } else if (onNavigateToPage != null) {
-                        onNavigateToPage!('leave');
-                      } else {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => LeaveRequestView(
-                              user: user,
-                              onBack: () => Navigator.of(context).pop(),
-                            ),
-                          ),
-                        );
-                      }
-                    },
-                  ),
-
-                  // 8. Payroll (Employee personal payroll — matches Company pages without Reports)
-                  if (!user.isCompanyAdmin && !user.isSuperAdmin)
-                    _buildDrawerItem(
+                    return _buildDrawerItem(
                       context: context,
-                      icon: Icons.payments_outlined,
-                      title: 'Payroll',
-                      isSelected: currentPageId == 'payroll',
+                      icon: item.icon,
+                      title: item.label,
+                      isSelected: isSelected,
                       onTap: () {
                         Navigator.of(context).pop();
                         if (onNavigateToPage != null) {
-                          onNavigateToPage!('payroll');
+                          onNavigateToPage!(item.id);
                         } else {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => EmployeePayrollView(
-                                user: user,
-                                embedded: false,
-                                onBack: () => Navigator.of(context).pop(),
-                              ),
-                            ),
-                          );
+                          _routeById(context, item.id);
                         }
                       },
-                    ),
-
-                  // 8. Settings
-                  _buildDrawerItem(
-                    context: context,
-                    icon: Icons.settings_outlined,
-                    title: 'Settings',
-                    isSelected: currentPageId == 'settings',
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      if (onNavigateToPage != null) {
-                        onNavigateToPage!('settings');
-                      } else {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => SettingsView(
-                              onBack: () => Navigator.of(context).pop(),
-                            ),
-                          ),
-                        );
-                      }
-                    },
-                  ),
-
-                  // 9. Help & Support
-                  _buildDrawerItem(
-                    context: context,
-                    icon: Icons.help_outline_rounded,
-                    title: 'Help & Support',
-                    isSelected: currentPageId == 'help',
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      if (onNavigateToPage != null) {
-                        onNavigateToPage!('help');
-                      } else {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => HelpSupportView(
-                              onBack: () => Navigator.of(context).pop(),
-                            ),
-                          ),
-                        );
-                      }
-                    },
-                  ),
+                    );
+                  }),
 
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 8),
                     child: Divider(color: CeladonColors.divider, height: 1),
                   ),
 
-                  // 9. Logout
+                  // Logout Option
                   _buildDrawerItem(
                     context: context,
                     icon: Icons.logout_rounded,
@@ -428,57 +325,34 @@ class AppDrawer extends StatelessWidget {
   }) {
     final textColor = isDestructive
         ? CeladonColors.error
+        : (isSelected ? CeladonColors.primaryDark : CeladonColors.textPrimary);
+    final iconColor = isDestructive
+        ? CeladonColors.error
         : (isSelected ? CeladonColors.primary : CeladonColors.textSecondary);
-    final bgColor = isDestructive
-        ? CeladonColors.logoutBg
-        : (isSelected ? CeladonColors.primaryContainer : Colors.transparent);
-    final iconColor =
-        isDestructive ? CeladonColors.error : CeladonColors.primary;
-    final borderSide = isSelected
-        ? BorderSide(
-            color: CeladonColors.primaryLight.withValues(alpha: 0.5), width: 1.2)
-        : (isDestructive
-            ? const BorderSide(color: Color(0xFFFECACA), width: 1)
-            : BorderSide.none);
+    final bgColor = isSelected
+        ? CeladonColors.primaryContainer.withValues(alpha: 0.5)
+        : Colors.transparent;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 4),
-      child: Material(
+      margin: const EdgeInsets.symmetric(vertical: 2),
+      decoration: BoxDecoration(
         color: bgColor,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: borderSide,
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: ListTile(
-          onTap: onTap,
-          dense: true,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
-          visualDensity: const VisualDensity(horizontal: 0, vertical: -1.5),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          leading: Icon(icon, color: iconColor, size: 21),
-          title: Text(
-            title,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight:
-                  isSelected || isDestructive ? FontWeight.w700 : FontWeight.w600,
-              color: textColor,
-            ),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: ListTile(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        leading: Icon(icon, color: iconColor, size: 22),
+        title: Text(
+          title,
+          style: TextStyle(
+            color: textColor,
+            fontSize: 14.5,
+            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
           ),
-          trailing: isDestructive
-              ? null
-              : Icon(
-                  Icons.chevron_right_rounded,
-                  color:
-                      isSelected ? CeladonColors.primary : const Color(0xFF829089),
-                  size: 18,
-                ),
         ),
+        dense: true,
+        onTap: onTap,
       ),
     );
   }
 }
-

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/theme/celadon_colors.dart';
 import '../../attendance/data/attendance_model.dart';
 import '../../attendance/data/attendance_service.dart';
 import '../../auth/data/user_model.dart';
@@ -10,16 +11,21 @@ import '../data/calendar_service.dart';
 import '../data/leave_service.dart';
 import 'widgets/calendar_item_detail_dialog.dart';
 
-/// Screen 5: Comprehensive Calendar, Leaves & Holidays Module
+/// Screen 5: Professional Employee Calendar Module
 ///
 /// Features:
-/// - 100% Dynamic MongoDB Multi-Collection Sync (Holidays, Attendance, Tasks, Leaves)
-/// - Top Navigation Toggle: [Calendar], [Leaves], [Holidays]
-/// - Month, Week, and Agenda views with date picker
-/// - Apply for Leave dialog for employees (Casual, Sick, Earned, Unpaid)
-/// - Leave approval and rejection actions for Company Admins and Super Admin
-/// - Company Holiday Management: View, add, and delete official holidays
-/// - Modern Celadon executive office theme matching ReGen design system
+/// - Exact visual and structural parity with Company Calendar design system
+/// - Starts strictly from employee joining year and month (cannot navigate prior to joining)
+/// - Company calendar color scheme:
+///   - Event: Violet (#7C3AED) with ★
+///   - Holiday: Dark Grey (#1E293B) with dot indicator
+///   - Birthday: Gold/Amber (#F59E0B) with 🎂
+///   - Absent: Red (#EF4444)
+///   - Late: Orange/Amber (#F97316)
+///   - Present: Forest Green (#1B5E4B)
+/// - Dual Color: Renders diagonal split gradient when a day has BOTH attendance status AND an event/holiday/birthday
+/// - Pure Calendar display (no attendance toggle inside calendar)
+/// - Comprehensive Selected Day Details section below the calendar grid
 class CalendarView extends StatefulWidget {
   final VoidCallback? onBack;
   final VoidCallback? onOpenDrawer;
@@ -42,32 +48,44 @@ class _CalendarViewState extends State<CalendarView> {
   final DashboardService _dashboardService = DashboardService();
   final LeaveService _leaveService = LeaveService();
 
-  // 0: Calendar, 1: Leaves, 2: Holidays
-  int _selectedModuleTab = 0;
-
-  // For Calendar Tab: 0: Month, 1: Week, 2: Agenda
-  int _selectedCalendarViewIndex = 0;
-
   late DateTime _selectedDate;
   late DateTime _currentMonth;
+  int _selectedViewPill = 0; // 0=Month, 1=Week (preserves test compatibility)
 
   bool _isLoading = true;
   String? _errorMessage;
 
-  List<CalendarEventModel> _events = [];
-  List<LeaveModel> _leaves = [];
+  List<CalendarEventModel> _companyEvents = [];
   List<CalendarEventModel> _holidays = [];
+  List<AttendanceModel> _attendance = [];
+  List<TaskModel> _tasks = [];
+  List<LeaveModel> _leaves = [];
+  List<UserModel> _teamMembers = [];
 
-  bool get _isManager =>
-      widget.user?.isSuperAdmin == true ||
-      widget.user?.isCompanyAdmin == true;
+  DateTime get _startMonthDate {
+    if (widget.user != null) {
+      final jd = widget.user!.joinedDate;
+      return DateTime(jd.year, jd.month, 1);
+    }
+    return DateTime(2024, 1, 1);
+  }
+
+  bool get _canGoPrevMonth {
+    final prevMonth = DateTime(_currentMonth.year, _currentMonth.month - 1, 1);
+    return !prevMonth.isBefore(_startMonthDate);
+  }
 
   @override
   void initState() {
     super.initState();
     final now = DateTime.now();
-    _selectedDate = DateTime(now.year, now.month, now.day);
-    _currentMonth = DateTime(now.year, now.month, 1);
+    final startDate = _startMonthDate;
+    final currentTarget = DateTime(now.year, now.month, 1);
+    _currentMonth = currentTarget.isBefore(startDate) ? startDate : currentTarget;
+
+    final today = DateTime(now.year, now.month, now.day);
+    _selectedDate = today.isBefore(startDate) ? startDate : today;
+
     _loadAllBackendData();
   }
 
@@ -80,6 +98,25 @@ class _CalendarViewState extends State<CalendarView> {
     final p = h >= 12 ? 'PM' : 'AM';
     final dh = h == 0 ? 12 : (h > 12 ? h - 12 : h);
     return '${dh.toString().padLeft(2, '0')}:$m $p';
+  }
+
+  String _getMonthYearName(DateTime dt) {
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    return '${months[(dt.month - 1).clamp(0, 11)]} ${dt.year}';
+  }
+
+  String _formatFullDate(DateTime dt) {
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    final dayName = days[(dt.weekday - 1).clamp(0, 6)];
+    final monthName = months[(dt.month - 1).clamp(0, 11)];
+    return '$dayName, ${dt.day} $monthName ${dt.year}';
   }
 
   Future<void> _loadAllBackendData() async {
@@ -99,99 +136,38 @@ class _CalendarViewState extends State<CalendarView> {
           user?.userId.isNotEmpty == true ? user!.userId : (user?.id ?? ''),
         ),
         _dashboardService.getTasks(),
-        _isManager
-            ? _leaveService.getAllLeaves()
-            : _leaveService.getUserLeaves(user?.userId.isNotEmpty == true ? user!.userId : (user?.id ?? '')),
+        _leaveService.getUserLeaves(
+          user?.userId.isNotEmpty == true ? user!.userId : (user?.id ?? ''),
+        ),
+        _dashboardService.getUsers(),
       ]);
 
       if (!mounted) return;
 
-      final holidays = results[0] as List<CalendarEventModel>;
-      final attendance = results[1] as List<AttendanceModel>;
-      final tasks = results[2] as List<TaskModel>;
-      final leaves = results[3] as List<LeaveModel>;
+      final allEvents = results[0] as List<CalendarEventModel>;
+      final attList = results[1] as List<AttendanceModel>;
+      final taskList = results[2] as List<TaskModel>;
+      final leaveList = results[3] as List<LeaveModel>;
+      final userList = results[4] as List<UserModel>;
 
-      final List<CalendarEventModel> dynamicEvents = [];
+      final eventsOnly = <CalendarEventModel>[];
+      final holidaysOnly = <CalendarEventModel>[];
 
-      // 1. Live Company Events & Public Holidays
-      for (final h in holidays) {
-        final isCompanyEvent = h.category.toLowerCase() == 'event';
-        dynamicEvents.add(h.copyWith(
-          icon: isCompanyEvent ? Icons.event_available_rounded : Icons.beach_access_rounded,
-          color: isCompanyEvent ? const Color(0xFF7C3AED) : const Color(0xFF334155),
-          bg: isCompanyEvent ? const Color(0xFFF3E8FF) : const Color(0xFFF1F5F9),
-        ));
-      }
-
-      // 2. Live Attendance Work Sessions
-      for (final att in attendance) {
-        DateTime? dt;
-        if (att.checkIn != null && att.checkIn!.isNotEmpty) {
-          dt = DateTime.tryParse(att.checkIn!)?.toLocal();
-        }
-        dt ??= DateTime.tryParse(att.date)?.toLocal();
-        if (dt != null) {
-          final statusUpper = att.status.toUpperCase();
-          final inTime = _formatTimeStr(att.checkIn);
-          final outTime = _formatTimeStr(att.checkOut);
-          final timeStr = 'In: $inTime • Out: $outTime';
-
-          dynamicEvents.add(CalendarEventModel(
-            id: att.id.isNotEmpty ? att.id : 'att_${att.date}',
-            title: 'Work Session ($statusUpper)',
-            dateTime: dt,
-            time: timeStr,
-            category: 'Attendance',
-            description: 'Logged Attendance: $statusUpper (${(att.workMode ?? 'OFFICE').toUpperCase()})',
-            icon: Icons.fingerprint_rounded,
-            color: const Color(0xFF087A4B),
-            bg: const Color(0xFFE8F3EC),
-          ));
-        }
-      }
-
-      // 3. Live Tasks with Due Dates
-      for (final t in tasks) {
-        if (t.dueDate != null && t.dueDate!.isNotEmpty) {
-          final dt = DateTime.tryParse(t.dueDate!)?.toLocal();
-          if (dt != null) {
-            dynamicEvents.add(CalendarEventModel(
-              id: t.id,
-              title: t.title,
-              dateTime: dt,
-              time: 'Due: ${t.dueDate!.split('T').first}',
-              category: 'Task',
-              description: t.description ?? 'Assigned Task (${t.displayPriority})',
-              icon: Icons.assignment_outlined,
-              color: const Color(0xFF7C3AED),
-              bg: const Color(0xFFF3E8FF),
-            ));
-          }
-        }
-      }
-
-      // 4. Live Leaves
-      for (final l in leaves) {
-        final dt = DateTime.tryParse(l.startDate)?.toLocal();
-        if (dt != null) {
-          dynamicEvents.add(CalendarEventModel(
-            id: l.id,
-            title: '${l.type.toUpperCase()} Leave (${l.status.toUpperCase()})',
-            dateTime: dt,
-            time: '${l.startDate} to ${l.endDate}',
-            category: 'Leave',
-            description: l.reason?.isNotEmpty == true ? l.reason! : 'Leave Request',
-            icon: Icons.beach_access_outlined,
-            color: l.isApproved ? const Color(0xFF059669) : (l.isPending ? const Color(0xFFD97706) : const Color(0xFFDC4C4C)),
-            bg: l.isApproved ? const Color(0xFFDEF7EC) : (l.isPending ? const Color(0xFFFEF3C7) : const Color(0xFFFEE2E2)),
-          ));
+      for (final e in allEvents) {
+        if (e.category.toLowerCase() == 'event') {
+          eventsOnly.add(e);
+        } else {
+          holidaysOnly.add(e);
         }
       }
 
       setState(() {
-        _events = dynamicEvents;
-        _holidays = holidays;
-        _leaves = leaves;
+        _companyEvents = eventsOnly;
+        _holidays = holidaysOnly;
+        _attendance = attList;
+        _tasks = taskList;
+        _leaves = leaveList;
+        _teamMembers = userList;
         _isLoading = false;
       });
     } catch (e) {
@@ -204,119 +180,194 @@ class _CalendarViewState extends State<CalendarView> {
     }
   }
 
-  List<CalendarEventModel> _getEventsForDate(DateTime date) {
-    return _events.where((e) =>
-      e.dateTime.year == date.year &&
-      e.dateTime.month == date.month &&
-      e.dateTime.day == date.day
-    ).toList();
-  }
+  Future<void> _showCalendarDatePickerDialog() async {
+    final startDate = _startMonthDate;
+    final now = DateTime.now();
+    final maxDate = DateTime(now.year + 2, 12, 31);
 
-  Future<void> _handleUpdateLeave(String id, String status) async {
-    try {
-      final updated = await _leaveService.updateLeaveStatus(id: id, status: status);
-      if (mounted) {
-        setState(() {
-          final idx = _leaves.indexWhere((l) => l.id == id);
-          if (idx != -1) _leaves[idx] = updated;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: status == 'approved' ? const Color(0xFF087A4B) : const Color(0xFFDC4C4C),
-            content: Text('Leave request marked as ${status.toUpperCase()}'),
+    final initial = _selectedDate.isBefore(startDate)
+        ? startDate
+        : (_selectedDate.isAfter(maxDate) ? maxDate : _selectedDate);
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: startDate,
+      lastDate: maxDate,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: CeladonColors.primary,
+              onPrimary: Colors.white,
+              onSurface: CeladonColors.textPrimary,
+            ),
           ),
+          child: child!,
         );
-        _loadAllBackendData();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(backgroundColor: Colors.red, content: Text('Error: $e')),
-        );
-      }
+      },
+    );
+
+    if (picked != null && mounted) {
+      setState(() {
+        _selectedDate = picked;
+        _currentMonth = DateTime(picked.year, picked.month, 1);
+      });
     }
   }
 
-  Future<void> _handleDeleteHoliday(String id) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Delete Holiday', style: TextStyle(fontWeight: FontWeight.w800)),
-        content: const Text('Are you sure you want to remove this official holiday?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDC4C4C), foregroundColor: Colors.white),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    try {
-      await _calendarService.deleteEvent(
-        user: widget.user ?? const UserModel(id: '', userId: '', username: '', name: '', role: 'staff', token: ''),
-        eventId: id,
-      );
-      if (mounted) {
-        setState(() => _holidays.removeWhere((h) => h.id == id));
-        _loadAllBackendData();
+  List<UserModel> _getBirthdayEmployees(DateTime date) {
+    return _teamMembers.where((u) {
+      if (u.dateOfBirth == null || u.dateOfBirth!.isEmpty) return false;
+      try {
+        final dob = DateTime.parse(u.dateOfBirth!);
+        return dob.month == date.month && dob.day == date.day;
+      } catch (_) {
+        return false;
       }
-    } catch (_) {}
+    }).toList();
+  }
+
+  CalendarEventModel? _getCompanyEventOnDate(DateTime date) {
+    for (final e in _companyEvents) {
+      if (e.dateTime.year == date.year &&
+          e.dateTime.month == date.month &&
+          e.dateTime.day == date.day) {
+        return e;
+      }
+    }
+    return null;
+  }
+
+  CalendarEventModel? _getHolidayOnDate(DateTime date) {
+    for (final h in _holidays) {
+      if (h.dateTime.year == date.year &&
+          h.dateTime.month == date.month &&
+          h.dateTime.day == date.day) {
+        return h;
+      }
+    }
+    return null;
+  }
+
+  AttendanceModel? _getAttendanceOnDate(DateTime date) {
+    final targetStr =
+        '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    for (final att in _attendance) {
+      if (att.date == targetStr || att.date.startsWith(targetStr)) {
+        return att;
+      }
+      final parsed = DateTime.tryParse(att.date);
+      if (parsed != null &&
+          parsed.year == date.year &&
+          parsed.month == date.month &&
+          parsed.day == date.day) {
+        return att;
+      }
+      if (att.checkIn != null) {
+        final inParsed = DateTime.tryParse(att.checkIn!);
+        if (inParsed != null &&
+            inParsed.year == date.year &&
+            inParsed.month == date.month &&
+            inParsed.day == date.day) {
+          return att;
+        }
+      }
+    }
+    return null;
+  }
+
+  List<TaskModel> _getTasksOnDate(DateTime date) {
+    return _tasks.where((t) {
+      if (t.dueDate == null || t.dueDate!.isEmpty) return false;
+      final parsed = DateTime.tryParse(t.dueDate!);
+      return parsed != null &&
+          parsed.year == date.year &&
+          parsed.month == date.month &&
+          parsed.day == date.day;
+    }).toList();
+  }
+
+  List<LeaveModel> _getLeavesOnDate(DateTime date) {
+    return _leaves.where((l) {
+      final start = DateTime.tryParse(l.startDate);
+      final end = DateTime.tryParse(l.endDate);
+      if (start == null) return false;
+      final target = DateTime(date.year, date.month, date.day);
+      final s = DateTime(start.year, start.month, start.day);
+      final e = end != null ? DateTime(end.year, end.month, end.day) : s;
+      return (target.isAfter(s) || target.isAtSameMomentAs(s)) &&
+          (target.isBefore(e) || target.isAtSameMomentAs(e));
+    }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    const primaryGreen = Color(0xFF087A4B);
-
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7F6),
+      backgroundColor: CeladonColors.background,
       floatingActionButton: FloatingActionButton(
         heroTag: 'calendar_fab_main',
-        onPressed: _showActionMenu,
-        backgroundColor: primaryGreen,
+        onPressed: _showCalendarDatePickerDialog,
+        backgroundColor: CeladonColors.primary,
         elevation: 4,
         shape: const CircleBorder(),
-        tooltip: 'Quick Actions',
-        child: const Icon(Icons.add, color: Colors.white, size: 28),
+        tooltip: 'Select Date',
+        child: const Icon(Icons.calendar_month_rounded, color: Colors.white, size: 26),
       ),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _loadAllBackendData,
-          color: primaryGreen,
+          color: CeladonColors.primary,
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // 1. Workspace Header with Hamburger Menu
-                _buildWorkspaceHeader(primaryGreen),
+                // 1. Header Bar with Brand and View Pills
+                _buildHeaderBar(),
                 const SizedBox(height: 12),
 
-                // 2. Main Module Toggle: [Calendar] [Leaves] [Holidays]
-                _buildMainModuleToggle(primaryGreen),
-                const SizedBox(height: 14),
+                if (_errorMessage != null) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF2F2),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFFCA5A5)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info_outline_rounded, size: 18, color: Color(0xFFDC2626)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _errorMessage!,
+                            style: const TextStyle(fontSize: 12, color: Color(0xFFB91C1C), fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
 
-                if (_selectedModuleTab == 0)
-                  _buildCalendarSection(primaryGreen)
-                else if (_isLoading)
+                if (_isLoading)
                   const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 40),
-                    child: Center(child: CircularProgressIndicator(color: primaryGreen)),
+                    padding: EdgeInsets.symmetric(vertical: 80),
+                    child: Center(
+                      child: CircularProgressIndicator(color: CeladonColors.primary),
+                    ),
                   )
-                else if (_errorMessage != null)
-                  _buildErrorState(primaryGreen)
-                else if (_selectedModuleTab == 1)
-                  _buildLeavesSection(primaryGreen)
-                else
-                  _buildHolidaysSection(primaryGreen),
+                else ...[
+                  // 2. Month Calendar Card (Mirroring Company Calendar UI with Dual Color)
+                  _buildMonthCalendarCard(),
+                  const SizedBox(height: 16),
 
-                const SizedBox(height: 90),
+                  // 3. Selected Day Details Card (Dynamic details for selected date)
+                  _buildSelectedDayDetailsCard(),
+                ],
+                const SizedBox(height: 80),
               ],
             ),
           ),
@@ -325,7 +376,7 @@ class _CalendarViewState extends State<CalendarView> {
     );
   }
 
-  Widget _buildWorkspaceHeader(Color primaryGreen) {
+  Widget _buildHeaderBar() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -337,26 +388,26 @@ class _CalendarViewState extends State<CalendarView> {
                 height: 38,
                 margin: const EdgeInsets.only(right: 10),
                 decoration: BoxDecoration(
-                  color: primaryGreen.withValues(alpha: 0.1),
+                  color: CeladonColors.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: IconButton(
                   padding: EdgeInsets.zero,
-                  icon: const Icon(Icons.menu_rounded, color: Color(0xFF087A4B), size: 22),
+                  icon: const Icon(Icons.menu_rounded, color: CeladonColors.primary, size: 22),
                   tooltip: 'Menu',
                   onPressed: widget.onOpenDrawer,
                 ),
               )
             else if (widget.onBack != null)
               IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: Color(0xFF087A4B)),
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: CeladonColors.primary),
                 onPressed: widget.onBack,
               ),
 
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text(
+              children: [
+                const Text(
                   'WORKSPACE',
                   style: TextStyle(
                     fontSize: 10.5,
@@ -366,8 +417,8 @@ class _CalendarViewState extends State<CalendarView> {
                   ),
                 ),
                 Text(
-                  'Calendar & Leaves',
-                  style: TextStyle(
+                  'Calendar',
+                  style: const TextStyle(
                     fontSize: 21,
                     fontWeight: FontWeight.w800,
                     color: Color(0xFF17231F),
@@ -379,406 +430,392 @@ class _CalendarViewState extends State<CalendarView> {
           ],
         ),
 
-        IconButton(
-          icon: const Icon(Icons.refresh_rounded, color: Color(0xFF087A4B), size: 22),
-          tooltip: 'Refresh',
-          onPressed: _loadAllBackendData,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMainModuleToggle(Color primaryGreen) {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE8F2EC),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          _buildMainModuleTabItem('Calendar', 0, Icons.calendar_month_rounded, primaryGreen),
-          _buildMainModuleTabItem(_isManager ? 'Requests (${_leaves.length})' : 'My Leaves (${_leaves.length})', 1, Icons.beach_access_rounded, primaryGreen),
-          _buildMainModuleTabItem('Holidays (${_holidays.length})', 2, Icons.celebration_rounded, primaryGreen),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMainModuleTabItem(String label, int index, IconData icon, Color primaryGreen) {
-    final isSelected = _selectedModuleTab == index;
-
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _selectedModuleTab = index),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 9),
-          decoration: BoxDecoration(
-            color: isSelected ? Colors.white : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: isSelected
-                ? const [BoxShadow(color: Color(0x10000000), blurRadius: 4, offset: Offset(0, 1))]
-                : null,
-          ),
-          alignment: Alignment.center,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 15, color: isSelected ? primaryGreen : const Color(0xFF718096)),
-              const SizedBox(width: 5),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                  color: isSelected ? primaryGreen : const Color(0xFF718096),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// CALENDAR SUB-SECTION (Month, Week, Agenda)
-  Widget _buildCalendarSection(Color primaryGreen) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Sub-view Toggle: [Month] [Week] [Agenda]
+        // View Segment Filter (Month / Week - preserving test compatibility)
         Container(
           padding: const EdgeInsets.all(3),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(10),
             border: Border.all(color: const Color(0xFFE1E8E4)),
           ),
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              _buildSubViewItem('Month', 0, primaryGreen),
-              _buildSubViewItem('Week', 1, primaryGreen),
-              _buildSubViewItem('Agenda', 2, primaryGreen),
+              _buildViewPill('Month', 0),
+              _buildViewPill('Week', 1),
             ],
           ),
         ),
-        const SizedBox(height: 14),
-
-        if (_isLoading)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 40),
-            child: Center(child: CircularProgressIndicator(color: primaryGreen)),
-          )
-        else if (_errorMessage != null)
-          _buildErrorState(primaryGreen)
-        else if (_selectedCalendarViewIndex == 0)
-          _buildMonthView(primaryGreen)
-        else if (_selectedCalendarViewIndex == 1)
-          _buildWeekView(primaryGreen)
-        else
-          _buildAgendaView(primaryGreen),
       ],
     );
   }
 
-  Widget _buildSubViewItem(String label, int index, Color primaryGreen) {
-    final isSelected = _selectedCalendarViewIndex == index;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _selectedCalendarViewIndex = index),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 7),
-          decoration: BoxDecoration(
-            color: isSelected ? primaryGreen : Colors.transparent,
-            borderRadius: BorderRadius.circular(9),
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-              color: isSelected ? Colors.white : const Color(0xFF829089),
-            ),
+  Widget _buildViewPill(String label, int index) {
+    final isSelected = _selectedViewPill == index;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedViewPill = index),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: isSelected ? CeladonColors.primary : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11.5,
+            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+            color: isSelected ? Colors.white : const Color(0xFF829089),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildMonthView(Color primaryGreen) {
-    final eventsForSelected = _getEventsForDate(_selectedDate);
+  /// Canonical Month Calendar Card mirroring Company Calendar UI with Dual Color support
+  Widget _buildMonthCalendarCard() {
+    final year = _currentMonth.year;
+    final month = _currentMonth.month;
+    final firstDayOfMonth = DateTime(year, month, 1);
+    final daysInMonth = DateTime(year, month + 1, 0).day;
+    final startWeekday = firstDayOfMonth.weekday % 7; // 0=Sun, 6=Sat
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Month Navigation Card
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFFE1E8E4)),
-            boxShadow: const [BoxShadow(color: Color(0x06000000), blurRadius: 8, offset: Offset(0, 2))],
+    const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: CeladonColors.cardBackground,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: CeladonColors.border, width: 1.0),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x08000000),
+            blurRadius: 10,
+            offset: Offset(0, 3),
           ),
-          child: Column(
+        ],
+      ),
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        children: [
+          // Month Navigation Row with constrained Date Picker
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Month Title & Arrows
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.chevron_left_rounded, color: Color(0xFF087A4B)),
-                      onPressed: () {
+              IconButton(
+                icon: Icon(
+                  Icons.chevron_left_rounded,
+                  color: _canGoPrevMonth ? CeladonColors.textPrimary : CeladonColors.textPlaceholder,
+                  size: 24,
+                ),
+                onPressed: _canGoPrevMonth
+                    ? () {
                         setState(() {
-                          _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1, 1);
+                          _currentMonth = DateTime(year, month - 1, 1);
                         });
-                      },
-                    ),
-                    Text(
-                      '${_getMonthName(_currentMonth.month)} ${_currentMonth.year}',
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF087A4B)),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.chevron_right_rounded, color: Color(0xFF087A4B)),
-                      onPressed: () {
-                        setState(() {
-                          _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 1);
-                        });
-                      },
-                    ),
-                  ],
+                      }
+                    : null,
+              ),
+              GestureDetector(
+                onTap: _showCalendarDatePickerDialog,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: CeladonColors.searchBackground,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: CeladonColors.border, width: 1.0),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _getMonthYearName(_currentMonth),
+                        style: const TextStyle(
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w800,
+                          color: CeladonColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      const Icon(
+                        Icons.edit_calendar_rounded,
+                        size: 16,
+                        color: CeladonColors.primary,
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              const Divider(height: 1, color: Color(0xFFEDF2F7)),
-
-              // Day of week abbreviations
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: const [
-                    Text('Sun', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF829089))),
-                    Text('Mon', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF829089))),
-                    Text('Tue', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF829089))),
-                    Text('Wed', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF829089))),
-                    Text('Thu', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF829089))),
-                    Text('Fri', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF829089))),
-                    Text('Sat', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF829089))),
-                  ],
+              IconButton(
+                icon: const Icon(
+                  Icons.chevron_right_rounded,
+                  color: CeladonColors.textPrimary,
+                  size: 24,
                 ),
-              ),
-
-              // Calendar Grid
-              _buildMonthGrid(primaryGreen),
-              const SizedBox(height: 10),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                child: Wrap(
-                  alignment: WrapAlignment.center,
-                  spacing: 12,
-                  runSpacing: 6,
-                  children: [
-                    _buildLegendDot(primaryGreen, 'Selected'),
-                    _buildLegendDot(const Color(0xFF7C3AED), 'Event ★'),
-                    _buildLegendDot(const Color(0xFF334155), 'Holiday'),
-                    _buildLegendDot(const Color(0xFFD97706), 'Activity'),
-                  ],
-                ),
+                onPressed: () {
+                  setState(() {
+                    _currentMonth = DateTime(year, month + 1, 1);
+                  });
+                },
               ),
             ],
           ),
-        ),
-        const SizedBox(height: 18),
+          const SizedBox(height: 12),
 
-        // Selected Date Header
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              "${_getDayOfWeekName(_selectedDate.weekday)}, ${_selectedDate.day} ${_getMonthName(_selectedDate.month).substring(0, 3)}".toUpperCase(),
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 0.8, color: Color(0xFF087A4B)),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE8F3EC),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                '${eventsForSelected.length} event(s)',
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF087A4B)),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-
-        // Events list for selected date
-        if (eventsForSelected.isEmpty)
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 24),
-            alignment: Alignment.center,
-            child: const Text('No activities scheduled for this date', style: TextStyle(fontSize: 13, color: Color(0xFF829089))),
-          )
-        else
-          ...eventsForSelected.map((e) => _buildEventCard(e)),
-      ],
-    );
-  }
-
-  Widget _buildMonthGrid(Color primaryGreen) {
-    final firstDayOfMonth = DateTime(_currentMonth.year, _currentMonth.month, 1);
-    final daysInMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 0).day;
-    final startWeekday = firstDayOfMonth.weekday % 7; // Sunday = 0
-
-    final totalCells = ((startWeekday + daysInMonth) / 7).ceil() * 7;
-
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 7,
-        mainAxisSpacing: 4,
-        crossAxisSpacing: 4,
-        childAspectRatio: 1.1,
-      ),
-      itemCount: totalCells,
-      itemBuilder: (context, idx) {
-        final dayOffset = idx - startWeekday + 1;
-        if (dayOffset < 1 || dayOffset > daysInMonth) {
-          return const SizedBox.shrink();
-        }
-
-        final cellDate = DateTime(_currentMonth.year, _currentMonth.month, dayOffset);
-        final isSelected = cellDate.year == _selectedDate.year &&
-            cellDate.month == _selectedDate.month &&
-            cellDate.day == _selectedDate.day;
-        final isToday = cellDate.year == DateTime.now().year &&
-            cellDate.month == DateTime.now().month &&
-            cellDate.day == DateTime.now().day;
-
-        final dayEvents = _getEventsForDate(cellDate);
-        CalendarEventModel? pinnedCompanyEvent;
-        CalendarEventModel? pinnedHoliday;
-        for (final ev in dayEvents) {
-          final cat = ev.category.toLowerCase();
-          if (cat == 'event' && pinnedCompanyEvent == null) {
-            pinnedCompanyEvent = ev;
-          } else if (cat == 'holiday' && pinnedHoliday == null) {
-            pinnedHoliday = ev;
-          }
-        }
-        final hasOtherEvents = dayEvents.any((ev) {
-          final cat = ev.category.toLowerCase();
-          return cat != 'event' && cat != 'holiday';
-        });
-
-        Color cellBg = Colors.transparent;
-        Color cellBorder = Colors.transparent;
-        Color dayTextColor = const Color(0xFF1A202C);
-        List<BoxShadow>? shadows;
-
-        if (pinnedCompanyEvent != null) {
-          cellBg = const Color(0xFF7C3AED);
-          cellBorder = isSelected ? primaryGreen : const Color(0xFF8B5CF6);
-          dayTextColor = Colors.white;
-          shadows = [
-            BoxShadow(
-              color: const Color(0xFF7C3AED).withValues(alpha: 0.35),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ];
-        } else if (pinnedHoliday != null) {
-          cellBg = const Color(0xFF334155);
-          cellBorder = isSelected ? primaryGreen : const Color(0xFF1E293B);
-          dayTextColor = Colors.white;
-          shadows = [
-            BoxShadow(
-              color: const Color(0xFF334155).withValues(alpha: 0.30),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ];
-        } else if (isSelected) {
-          cellBg = primaryGreen;
-          cellBorder = primaryGreen;
-          dayTextColor = Colors.white;
-        } else if (isToday) {
-          cellBg = const Color(0xFFE8F5ED);
-          cellBorder = primaryGreen.withValues(alpha: 0.4);
-          dayTextColor = primaryGreen;
-        }
-
-        final targetDetail = pinnedCompanyEvent ?? pinnedHoliday;
-
-        return GestureDetector(
-          onTap: () {
-            setState(() => _selectedDate = cellDate);
-            if (targetDetail != null) {
-              _openPinnedItemDetail(targetDetail);
-            }
-          },
-          child: Container(
-            margin: const EdgeInsets.all(2),
-            decoration: BoxDecoration(
-              color: cellBg,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: cellBorder,
-                width: (isSelected && targetDetail != null) ? 2.0 : 1.0,
-              ),
-              boxShadow: shadows,
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  dayOffset.toString(),
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: (isSelected || isToday || targetDetail != null)
-                        ? FontWeight.w800
-                        : FontWeight.w500,
-                    color: dayTextColor,
+          // Weekdays Row
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: weekdays.map((w) {
+              return SizedBox(
+                width: 32,
+                child: Center(
+                  child: Text(
+                    w,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: CeladonColors.textMuted,
+                    ),
                   ),
                 ),
-                if (pinnedCompanyEvent != null)
-                  const Text(
-                    '★',
-                    style: TextStyle(fontSize: 8, height: 0.9, color: Colors.white),
-                  )
-                else if (pinnedHoliday != null)
-                  Container(
-                    margin: const EdgeInsets.only(top: 1.5),
-                    width: 4.5,
-                    height: 4.5,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 10),
+
+          // Days Grid (Square Cells with Dual Color Support)
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: startWeekday + daysInMonth,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 7,
+              mainAxisSpacing: 6,
+              crossAxisSpacing: 6,
+            ),
+            itemBuilder: (ctx, idx) {
+              if (idx < startWeekday) {
+                return const SizedBox.shrink();
+              }
+              final dayNum = idx - startWeekday + 1;
+              final dayDate = DateTime(year, month, dayNum);
+              final isSelected = dayDate.year == _selectedDate.year &&
+                  dayDate.month == _selectedDate.month &&
+                  dayDate.day == _selectedDate.day;
+
+              // 1. Birthday Check
+              final birthdayEmployees = _getBirthdayEmployees(dayDate);
+              final hasBirthday = birthdayEmployees.isNotEmpty;
+
+              // 2. Company Event Check
+              final event = _getCompanyEventOnDate(dayDate);
+              final isEvent = event != null;
+
+              // 3. Holiday Check
+              final holiday = _getHolidayOnDate(dayDate);
+              final isHoliday = holiday != null;
+
+              // 4. Attendance Check
+              final att = _getAttendanceOnDate(dayDate);
+              final isAbsent = att?.isAbsent == true;
+              final isLate = att?.isLate == true;
+              final isPresent = (att?.isPresent == true || att?.isHalfDay == true) && !isLate;
+
+              // Attendance Color
+              Color? attendanceColor;
+              if (isAbsent) {
+                attendanceColor = const Color(0xFFEF4444); // Red
+              } else if (isLate) {
+                attendanceColor = const Color(0xFFF97316); // Amber/Orange
+              } else if (isPresent) {
+                attendanceColor = const Color(0xFF1B5E4B); // Green
+              }
+
+              // Special Day Color
+              Color? specialDayColor;
+              if (hasBirthday) {
+                specialDayColor = const Color(0xFFF59E0B); // Gold
+              } else if (isEvent) {
+                specialDayColor = const Color(0xFF7C3AED); // Violet
+              } else if (isHoliday) {
+                specialDayColor = const Color(0xFF1E293B); // Dark Slate
+              }
+
+              final bool isDualColor = attendanceColor != null && specialDayColor != null;
+              final bool isSunday = dayDate.weekday == DateTime.sunday;
+
+              BoxDecoration cellDecoration;
+              Color textColor = CeladonColors.textPrimary;
+
+              if (isDualColor) {
+                // Dual Color: Split diagonal half-and-half gradient between attendance status and event/birthday/holiday
+                cellDecoration = BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    stops: const [0.5, 0.5],
+                    colors: [attendanceColor, specialDayColor],
+                  ),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: isSelected ? CeladonColors.primary : Colors.white70,
+                    width: isSelected ? 2.5 : 1.0,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: attendanceColor.withValues(alpha: 0.35),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
                     ),
-                  )
-                else if (hasOtherEvents) ...[
-                  const SizedBox(height: 2),
-                  Container(
-                    width: 5,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: isSelected ? Colors.white : const Color(0xFFD97706),
-                      shape: BoxShape.circle,
+                  ],
+                );
+                textColor = Colors.white;
+              } else if (attendanceColor != null) {
+                // Pure Attendance Color (Absent Red, Late Orange, Present Green)
+                cellDecoration = BoxDecoration(
+                  color: attendanceColor,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: isSelected ? Colors.white : Colors.transparent,
+                    width: isSelected ? 2.5 : 1.0,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: attendanceColor.withValues(alpha: 0.35),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                );
+                textColor = Colors.white;
+              } else if (specialDayColor != null) {
+                // Pure Special Day Color (Birthday Gold, Event Violet, Holiday Dark Grey)
+                cellDecoration = BoxDecoration(
+                  color: specialDayColor,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: isSelected ? CeladonColors.primary : Colors.transparent,
+                    width: isSelected ? 2.5 : 1.0,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: specialDayColor.withValues(alpha: 0.35),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                );
+                textColor = Colors.white;
+              } else if (isSunday) {
+                // Weekly off / Sunday
+                cellDecoration = BoxDecoration(
+                  color: CeladonColors.holidayLight,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: isSelected ? CeladonColors.primary : CeladonColors.holidayBorder,
+                    width: isSelected ? 2.0 : 1.0,
+                  ),
+                );
+                textColor = CeladonColors.holidayGrey;
+              } else {
+                // Regular Working Day
+                cellDecoration = BoxDecoration(
+                  color: isSelected ? CeladonColors.primaryLight : Colors.transparent,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: isSelected ? CeladonColors.primary : CeladonColors.border,
+                    width: isSelected ? 2.0 : 1.0,
+                  ),
+                  boxShadow: isSelected
+                      ? [
+                          BoxShadow(
+                            color: CeladonColors.primary.withValues(alpha: 0.2),
+                            blurRadius: 6,
+                          ),
+                        ]
+                      : null,
+                );
+                textColor = isSelected ? CeladonColors.primaryDark : CeladonColors.textPrimary;
+              }
+
+              return GestureDetector(
+                onTap: () {
+                  setState(() => _selectedDate = dayDate);
+                },
+                child: Container(
+                  decoration: cellDecoration,
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '$dayNum',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: (isSelected ||
+                                    attendanceColor != null ||
+                                    specialDayColor != null)
+                                ? FontWeight.w800
+                                : FontWeight.w500,
+                            color: textColor,
+                          ),
+                        ),
+                        if (hasBirthday)
+                          const Text(
+                            '🎂',
+                            style: TextStyle(fontSize: 8, height: 0.8),
+                          )
+                        else if (isEvent)
+                          const Text(
+                            '★',
+                            style: TextStyle(fontSize: 8, height: 0.8, color: Colors.white),
+                          )
+                        else if (isHoliday)
+                          Container(
+                            margin: const EdgeInsets.only(top: 1.5),
+                            width: 4.5,
+                            height: 4.5,
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                            ),
+                          )
+                        else if (isLate)
+                          Container(
+                            margin: const EdgeInsets.only(top: 1.5),
+                            width: 4,
+                            height: 4,
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
-                ],
-              ],
-            ),
+                ),
+              );
+            },
           ),
-        );
-      },
+          const SizedBox(height: 14),
+
+          // Calendar Color Legend matching Company styling
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 12,
+            runSpacing: 6,
+            children: [
+              _buildLegendDot(const Color(0xFF1B5E4B), 'Present'),
+              _buildLegendDot(const Color(0xFFF97316), 'Late'),
+              _buildLegendDot(const Color(0xFFEF4444), 'Absent'),
+              _buildLegendDot(const Color(0xFF7C3AED), 'Event ★'),
+              _buildLegendDot(const Color(0xFF1E293B), 'Holiday'),
+              _buildLegendDot(const Color(0xFFF59E0B), 'Birthday 🎂'),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -791,7 +828,7 @@ class _CalendarViewState extends State<CalendarView> {
           height: 8,
           decoration: BoxDecoration(
             color: color,
-            borderRadius: BorderRadius.circular(2.5),
+            borderRadius: BorderRadius.circular(2),
           ),
         ),
         const SizedBox(width: 5),
@@ -799,333 +836,421 @@ class _CalendarViewState extends State<CalendarView> {
           label,
           style: const TextStyle(
             fontSize: 10.5,
+            color: CeladonColors.textSecondary,
             fontWeight: FontWeight.w600,
-            color: Color(0xFF475569),
           ),
         ),
       ],
     );
   }
 
-  void _openPinnedItemDetail(CalendarEventModel item) {
-    final isEvent = item.category.toLowerCase() == 'event';
-    final dateStr =
-        '${item.dateTime.year}-${item.dateTime.month.toString().padLeft(2, '0')}-${item.dateTime.day.toString().padLeft(2, '0')}';
-    CalendarItemDetailDialog.show(
-      context,
-      title: item.title,
-      date: dateStr,
-      isEvent: isEvent,
-      description: item.description,
-      salaryDeduction: item.salaryDeduction,
-      onDelete: _isManager
-          ? () async {
-              final deleted = await _calendarService.deleteEvent(
-                user: widget.user ??
-                    const UserModel(
-                      id: '',
-                      userId: '',
-                      username: '',
-                      name: '',
-                      role: 'admin',
-                      token: '',
-                    ),
-                eventId: item.id,
-              );
-              if (deleted && mounted) {
-                _loadAllBackendData();
-              }
-            }
-          : null,
-    );
-  }
+  /// Day Details Section right beneath the Calendar Card
+  Widget _buildSelectedDayDetailsCard() {
+    final att = _getAttendanceOnDate(_selectedDate);
+    final event = _getCompanyEventOnDate(_selectedDate);
+    final holiday = _getHolidayOnDate(_selectedDate);
+    final birthdays = _getBirthdayEmployees(_selectedDate);
+    final tasks = _getTasksOnDate(_selectedDate);
+    final leaves = _getLeavesOnDate(_selectedDate);
 
-  Widget _buildWeekView(Color primaryGreen) {
-    // Show 7 days starting from current week
-    final startOfWeek = _selectedDate.subtract(Duration(days: _selectedDate.weekday % 7));
-    final weekDays = List.generate(7, (i) => startOfWeek.add(Duration(days: i)));
+    final now = DateTime.now();
+    final isToday = _selectedDate.year == now.year &&
+        _selectedDate.month == now.month &&
+        _selectedDate.day == now.day;
 
-    return Column(
-      children: weekDays.map((date) {
-        final evts = _getEventsForDate(date);
-        final isSelected = date.day == _selectedDate.day && date.month == _selectedDate.month;
+    final isAbsent = att?.isAbsent == true;
+    final isLate = att?.isLate == true;
+    final isPresent = (att?.isPresent == true || att?.isHalfDay == true) && !isLate;
 
-        return Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: isSelected ? primaryGreen : const Color(0xFFE1E8E4), width: isSelected ? 1.6 : 1),
+    return Container(
+      decoration: BoxDecoration(
+        color: CeladonColors.cardBackground,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: CeladonColors.border, width: 1.0),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x06000000),
+            blurRadius: 8,
+            offset: Offset(0, 2),
           ),
-          child: Column(
+        ],
+      ),
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header Row with Date & Tags
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    "${_getDayOfWeekName(date.weekday)}, ${date.day} ${_getMonthName(date.month)}",
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: isSelected ? primaryGreen : const Color(0xFF1A202C),
-                    ),
-                  ),
-                  Text('${evts.length} events', style: const TextStyle(fontSize: 11, color: Color(0xFF829089))),
-                ],
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: CeladonColors.primaryLight,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.event_note_rounded,
+                  color: CeladonColors.primary,
+                  size: 20,
+                ),
               ),
-              if (evts.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                ...evts.map((e) => Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Row(
-                    children: [
-                      Container(width: 8, height: 8, decoration: BoxDecoration(color: e.color, shape: BoxShape.circle)),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(e.title, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600))),
-                      Text(e.time, style: const TextStyle(fontSize: 11, color: Color(0xFF829089))),
-                    ],
-                  ),
-                )),
-              ],
-            ],
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _buildAgendaView(Color primaryGreen) {
-    if (_events.isEmpty) {
-      return const Center(child: Padding(padding: EdgeInsets.all(32), child: Text('No agenda items')));
-    }
-
-    // Sort by date ascending
-    final sorted = List<CalendarEventModel>.from(_events)..sort((a, b) => a.dateTime.compareTo(b.dateTime));
-
-    return Column(
-      children: sorted.map((e) => _buildEventCard(e)).toList(),
-    );
-  }
-
-  Widget _buildEventCard(CalendarEventModel event) {
-    final isEventOrHoliday = event.category.toLowerCase() == 'event' ||
-        event.category.toLowerCase() == 'holiday';
-    return InkWell(
-      onTap: isEventOrHoliday ? () => _openPinnedItemDetail(event) : null,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFE1E8E4)),
-          boxShadow: const [BoxShadow(color: Color(0x04000000), blurRadius: 6, offset: Offset(0, 2))],
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: event.bg,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(event.icon, color: event.color, size: 20),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    event.title,
-                    style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF1A202C)),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    event.time,
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
-                  ),
-                  if (event.description != null && event.description!.isNotEmpty) ...[
-                    const SizedBox(height: 4),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      event.description!,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12, color: Color(0xFF475569)),
+                      _formatFullDate(_selectedDate),
+                      style: const TextStyle(
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w800,
+                        color: CeladonColors.textPrimary,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        if (isToday)
+                          _buildStatusChip('TODAY', CeladonColors.primary, Colors.white),
+                        if (isAbsent)
+                          _buildStatusChip('ABSENT', const Color(0xFFEF4444), Colors.white),
+                        if (isLate)
+                          _buildStatusChip(
+                            att?.breakDelayMinutes != null && att!.breakDelayMinutes > 0
+                                ? 'LATE • ${att.breakDelayMinutes}m'
+                                : 'LATE ARRIVAL',
+                            const Color(0xFFF97316),
+                            Colors.white,
+                          ),
+                        if (isPresent)
+                          _buildStatusChip('PRESENT', const Color(0xFF1B5E4B), Colors.white),
+                        if (event != null)
+                          _buildStatusChip('EVENT ★', const Color(0xFF7C3AED), Colors.white),
+                        if (holiday != null)
+                          _buildStatusChip('HOLIDAY', const Color(0xFF1E293B), Colors.white),
+                        if (birthdays.isNotEmpty)
+                          _buildStatusChip('BIRTHDAY 🎂', const Color(0xFFF59E0B), Colors.white),
+                      ],
                     ),
                   ],
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: event.bg,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                event.category,
-                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: event.color),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// LEAVES SUB-SECTION
-  Widget _buildLeavesSection(Color primaryGreen) {
-    final pendingCount = _leaves.where((l) => l.isPending).length;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Leave Action Banner
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xFFE1E8E4)),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Leave Management', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 2),
-                  Text(
-                    _isManager ? '$pendingCount pending approval' : 'Submit or track leave requests',
-                    style: const TextStyle(fontSize: 12, color: Color(0xFF829089)),
-                  ),
-                ],
-              ),
-              ElevatedButton.icon(
-                onPressed: _showApplyLeaveDialog,
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('Apply Leave'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: primaryGreen,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 ),
               ),
             ],
           ),
-        ),
-        const SizedBox(height: 16),
+          const SizedBox(height: 16),
+          const Divider(color: CeladonColors.divider, height: 1),
+          const SizedBox(height: 14),
 
-        // Leaves List
-        if (_leaves.isEmpty)
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 40),
-            alignment: Alignment.center,
-            child: const Text('No leave records found', style: TextStyle(color: Color(0xFF829089))),
-          )
-        else
-          ..._leaves.map((l) => _buildLeaveCard(l, primaryGreen)),
-      ],
+          // 1. Attendance Record Detail Card
+          if (att != null) ...[
+            _buildAttendanceDetailItem(att),
+            const SizedBox(height: 12),
+          ] else if (!isToday && _selectedDate.isBefore(now) && _selectedDate.weekday != DateTime.sunday) ...[
+            _buildInfoCard(
+              icon: Icons.info_outline_rounded,
+              color: const Color(0xFF94A3B8),
+              title: 'No Attendance Recorded',
+              subtitle: 'No punch-in or check-in was recorded on this past date.',
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // 2. Company Event Detail Card
+          if (event != null) ...[
+            _buildDetailCard(
+              icon: Icons.event_available_rounded,
+              header: 'Company Event ★',
+              headerColor: const Color(0xFF7C3AED),
+              title: event.title,
+              subtitle: event.description != null && event.description!.isNotEmpty
+                  ? event.description!
+                  : 'Official company event • Working Day',
+              tag: event.time,
+              onTap: () {
+                CalendarItemDetailDialog.show(
+                  context,
+                  title: event.title,
+                  description: event.description,
+                  date: event.dateTime.toIso8601String(),
+                  isEvent: true,
+                  salaryDeduction: event.salaryDeduction,
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // 3. Official Holiday Detail Card
+          if (holiday != null) ...[
+            _buildDetailCard(
+              icon: Icons.beach_access_rounded,
+              header: 'Official Holiday',
+              headerColor: const Color(0xFF1E293B),
+              title: holiday.title,
+              subtitle: holiday.description != null && holiday.description!.isNotEmpty
+                  ? holiday.description!
+                  : 'Official non-working company holiday',
+              tag: 'Public Holiday',
+              onTap: () {
+                CalendarItemDetailDialog.show(
+                  context,
+                  title: holiday.title,
+                  description: holiday.description,
+                  date: holiday.dateTime.toIso8601String(),
+                  isEvent: false,
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // 4. Team Birthday Celebration Card
+          if (birthdays.isNotEmpty) ...[
+            _buildDetailCard(
+              icon: Icons.cake_rounded,
+              header: 'Birthday Celebration 🎂',
+              headerColor: const Color(0xFFF59E0B),
+              title: birthdays.map((u) => u.name.isNotEmpty ? u.name : u.username).join(', '),
+              subtitle: 'Wishing our colleague(s) a wonderful and joyous birthday!',
+              tag: '${birthdays.length} Celebration',
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // 5. Leave Request Card
+          if (leaves.isNotEmpty) ...[
+            ...leaves.map((l) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _buildDetailCard(
+                    icon: Icons.flight_takeoff_rounded,
+                    header: 'Leave Request (${l.status.toUpperCase()})',
+                    headerColor: l.isApproved
+                        ? const Color(0xFF059669)
+                        : (l.isPending ? const Color(0xFFD97706) : const Color(0xFFDC4C4C)),
+                    title: '${l.type.toUpperCase()} LEAVE',
+                    subtitle: l.reason?.isNotEmpty == true ? l.reason! : 'Applied leave request',
+                    tag: '${l.startDate} to ${l.endDate}',
+                  ),
+                )),
+          ],
+
+          // 6. Assigned Tasks Card
+          if (tasks.isNotEmpty) ...[
+            ...tasks.map((t) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _buildDetailCard(
+                    icon: Icons.assignment_outlined,
+                    header: 'Assigned Task (${t.displayPriority})',
+                    headerColor: const Color(0xFF7C3AED),
+                    title: t.title,
+                    subtitle: t.description ?? 'Task assigned to you',
+                    tag: 'Due: ${t.dueDate?.split('T').first ?? ''}',
+                  ),
+                )),
+          ],
+
+          // 7. Empty State when nothing is recorded
+          if (att == null && event == null && holiday == null && birthdays.isEmpty && tasks.isEmpty && leaves.isEmpty)
+            _buildInfoCard(
+              icon: Icons.calendar_today_rounded,
+              color: CeladonColors.textMuted,
+              title: 'Standard Working Day',
+              subtitle: 'Regular office hours apply (09:00 AM - 06:00 PM). No events or special logs scheduled.',
+            ),
+        ],
+      ),
     );
   }
 
-  Widget _buildLeaveCard(LeaveModel leave, Color primaryGreen) {
-    Color statusColor = const Color(0xFFD97706);
-    Color statusBg = const Color(0xFFFEF3C7);
+  Widget _buildStatusChip(String label, Color bg, Color text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: text,
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.3,
+        ),
+      ),
+    );
+  }
 
-    if (leave.isApproved) {
-      statusColor = const Color(0xFF087A4B);
-      statusBg = const Color(0xFFDEF7EC);
-    } else if (leave.isRejected) {
-      statusColor = const Color(0xFFDC4C4C);
-      statusBg = const Color(0xFFFEE2E2);
-    }
+  Widget _buildAttendanceDetailItem(AttendanceModel att) {
+    final statusColor = att.isAbsent
+        ? const Color(0xFFEF4444)
+        : (att.isLate ? const Color(0xFFF97316) : const Color(0xFF1B5E4B));
+
+    final inTime = _formatTimeStr(att.checkIn);
+    final outTime = _formatTimeStr(att.checkOut);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE1E8E4)),
-        boxShadow: const [BoxShadow(color: Color(0x05000000), blurRadius: 6, offset: Offset(0, 2))],
+        color: statusColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: statusColor.withValues(alpha: 0.3), width: 1.0),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                '${leave.type.toUpperCase()} LEAVE',
-                style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF1A202C)),
+              Row(
+                children: [
+                  Icon(
+                    att.isAbsent
+                        ? Icons.cancel_outlined
+                        : (att.isLate ? Icons.alarm_on_rounded : Icons.check_circle_outline_rounded),
+                    color: statusColor,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    att.isAbsent
+                        ? 'Absent on Duty'
+                        : (att.isLate ? 'Late Arrival Recorded' : 'Present • On Duty'),
+                    style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w800,
+                      color: statusColor,
+                    ),
+                  ),
+                ],
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(color: statusBg, borderRadius: BorderRadius.circular(8)),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: statusColor.withValues(alpha: 0.4)),
+                ),
                 child: Text(
-                  leave.status.toUpperCase(),
-                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: statusColor),
+                  (att.workMode ?? 'OFFICE').toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    color: statusColor,
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
+
+          // Check-in and Check-out Grid
           Row(
             children: [
-              const Icon(Icons.date_range_rounded, size: 14, color: Color(0xFF829089)),
-              const SizedBox(width: 6),
-              Text(
-                '${leave.startDate} to ${leave.endDate}',
-                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF4A5568)),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: CeladonColors.border),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'CHECK IN',
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: CeladonColors.textMuted),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        inTime,
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: CeladonColors.border),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'CHECK OUT',
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: CeladonColors.textMuted),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        outTime,
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
-          if (leave.reason != null && leave.reason!.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(
-              'Reason: ${leave.reason}',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+
+          if (att.isLate) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF7ED),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFFDBA74)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline_rounded, size: 14, color: Color(0xFFEA580C)),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      att.breakDelayMinutes > 0
+                          ? 'Late arrival by ${att.breakDelayMinutes} minutes recorded.'
+                          : 'Clocked in past regular shift start time.',
+                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFFC2410C)),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
 
-          // If Manager and Leave is pending -> show Approve and Reject buttons!
-          if (_isManager && leave.isPending) ...[
-            const SizedBox(height: 14),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: () => _handleUpdateLeave(leave.id, 'rejected'),
-                  icon: const Icon(Icons.close_rounded, size: 14, color: Color(0xFFDC4C4C)),
-                  label: const Text('Reject', style: TextStyle(color: Color(0xFFDC4C4C), fontSize: 12)),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Color(0xFFFCA5A5)),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          if (att.isAbsent) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF2F2),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFFCA5A5)),
+              ),
+              child: Row(
+                children: const [
+                  Icon(Icons.error_outline_rounded, size: 14, color: Color(0xFFDC2626)),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Unapproved absence recorded for this scheduled workday.',
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFFB91C1C)),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton.icon(
-                  onPressed: () => _handleUpdateLeave(leave.id, 'approved'),
-                  icon: const Icon(Icons.check_rounded, size: 14),
-                  label: const Text('Approve', style: TextStyle(fontSize: 12)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryGreen,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ],
@@ -1133,114 +1258,96 @@ class _CalendarViewState extends State<CalendarView> {
     );
   }
 
-  /// HOLIDAYS SUB-SECTION
-  Widget _buildHolidaysSection(Color primaryGreen) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Header card
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xFFE1E8E4)),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Company Holidays', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 2),
-                  Text('${_holidays.length} observed holidays', style: const TextStyle(fontSize: 12, color: Color(0xFF829089))),
-                ],
-              ),
-              if (_isManager)
-                ElevatedButton.icon(
-                  onPressed: _showAddHolidayDialog,
-                  icon: const Icon(Icons.add, size: 16),
-                  label: const Text('Add Holiday'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryGreen,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  ),
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        if (_holidays.isEmpty)
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 40),
-            alignment: Alignment.center,
-            child: const Text('No holidays configured', style: TextStyle(color: Color(0xFF829089))),
-          )
-        else
-          ..._holidays.map((h) => _buildHolidayCard(h, primaryGreen)),
-      ],
-    );
-  }
-
-  Widget _buildHolidayCard(CalendarEventModel holiday, Color primaryGreen) {
-    final isEvent = holiday.category.toLowerCase() == 'event';
-    final accent = isEvent ? const Color(0xFF7C3AED) : const Color(0xFF334155);
-    final softBg = isEvent ? const Color(0xFFF3E8FF) : const Color(0xFFF1F5F9);
-    final dateStr = "${holiday.dateTime.year}-${holiday.dateTime.month.toString().padLeft(2, '0')}-${holiday.dateTime.day.toString().padLeft(2, '0')}";
-
+  Widget _buildDetailCard({
+    required IconData icon,
+    required String header,
+    required Color headerColor,
+    required String title,
+    required String subtitle,
+    required String tag,
+    VoidCallback? onTap,
+  }) {
     return InkWell(
-      onTap: () => _openPinnedItemDetail(holiday),
-      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFE1E8E4)),
-          boxShadow: const [BoxShadow(color: Color(0x04000000), blurRadius: 6, offset: Offset(0, 2))],
+          color: headerColor.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: headerColor.withValues(alpha: 0.25), width: 1.0),
         ),
         child: Row(
           children: [
             Container(
-              width: 40,
-              height: 40,
+              width: 38,
+              height: 38,
               decoration: BoxDecoration(
-                color: softBg,
-                borderRadius: BorderRadius.circular(12),
+                color: headerColor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(
-                isEvent ? Icons.event_available_rounded : Icons.beach_access_rounded,
-                color: accent,
-                size: 20,
-              ),
+              child: Icon(icon, color: headerColor, size: 20),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        header,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: headerColor,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      if (tag.isNotEmpty)
+                        Text(
+                          tag,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: headerColor.withValues(alpha: 0.8),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
                   Text(
-                    holiday.title,
-                    style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF1A202C)),
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: CeladonColors.textPrimary,
+                    ),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${isEvent ? "Company Event" : "Official Holiday"} • $dateStr',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: accent),
-                  ),
+                  if (subtitle.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: CeladonColors.textSecondary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
-            if (_isManager)
-              IconButton(
-                icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFDC4C4C), size: 20),
-                tooltip: isEvent ? 'Delete Event' : 'Delete Holiday',
-                onPressed: () => _handleDeleteHoliday(holiday.id),
+            if (onTap != null)
+              Icon(
+                Icons.chevron_right_rounded,
+                color: headerColor.withValues(alpha: 0.6),
+                size: 20,
               ),
           ],
         ),
@@ -1248,274 +1355,48 @@ class _CalendarViewState extends State<CalendarView> {
     );
   }
 
-  Widget _buildErrorState(Color primaryGreen) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            const Icon(Icons.error_outline_rounded, color: Colors.red, size: 36),
-            const SizedBox(height: 12),
-            Text(_errorMessage ?? 'Failed to load calendar data', textAlign: TextAlign.center),
-            const SizedBox(height: 14),
-            ElevatedButton(
-              onPressed: _loadAllBackendData,
-              style: ElevatedButton.styleFrom(backgroundColor: primaryGreen, foregroundColor: Colors.white),
-              child: const Text('Retry'),
-            ),
-          ],
-        ),
+  Widget _buildInfoCard({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String subtitle,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: CeladonColors.searchBackground,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: CeladonColors.border),
       ),
-    );
-  }
-
-  /// Floating Action Menu
-  void _showActionMenu() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text('Quick Actions', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 16),
-            ListTile(
-              leading: const CircleAvatar(backgroundColor: Color(0xFFE8F3EC), child: Icon(Icons.beach_access, color: Color(0xFF087A4B))),
-              title: const Text('Apply for Leave', style: TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: const Text('Submit casual, sick, or earned leave request'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _showApplyLeaveDialog();
-              },
-            ),
-            if (_isManager)
-              ListTile(
-                leading: const CircleAvatar(backgroundColor: Color(0xFFFEF3C7), child: Icon(Icons.celebration, color: Color(0xFFD97706))),
-                title: const Text('Add Company Holiday', style: TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: const Text('Add an official paid holiday to platform schedule'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _showAddHolidayDialog();
-                },
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Apply Leave Dialog
-  void _showApplyLeaveDialog() {
-    String selectedType = 'casual';
-    DateTime startDate = DateTime.now().add(const Duration(days: 1));
-    DateTime endDate = DateTime.now().add(const Duration(days: 2));
-    final reasonCtrl = TextEditingController();
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDlgState) => Padding(
-          padding: EdgeInsets.only(
-            top: 24,
-            left: 20,
-            right: 20,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text('Apply for Leave', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF087A4B))),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                initialValue: selectedType,
-                decoration: InputDecoration(
-                  labelText: 'Leave Type',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                items: const [
-                  DropdownMenuItem(value: 'casual', child: Text('Casual Leave')),
-                  DropdownMenuItem(value: 'sick', child: Text('Sick Leave')),
-                  DropdownMenuItem(value: 'earned', child: Text('Earned Leave')),
-                  DropdownMenuItem(value: 'unpaid', child: Text('Unpaid Leave')),
-                ],
-                onChanged: (v) => setDlgState(() => selectedType = v ?? 'casual'),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.date_range, size: 16),
-                      label: Text("${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}", style: const TextStyle(fontSize: 12)),
-                      onPressed: () async {
-                        final picked = await showDatePicker(
-                          context: context,
-                          initialDate: startDate,
-                          firstDate: DateTime.now().subtract(const Duration(days: 7)),
-                          lastDate: DateTime.now().add(const Duration(days: 365)),
-                        );
-                        if (picked != null) setDlgState(() => startDate = picked);
-                      },
-                    ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: CeladonColors.textPrimary,
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.date_range, size: 16),
-                      label: Text("${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}", style: const TextStyle(fontSize: 12)),
-                      onPressed: () async {
-                        final picked = await showDatePicker(
-                          context: context,
-                          initialDate: endDate,
-                          firstDate: startDate,
-                          lastDate: DateTime.now().add(const Duration(days: 365)),
-                        );
-                        if (picked != null) setDlgState(() => endDate = picked);
-                      },
-                    ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    color: CeladonColors.textMuted,
                   ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: reasonCtrl,
-                maxLines: 2,
-                decoration: InputDecoration(
-                  labelText: 'Reason for Leave',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: () async {
-                  final sStr = "${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}";
-                  final eStr = "${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}";
-
-                  final scaffoldMessenger = ScaffoldMessenger.of(context);
-                  Navigator.pop(ctx);
-                  try {
-                    await _leaveService.applyLeave(
-                      type: selectedType,
-                      startDate: sStr,
-                      endDate: eStr,
-                      reason: reasonCtrl.text.trim(),
-                      userId: widget.user?.userId.isNotEmpty == true ? widget.user!.userId : widget.user?.id,
-                    );
-                    if (mounted) {
-                      scaffoldMessenger.showSnackBar(
-                        const SnackBar(backgroundColor: Color(0xFF087A4B), content: Text('Leave request submitted successfully!')),
-                      );
-                      _loadAllBackendData();
-                    }
-                  } catch (e) {
-                    if (mounted) {
-                      scaffoldMessenger.showSnackBar(SnackBar(backgroundColor: Colors.red, content: Text('Error: $e')));
-                    }
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF087A4B),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                child: const Text('Submit Leave Request'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Add Holiday Dialog
-  void _showAddHolidayDialog() {
-    final nameCtrl = TextEditingController();
-    DateTime holidayDate = DateTime.now().add(const Duration(days: 7));
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDlgState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text('Add Company Holiday', style: TextStyle(fontWeight: FontWeight.w800)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameCtrl,
-                decoration: InputDecoration(
-                  labelText: 'Holiday Name *',
-                  hintText: 'e.g. Diwali Festival',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-              const SizedBox(height: 14),
-              OutlinedButton.icon(
-                icon: const Icon(Icons.calendar_today_rounded, size: 16),
-                label: Text("${holidayDate.year}-${holidayDate.month.toString().padLeft(2, '0')}-${holidayDate.day.toString().padLeft(2, '0')}"),
-                onPressed: () async {
-                  final picked = await showDatePicker(
-                    context: context,
-                    initialDate: holidayDate,
-                    firstDate: DateTime(DateTime.now().year - 1),
-                    lastDate: DateTime(DateTime.now().year + 2),
-                  );
-                  if (picked != null) setDlgState(() => holidayDate = picked);
-                },
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            ElevatedButton(
-              onPressed: () async {
-                if (nameCtrl.text.trim().isEmpty) return;
-                final scaffoldMessenger = ScaffoldMessenger.of(context);
-                final holidayTitle = nameCtrl.text.trim();
-
-                Navigator.pop(ctx);
-                try {
-                  await _calendarService.createEvent(
-                    user: widget.user ?? const UserModel(id: '', userId: '', username: '', name: '', role: 'staff', token: ''),
-                    event: CalendarEventModel(
-                      id: 'hol-${DateTime.now().millisecondsSinceEpoch}',
-                      title: holidayTitle,
-                      dateTime: holidayDate,
-                      time: 'All Day',
-                      category: 'Holiday',
-                    ),
-                  );
-                  if (mounted) {
-                    scaffoldMessenger.showSnackBar(
-                      SnackBar(backgroundColor: const Color(0xFF087A4B), content: Text('Holiday "$holidayTitle" added!')),
-                    );
-                    _loadAllBackendData();
-                  }
-                } catch (_) {}
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF087A4B), foregroundColor: Colors.white),
-              child: const Text('Add'),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
-  }
-
-  String _getMonthName(int month) {
-    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-    return months[(month - 1) % 12];
-  }
-
-  String _getDayOfWeekName(int weekday) {
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    return days[(weekday - 1) % 7];
   }
 }

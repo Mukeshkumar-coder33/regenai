@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/navigation/bottom_nav_customizer.dart';
+import '../../../core/navigation/role_menu_registry.dart';
 import '../../../core/theme/celadon_colors.dart';
 import '../../auth/data/user_model.dart';
 
@@ -37,28 +38,11 @@ class _SettingsViewState extends State<SettingsView> {
   bool _taskReminders = true;
   late List<String> _activeSlots;
 
-  static const List<String> _defaultSlots = ['home', 'tasks', 'calendar', 'profile'];
+  List<String> get _defaultSlots => RoleMenuRegistry.getDefaultSlotsForRole(widget.user);
 
-  String get _roleKey => widget.user?.isSuperAdmin == true ? 'superadmin' : 'employee';
+  String get _roleKey => RoleMenuRegistry.getRoleStorageKey(widget.user);
 
-  List<NavShortcutItem> get _catalog {
-    final isSa = widget.user?.isSuperAdmin ?? false;
-    return [
-      const NavShortcutItem(id: 'home', label: 'Home', icon: Icons.home_outlined, activeIcon: Icons.home_rounded),
-      const NavShortcutItem(id: 'tasks', label: 'Tasks', icon: Icons.assignment_outlined, activeIcon: Icons.assignment_rounded),
-      const NavShortcutItem(id: 'calendar', label: 'Calendar', icon: Icons.calendar_today_outlined, activeIcon: Icons.calendar_today_rounded),
-      const NavShortcutItem(id: 'profile', label: 'Profile', icon: Icons.person_outline_rounded, activeIcon: Icons.person_rounded),
-      const NavShortcutItem(id: 'messenger', label: 'Messenger', icon: Icons.chat_bubble_outline_rounded, activeIcon: Icons.chat_bubble_rounded),
-      const NavShortcutItem(id: 'attendance', label: 'Attendance', icon: Icons.event_available_outlined, activeIcon: Icons.event_available_rounded),
-      const NavShortcutItem(id: 'team', label: 'Team', icon: Icons.groups_outlined, activeIcon: Icons.groups_rounded),
-      if (!isSa)
-        const NavShortcutItem(id: 'leave', label: 'Leave', icon: Icons.beach_access_outlined, activeIcon: Icons.beach_access_rounded),
-      if (!isSa)
-        const NavShortcutItem(id: 'payroll', label: 'Payroll', icon: Icons.payments_outlined, activeIcon: Icons.payments_rounded),
-      const NavShortcutItem(id: 'settings', label: 'Settings', icon: Icons.settings_outlined, activeIcon: Icons.settings_rounded),
-      const NavShortcutItem(id: 'help', label: 'Support', icon: Icons.help_outline_rounded, activeIcon: Icons.help_rounded),
-    ];
-  }
+  List<NavShortcutItem> get _catalog => RoleMenuRegistry.getNavCatalogForRole(widget.user);
 
   @override
   void initState() {

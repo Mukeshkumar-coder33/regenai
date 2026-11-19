@@ -260,9 +260,7 @@ class _VoiceRecorderSheetState extends State<VoiceRecorderSheet> {
           if (!mounted) return;
           final words = res.recognizedWords.trim();
           if (words.isEmpty) return;
-          final combined = baseText.isEmpty
-              ? words
-              : '$baseText $words';
+          final combined = baseText.isEmpty ? words : '$baseText $words';
           setState(() {
             _transcriptController.text = combined;
             _transcriptController.selection = TextSelection.fromPosition(
@@ -273,7 +271,9 @@ class _VoiceRecorderSheetState extends State<VoiceRecorderSheet> {
         listenOptions: stt.SpeechListenOptions(
           partialResults: true,
           cancelOnError: false,
-          listenMode: stt.ListenMode.confirmation,
+          listenMode: stt.ListenMode.dictation,
+          listenFor: const Duration(seconds: 60),
+          pauseFor: const Duration(seconds: 4),
         ),
       );
     } catch (e) {

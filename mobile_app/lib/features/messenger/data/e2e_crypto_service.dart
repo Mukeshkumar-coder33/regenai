@@ -13,7 +13,12 @@ class E2eCryptoService {
   static final pc.ECDomainParameters _p256 = pc.ECCurve_secp256r1();
   static final AesGcm _aesGcm = AesGcm.with256bits();
 
-  static String _storageKey(String conversationId) => 'e2e_$conversationId';
+  static String _storageKey(String conversationId, {String? userId}) {
+    if (userId != null && userId.trim().isNotEmpty) {
+      return 'e2e_${userId.trim().toLowerCase()}_$conversationId';
+    }
+    return 'e2e_$conversationId';
+  }
 
   static String _base64UrlNoPad(Uint8List bytes) {
     return base64Url.encode(bytes).replaceAll('=', '');
@@ -48,13 +53,18 @@ class E2eCryptoService {
     return pc.FortunaRandom()..seed(pc.KeyParameter(seed));
   }
 
-  static Future<bool> hasKeyPair(String conversationId) async {
+  static Future<bool> hasKeyPair(String conversationId, {String? userId}) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_storageKey(conversationId)) != null;
+    final scoped = prefs.getString(_storageKey(conversationId, userId: userId));
+    if (scoped != null) return true;
+    if (userId != null) {
+      return prefs.getString(_storageKey(conversationId)) != null;
+    }
+    return false;
   }
 
   /// Generate a new ECDH P-256 keypair, store private JWK locally, return public JWK JSON string.
-  static Future<String> generateKeyPair(String conversationId) async {
+  static Future<String> generateKeyPair(String conversationId, {String? userId}) async {
     final keyGen = pc.ECKeyGenerator()
       ..init(
         pc.ParametersWithRandom(
@@ -88,15 +98,22 @@ class E2eCryptoService {
     };
 
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_storageKey(conversationId), jsonEncode(privateJwk));
+    await prefs.setString(_storageKey(conversationId, userId: userId), jsonEncode(privateJwk));
     return jsonEncode(publicJwk);
   }
 
   /// Derive the shared AES-GCM-256 key using our stored private JWK and the peer's public JWK JSON string.
-  static Future<SecretKey?> deriveSharedKey(String conversationId, String peerPublicJwkJson) async {
+  static Future<SecretKey?> deriveSharedKey(
+    String conversationId,
+    String peerPublicJwkJson, {
+    String? userId,
+  }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final rawPrivate = prefs.getString(_storageKey(conversationId));
+      var rawPrivate = prefs.getString(_storageKey(conversationId, userId: userId));
+      if (rawPrivate == null && userId != null) {
+        rawPrivate = prefs.getString(_storageKey(conversationId));
+      }
       if (rawPrivate == null) return null;
 
       final privMap = jsonDecode(rawPrivate) as Map<String, dynamic>;

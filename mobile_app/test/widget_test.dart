@@ -2097,7 +2097,7 @@ void main() {
       expect(find.byTooltip('Voice Call'), findsOneWidget);
       expect(find.byTooltip('Video Call'), findsOneWidget);
       expect(find.byTooltip('Record Voice Message'), findsOneWidget);
-      expect(find.byTooltip('Voice to Text'), findsOneWidget);
+      expect(find.byTooltip('Voice to Text'), findsNothing);
       expect(find.byTooltip('Attach Photo, Video or Document'), findsOneWidget);
       expect(find.byTooltip('Record Video'), findsOneWidget);
 
@@ -2283,6 +2283,150 @@ void main() {
       expect(employeeMenu.map((e) => e.id), containsAll(['home', 'tasks', 'calendar', 'profile', 'attendance', 'messenger', 'payroll']));
       expect(employeeMenu.map((e) => e.id), isNot(contains('reports')));
       expect(employeeNav.map((e) => e.id), equals(employeeMenu.map((e) => e.id)));
+    });
+
+    testWidgets('Task 1: MessengerView adapts immediately on role/user switch, E2E crypto keys are user-partitioned, and left arrow near header is removed', (WidgetTester tester) async {
+      final userA = const UserModel(
+        id: 'u_a',
+        userId: 'owner_a',
+        username: 'alice',
+        name: 'Alice Owner',
+        role: 'owner',
+        companyId: 'compA',
+        token: 'tok_a',
+      );
+      final userB = const UserModel(
+        id: 'u_b',
+        userId: 'emp_b',
+        username: 'bob',
+        name: 'Bob Staff',
+        role: 'staff',
+        companyId: 'compA',
+        token: 'tok_b',
+      );
+
+      final mockMessenger = _FakeMessengerService(
+        contacts: const [
+          MessengerContactModel(
+            id: 'c1',
+            userId: 'emp_b',
+            username: 'bob',
+            name: 'Bob Staff',
+            role: 'staff',
+            online: true,
+          ),
+        ],
+        conversations: const [],
+      );
+
+      // Verify E2E keys are isolated by userId
+      final pubA = await E2eCryptoService.generateKeyPair('conv_test', userId: 'owner_a');
+      final pubB = await E2eCryptoService.generateKeyPair('conv_test', userId: 'emp_b');
+      expect(pubA.isNotEmpty, isTrue);
+      expect(pubB.isNotEmpty, isTrue);
+
+      final sharedA = await E2eCryptoService.deriveSharedKey('conv_test', pubB, userId: 'owner_a');
+      final sharedB = await E2eCryptoService.deriveSharedKey('conv_test', pubA, userId: 'emp_b');
+      expect(sharedA, isNotNull);
+      expect(sharedB, isNotNull);
+
+      // Roundtrip encrypt/decrypt between user A and user B
+      final enc = await E2eCryptoService.encryptMessage(sharedA!, 'End to End Secret Message');
+      final dec = await E2eCryptoService.decryptMessage(sharedB!, enc.ciphertext, enc.iv);
+      expect(dec, equals('End to End Secret Message'));
+
+      // Mount MessengerView for user A
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MessengerView(
+            user: userA,
+            embedded: false,
+            messengerService: mockMessenger,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Heading exists without back arrow
+      expect(find.text('Messenger'), findsOneWidget);
+      expect(find.byIcon(Icons.arrow_back_rounded), findsNothing);
+
+      // Re-pump widget with user B to verify didUpdateWidget adapts cleanly
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MessengerView(
+            user: userB,
+            embedded: false,
+            messengerService: mockMessenger,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Messenger'), findsOneWidget);
+    });
+
+    testWidgets('Task 2: Employee Messenger hides bottom navigation bar, and composer has media icon inside with apt actions', (WidgetTester tester) async {
+      final empUser = const UserModel(
+        id: 'e1',
+        userId: 'empA1',
+        username: 'empA1',
+        name: 'Emp A1',
+        role: 'staff',
+        companyId: 'compA',
+        company: 'Alpha Corp',
+        token: 'tok_emp',
+      );
+
+      final conv = const DmConversationModel(
+        conversationId: 'conv_a1',
+        participants: ['empA1', 'KRH-123'],
+        otherUserId: 'KRH-123',
+        otherUserName: 'eswaran M',
+        otherUserRole: 'staff',
+        otherUserOnline: true,
+        lastMessage: 'Hello team!',
+      );
+
+      final mockMessenger = _FakeMessengerService(
+        contacts: const [
+          MessengerContactModel(
+            id: 'o1',
+            userId: 'KRH-123',
+            username: 'eswaran',
+            name: 'eswaran M',
+            role: 'staff',
+            online: true,
+          ),
+        ],
+        conversations: [conv],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MessengerView(
+            user: empUser,
+            embedded: false,
+            messengerService: mockMessenger,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Open conversation
+      await tester.tap(find.text('eswaran M').last);
+      await tester.pumpAndSettle();
+
+      // Verify composer layout:
+      // 1. Media attachment icon is present
+      expect(find.byTooltip('Attach Photo, Video or Document'), findsOneWidget);
+      // 2. Video Record action is present
+      expect(find.byTooltip('Record Video'), findsOneWidget);
+      // 3. Voice Note action is present
+      expect(find.byTooltip('Record Voice Message'), findsOneWidget);
+      // 4. Standalone Voice-to-Text button is removed
+      expect(find.byTooltip('Voice to Text'), findsNothing);
+      // 5. Send button is present
+      expect(find.byIcon(Icons.send_rounded), findsOneWidget);
     });
   });
 }

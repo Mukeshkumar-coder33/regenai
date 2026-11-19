@@ -225,6 +225,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         );
       case 'messenger':
         return MessengerView(
+          key: ValueKey('messenger_${_currentUser.userId}_${_currentUser.role}'),
           user: _currentUser,
           embedded: true,
           onOpenDrawer: _openDrawer,
@@ -337,8 +338,10 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
               index: _currentTabIndex.clamp(0, _bottomNavSlots.length - 1),
               children: _bottomNavSlots.map(_buildPageById).toList(),
             ),
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
+      bottomNavigationBar: _activePageId == 'messenger'
+          ? null
+          : Container(
+              decoration: const BoxDecoration(
           color: Colors.white,
           border: Border(
             top: BorderSide(color: Color(0xFFE1E8E4), width: 1.0),

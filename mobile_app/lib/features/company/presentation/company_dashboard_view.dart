@@ -1497,7 +1497,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               ],
             ),
           ),
-          bottomNavigationBar: _buildCompanyBottomNav(),
+          bottomNavigationBar: _activeCompanyPageId == 'messenger'
+              ? null
+              : _buildCompanyBottomNav(),
         ),
       ),
     );
@@ -2288,6 +2290,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         );
       case 'messenger':
         return MessengerView(
+          key: ValueKey('messenger_${widget.user.userId}_${widget.user.role}'),
           user: widget.user,
           embedded: true,
           onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer(),

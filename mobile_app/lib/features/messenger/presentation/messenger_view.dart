@@ -1,9 +1,6 @@
 import 'dart:async';
 import 'package:cryptography/cryptography.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../../../core/theme/celadon_colors.dart';
 import '../../auth/data/user_model.dart';
 import '../../dashboard/data/dashboard_service.dart';
@@ -44,15 +41,13 @@ class MessengerView extends StatefulWidget {
 }
 
 class _MessengerViewState extends State<MessengerView> {
-  late final MessengerService _messengerService;
-  late final DashboardService _dashboardService;
-  final stt.SpeechToText _dictationSpeech = stt.SpeechToText();
+  late MessengerService _messengerService;
+  late DashboardService _dashboardService;
 
   // Tab 0 = Chats (1:1 & Groups), Tab 1 = Team Channel (hidden for Super Admin central portal)
   int _activeTab = 0;
   bool _isLoading = true;
   bool _isSending = false;
-  bool _isDictating = false;
   bool _socketConnected = MessengerSocketService.instance.isConnected;
 
   List<TeamMessageModel> _teamMessages = [];
@@ -87,10 +82,37 @@ class _MessengerViewState extends State<MessengerView> {
     _messengerService = widget.messengerService ?? MessengerService();
     _dashboardService = widget.dashboardService ?? DashboardService();
     WebRtcCallManager.instance.bindUser(widget.user);
-    MessengerSocketService.instance.ensureConnected();
+    MessengerSocketService.instance.connect(user: widget.user);
     _activeTab = 0;
     _attachSocketListeners();
     _loadMessengerData();
+  }
+
+  @override
+  void didUpdateWidget(MessengerView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final userChanged = widget.user.userId != oldWidget.user.userId ||
+        widget.user.id != oldWidget.user.id ||
+        widget.user.role != oldWidget.user.role ||
+        widget.user.companyId != oldWidget.user.companyId ||
+        widget.user.token != oldWidget.user.token;
+    if (userChanged) {
+      _messengerService = widget.messengerService ?? MessengerService();
+      _dashboardService = widget.dashboardService ?? DashboardService();
+      WebRtcCallManager.instance.bindUser(widget.user);
+      MessengerSocketService.instance.connect(user: widget.user);
+      setState(() {
+        _activeConversation = null;
+        _directMessages = [];
+        _conversations = [];
+        _contacts = [];
+        _teamMessages = [];
+        _activeSharedKey = null;
+        _e2eActive = false;
+        _isLoading = true;
+      });
+      _loadMessengerData();
+    }
   }
 
   @override
@@ -99,7 +121,6 @@ class _MessengerViewState extends State<MessengerView> {
       s.cancel();
     }
     _socketSubs.clear();
-    _dictationSpeech.stop();
     _messageController.dispose();
     _searchController.dispose();
     _scrollController.dispose();
@@ -398,8 +419,10 @@ class _MessengerViewState extends State<MessengerView> {
     }
 
     try {
-      if (!await E2eCryptoService.hasKeyPair(conv.conversationId)) {
-        final pubJwkJson = await E2eCryptoService.generateKeyPair(conv.conversationId);
+      final hasLocal = await E2eCryptoService.hasKeyPair(conv.conversationId, userId: _myUserId);
+      final myKeyOnServer = conv.publicKeys[_myUserId];
+      if (!hasLocal || myKeyOnServer == null || myKeyOnServer.isEmpty) {
+        final pubJwkJson = await E2eCryptoService.generateKeyPair(conv.conversationId, userId: _myUserId);
         await _messengerService.storePublicKey(
           user: widget.user,
           conversationId: conv.conversationId,
@@ -441,7 +464,11 @@ class _MessengerViewState extends State<MessengerView> {
       }
 
       if (peerPub != null && peerPub.isNotEmpty) {
-        final shared = await E2eCryptoService.deriveSharedKey(conv.conversationId, peerPub);
+        final shared = await E2eCryptoService.deriveSharedKey(
+          conv.conversationId,
+          peerPub,
+          userId: _myUserId,
+        );
         if (mounted) {
           setState(() {
             _activeSharedKey = shared;
@@ -486,6 +513,7 @@ class _MessengerViewState extends State<MessengerView> {
           effectiveKey = await E2eCryptoService.deriveSharedKey(
             _activeConversation!.conversationId,
             peerPub,
+            userId: _myUserId,
           );
           if (effectiveKey != null && mounted) {
             _activeSharedKey = effectiveKey;
@@ -574,6 +602,19 @@ class _MessengerViewState extends State<MessengerView> {
         String contentToSend = text;
         bool encrypted = false;
         String iv = '';
+
+        if (_activeSharedKey != null && _e2eActive) {
+          try {
+            final enc = await E2eCryptoService.encryptMessage(_activeSharedKey!, text);
+            contentToSend = enc.ciphertext;
+            encrypted = true;
+            iv = enc.iv;
+          } catch (_) {
+            contentToSend = text;
+            encrypted = false;
+            iv = '';
+          }
+        }
 
         final sent = await _messengerService.sendDirectMessage(
           user: widget.user,
@@ -749,106 +790,6 @@ class _MessengerViewState extends State<MessengerView> {
       }
     } catch (_) {
       if (mounted) setState(() => _isSending = false);
-    }
-  }
-
-  Future<void> _toggleLiveDictation() async {
-    if (_isDictating) {
-      try {
-        await _dictationSpeech.stop();
-      } catch (_) {}
-      if (mounted) setState(() => _isDictating = false);
-      return;
-    }
-
-    // Request runtime microphone permission on Android/iOS BEFORE initializing STT
-    if (!kIsWeb &&
-        (defaultTargetPlatform == TargetPlatform.android ||
-            defaultTargetPlatform == TargetPlatform.iOS)) {
-      final micStatus = await Permission.microphone.request();
-      if (!micStatus.isGranted) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              backgroundColor: CeladonColors.error,
-              content: Text('Microphone permission is required for Voice-to-Text.'),
-            ),
-          );
-        }
-        return;
-      }
-    }
-
-    try {
-      final ready = await _dictationSpeech.initialize(
-        onStatus: (status) {
-          if (status == 'done' && mounted) {
-            setState(() => _isDictating = false);
-          }
-        },
-        onError: (err) {
-          if (mounted) {
-            final msg = err.errorMsg.toLowerCase();
-            if (msg.contains('permission') || msg.contains('not-allowed') || msg.contains('denied')) {
-              setState(() => _isDictating = false);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  backgroundColor: CeladonColors.error,
-                  content: Text('Microphone permission denied. Please allow microphone access in browser or device settings.'),
-                ),
-              );
-            } else if (msg.contains('timeout') || msg.contains('no_match') || msg.contains('no-speech')) {
-              // Silence detected; do not abort session abruptly
-            } else {
-              setState(() => _isDictating = false);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Voice-to-Text: ${err.errorMsg}')),
-              );
-            }
-          }
-        },
-        debugLogging: false,
-      );
-
-      if (!ready) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Speech recognition is unavailable. Please ensure microphone access is allowed or Google Speech is enabled.'),
-            ),
-          );
-        }
-        return;
-      }
-
-      final initialText = _messageController.text;
-      final prefix = initialText.isEmpty || initialText.endsWith(' ') ? initialText : '$initialText ';
-      setState(() => _isDictating = true);
-
-      await _dictationSpeech.listen(
-        onResult: (res) {
-          if (!mounted) return;
-          final spoken = res.recognizedWords.trim();
-          if (spoken.isEmpty) return;
-          final combined = '$prefix$spoken';
-          _messageController.text = combined;
-          _messageController.selection = TextSelection.fromPosition(
-            TextPosition(offset: combined.length),
-          );
-        },
-        listenOptions: stt.SpeechListenOptions(
-          partialResults: true,
-          cancelOnError: false,
-          listenMode: stt.ListenMode.dictation,
-        ),
-      );
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isDictating = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not start Voice-to-Text: $e')),
-        );
-      }
     }
   }
 
@@ -1702,76 +1643,39 @@ class _MessengerViewState extends State<MessengerView> {
       color: CeladonColors.background,
       child: Column(
         children: [
-          // Sleek Search Bar Row with Add Contact & New Chat
+          // Sleek Full-Width Search Bar
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(color: const Color(0xFFE2ECE7)),
-                    ),
-                    child: TextField(
-                      controller: _searchController,
-                      onChanged: (v) => setState(() => _searchQuery = v),
-                      style: const TextStyle(fontSize: 13.5, color: CeladonColors.textPrimary),
-                      decoration: InputDecoration(
-                        hintText: widget.user.isSuperAdmin
-                            ? 'Search company owners or groups...'
-                            : 'Search chats or colleagues...',
-                        hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
-                        prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Color(0xFF64748B)),
-                        suffixIcon: _searchQuery.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF64748B)),
-                                onPressed: () {
-                                  _searchController.clear();
-                                  setState(() => _searchQuery = '');
-                                },
-                              )
-                            : null,
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-                      ),
-                    ),
-                  ),
+            child: Container(
+              height: 44,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: const Color(0xFFE2ECE7)),
+              ),
+              child: TextField(
+                controller: _searchController,
+                onChanged: (v) => setState(() => _searchQuery = v),
+                style: const TextStyle(fontSize: 13.5, color: CeladonColors.textPrimary),
+                decoration: InputDecoration(
+                  hintText: widget.user.isSuperAdmin
+                      ? 'Search company owners or groups...'
+                      : 'Search chats or colleagues...',
+                  hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                  prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Color(0xFF64748B)),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF64748B)),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                        )
+                      : null,
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                 ),
-                const SizedBox(width: 8),
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEDF5F1),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFFD2E6DC)),
-                  ),
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    icon: const Icon(Icons.person_add_alt_1_rounded, color: CeladonColors.primary, size: 20),
-                    tooltip: 'New Contact / Group',
-                    onPressed: _showCreateGroupSheet,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: CeladonColors.primary,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    icon: const Icon(Icons.add_comment_rounded, color: Colors.white, size: 20),
-                    tooltip: 'New Chat',
-                    onPressed: _showStartDmSheet,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
 
@@ -2637,8 +2541,8 @@ class _MessengerViewState extends State<MessengerView> {
 
   // ═══════════════════════════════════════════════════════════════
   // PROFESSIONAL COMPOSER BAR
-  // Left: Spacious Expanded text box
-  // Right: [ Attach Media ] [ Record Video ] [ Voice/Dictate ] [ Send ]
+  // Left: Spacious Expanded text box with Media icon inside
+  // Right: [ Record Video ] [ Voice Message ] [ Send ]
   // ═══════════════════════════════════════════════════════════════
 
   Widget _buildComposer({required String hintText}) {
@@ -2653,60 +2557,51 @@ class _MessengerViewState extends State<MessengerView> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            // 1. LEFT SIDE: Spacious, professional message text input box (Expanded)
+            // 1. LEFT SIDE: Spacious, professional message text input box (Expanded) with Media icon inside
             Expanded(
               child: Container(
-                constraints: const BoxConstraints(minHeight: 44),
+                constraints: const BoxConstraints(minHeight: 50),
                 decoration: BoxDecoration(
                   color: _searchFill,
-                  borderRadius: BorderRadius.circular(24),
-                  border: _isDictating
-                      ? Border.all(color: CeladonColors.error, width: 1.5)
-                      : Border.all(color: CeladonColors.border.withValues(alpha: 0.6)),
+                  borderRadius: BorderRadius.circular(26),
+                  border: Border.all(color: CeladonColors.border.withValues(alpha: 0.6)),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                child: TextField(
-                  controller: _messageController,
-                  textInputAction: TextInputAction.send,
-                  minLines: 1,
-                  maxLines: 5,
-                  onSubmitted: (_) => _handleSendText(),
-                  style: const TextStyle(fontSize: 14.5, color: CeladonColors.textPrimary),
-                  decoration: InputDecoration(
-                    hintText: _isDictating ? '🎙️ Listening... speak now' : hintText,
-                    hintStyle: TextStyle(
-                      fontSize: 13.5,
-                      color: _isDictating ? CeladonColors.error : const Color(0xFF64748B),
+                padding: const EdgeInsets.only(left: 4, right: 14),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    // Media icon inside the box!
+                    IconButton(
+                      icon: const Icon(Icons.attach_file_rounded, color: CeladonColors.primary, size: 21),
+                      tooltip: 'Attach Photo, Video or Document',
+                      onPressed: _isSending ? null : _handleOpenMediaPicker,
+                      visualDensity: VisualDensity.compact,
                     ),
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                    border: InputBorder.none,
-                  ),
+                    Expanded(
+                      child: TextField(
+                        controller: _messageController,
+                        textInputAction: TextInputAction.send,
+                        minLines: 1,
+                        maxLines: 5,
+                        onSubmitted: (_) => _handleSendText(),
+                        style: const TextStyle(fontSize: 15, color: CeladonColors.textPrimary),
+                        decoration: InputDecoration(
+                          hintText: hintText,
+                          hintStyle: const TextStyle(fontSize: 14, color: Color(0xFF64748B)),
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                          border: InputBorder.none,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 8),
 
             // 2. RIGHT SIDE ACTION ICONS:
-            // (A) Media icon: Attach Photo, Video or Document
-            Tooltip(
-              message: 'Attach Photo, Video or Document',
-              child: Material(
-                color: CeladonColors.softMint,
-                shape: const CircleBorder(),
-                child: InkWell(
-                  customBorder: const CircleBorder(),
-                  onTap: _isSending ? null : _handleOpenMediaPicker,
-                  child: const Padding(
-                    padding: EdgeInsets.all(8),
-                    child: Icon(Icons.attach_file_rounded, color: CeladonColors.primary, size: 19),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 4),
-
-            // (B) Video Record: Quick record video message
+            // (A) Video Record
             Tooltip(
               message: 'Record Video',
               child: Material(
@@ -2716,15 +2611,15 @@ class _MessengerViewState extends State<MessengerView> {
                   customBorder: const CircleBorder(),
                   onTap: _isSending ? null : _handleRecordVideo,
                   child: const Padding(
-                    padding: EdgeInsets.all(8),
-                    child: Icon(Icons.videocam_rounded, color: CeladonColors.primary, size: 19),
+                    padding: EdgeInsets.all(10),
+                    child: Icon(Icons.videocam_rounded, color: CeladonColors.primary, size: 21),
                   ),
                 ),
               ),
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 6),
 
-            // (C) Voice Note Recorder Sheet
+            // (B) Voice Note Recorder Sheet
             Tooltip(
               message: 'Record Voice Message',
               child: Material(
@@ -2734,37 +2629,15 @@ class _MessengerViewState extends State<MessengerView> {
                   customBorder: const CircleBorder(),
                   onTap: _handleOpenVoiceRecorder,
                   child: const Padding(
-                    padding: EdgeInsets.all(8),
-                    child: Icon(Icons.mic_rounded, color: CeladonColors.primary, size: 19),
+                    padding: EdgeInsets.all(10),
+                    child: Icon(Icons.mic_rounded, color: CeladonColors.primary, size: 21),
                   ),
                 ),
               ),
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 6),
 
-            // (D) Voice-to-Text Live Dictation
-            Tooltip(
-              message: _isDictating ? 'Stop Voice Typing' : 'Voice to Text',
-              child: Material(
-                color: _isDictating ? const Color(0xFFFEE2E2) : CeladonColors.softMint,
-                shape: const CircleBorder(),
-                child: InkWell(
-                  customBorder: const CircleBorder(),
-                  onTap: _toggleLiveDictation,
-                  child: Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: Icon(
-                      _isDictating ? Icons.stop_circle_rounded : Icons.mic_none_rounded,
-                      color: _isDictating ? CeladonColors.error : CeladonColors.primary,
-                      size: 19,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 4),
-
-            // (E) Primary Send button
+            // (C) Primary Send button
             Material(
               color: CeladonColors.primary,
               shape: const CircleBorder(),
@@ -2773,17 +2646,17 @@ class _MessengerViewState extends State<MessengerView> {
                 customBorder: const CircleBorder(),
                 onTap: _isSending ? null : _handleSendText,
                 child: Padding(
-                  padding: const EdgeInsets.all(9),
+                  padding: const EdgeInsets.all(10),
                   child: _isSending
                       ? const SizedBox(
-                          width: 19,
-                          height: 19,
+                          width: 21,
+                          height: 21,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
                             color: Colors.white,
                           ),
                         )
-                      : const Icon(Icons.send_rounded, color: Colors.white, size: 19),
+                      : const Icon(Icons.send_rounded, color: Colors.white, size: 21),
                 ),
               ),
             ),
@@ -2804,18 +2677,7 @@ class _MessengerViewState extends State<MessengerView> {
               foregroundColor: CeladonColors.textPrimary,
               elevation: 0,
               scrolledUnderElevation: 0,
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back_rounded, size: 22),
-                onPressed: () {
-                  if (widget.onBack != null) {
-                    widget.onBack!();
-                  } else if (Navigator.of(context).canPop()) {
-                    Navigator.of(context).pop();
-                  } else if (widget.onOpenDrawer != null) {
-                    widget.onOpenDrawer!();
-                  }
-                },
-              ),
+              automaticallyImplyLeading: false,
               title: Row(
                 children: [
                   const Text(
@@ -2852,6 +2714,17 @@ class _MessengerViewState extends State<MessengerView> {
                 ),
               ],
             ),
+      floatingActionButton: (_activeConversation == null && _activeTab == 0)
+          ? FloatingActionButton.extended(
+              tooltip: 'New Chat',
+              backgroundColor: CeladonColors.primary,
+              foregroundColor: Colors.white,
+              elevation: 3,
+              icon: const Icon(Icons.chat_bubble_outline_rounded, size: 20),
+              label: const Text('New Chat', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+              onPressed: _showStartDmSheet,
+            )
+          : null,
       body: SafeArea(
         top: _activeConversation != null,
         bottom: false,
@@ -2859,9 +2732,24 @@ class _MessengerViewState extends State<MessengerView> {
       ),
     );
 
-    return CallOverlay(
-      onOpenMessenger: () {},
-      child: scaffold,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (_activeConversation != null) {
+          setState(() => _activeConversation = null);
+        } else if (widget.onBack != null) {
+          widget.onBack!();
+        } else if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        } else if (widget.onOpenDrawer != null) {
+          widget.onOpenDrawer!();
+        }
+      },
+      child: CallOverlay(
+        onOpenMessenger: () {},
+        child: scaffold,
+      ),
     );
   }
 }

@@ -61,42 +61,49 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _checkInitialRoute() async {
-    // Wait for the splash experience
-    await Future.delayed(const Duration(milliseconds: 1800));
-
-    if (!mounted) return;
-
-    if (widget.onInitializationComplete != null) {
-      widget.onInitializationComplete!();
-      return;
-    }
-
+    // Fast responsive session check without artificial delay that blocks engine frames
     final savedUser = await SessionStorage.getUserSession();
 
     if (!mounted) return;
 
-    if (savedUser != null && savedUser.token.isNotEmpty) {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (_) => DashboardScreen(
-            user: savedUser,
-            onLogout: () async {
-              await SessionStorage.clearSession();
-            },
-          ),
-        ),
-        (route) => false,
-      );
-    } else {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-        (route) => false,
-      );
+    if (widget.onInitializationComplete != null) {
+      if (_animController.isAnimating) _animController.stop();
+      widget.onInitializationComplete!();
+      return;
     }
+
+    if (_animController.isAnimating) {
+      _animController.stop();
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (savedUser != null && savedUser.token.isNotEmpty) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => DashboardScreen(
+              user: savedUser,
+              onLogout: () async {
+                await SessionStorage.clearSession();
+              },
+            ),
+          ),
+          (route) => false,
+        );
+      } else {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
+      }
+    });
   }
 
   @override
   void dispose() {
+    if (_animController.isAnimating) {
+      _animController.stop();
+    }
     _animController.dispose();
     super.dispose();
   }

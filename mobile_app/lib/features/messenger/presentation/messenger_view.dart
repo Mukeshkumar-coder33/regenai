@@ -706,7 +706,9 @@ class _MessengerViewState extends State<MessengerView> {
 
   Future<void> _toggleLiveDictation() async {
     if (_isDictating) {
-      await _dictationSpeech.stop();
+      try {
+        await _dictationSpeech.stop();
+      } catch (_) {}
       if (mounted) setState(() => _isDictating = false);
       return;
     }
@@ -730,40 +732,51 @@ class _MessengerViewState extends State<MessengerView> {
     }
 
     try {
-      if (!_dictationSpeech.isAvailable) {
-        final ready = await _dictationSpeech.initialize(
-          onStatus: (status) {
-            if ((status == 'done' || status == 'notListening') && mounted) {
-              setState(() => _isDictating = false);
-            }
-          },
-          onError: (err) {
-            if (mounted) {
-              setState(() => _isDictating = false);
-              if (err.errorMsg != 'error_speech_timeout' && err.errorMsg != 'error_no_match') {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Voice-to-Text: ${err.errorMsg}')),
-                );
-              }
-            }
-          },
-          debugLogging: false,
-        );
-        if (!ready) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Speech recognition is unavailable. Please enable Google Speech Services / microphone access.'),
-              ),
-            );
+      final ready = await _dictationSpeech.initialize(
+        onStatus: (status) {
+          if (status == 'done' && mounted) {
+            setState(() => _isDictating = false);
           }
-          return;
+        },
+        onError: (err) {
+          if (mounted) {
+            final msg = err.errorMsg.toLowerCase();
+            if (msg.contains('permission') || msg.contains('not-allowed') || msg.contains('denied')) {
+              setState(() => _isDictating = false);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  backgroundColor: CeladonColors.error,
+                  content: Text('Microphone permission denied. Please allow microphone access in browser or device settings.'),
+                ),
+              );
+            } else if (msg.contains('timeout') || msg.contains('no_match') || msg.contains('no-speech')) {
+              // Silence detected; do not abort session abruptly
+            } else {
+              setState(() => _isDictating = false);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Voice-to-Text: ${err.errorMsg}')),
+              );
+            }
+          }
+        },
+        debugLogging: false,
+      );
+
+      if (!ready) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Speech recognition is unavailable. Please ensure microphone access is allowed or Google Speech is enabled.'),
+            ),
+          );
         }
+        return;
       }
 
       final initialText = _messageController.text;
       final prefix = initialText.isEmpty || initialText.endsWith(' ') ? initialText : '$initialText ';
       setState(() => _isDictating = true);
+
       await _dictationSpeech.listen(
         onResult: (res) {
           if (!mounted) return;
@@ -778,9 +791,7 @@ class _MessengerViewState extends State<MessengerView> {
         listenOptions: stt.SpeechListenOptions(
           partialResults: true,
           cancelOnError: false,
-          listenMode: stt.ListenMode.dictation,
-          listenFor: const Duration(seconds: 60),
-          pauseFor: const Duration(seconds: 4),
+          listenMode: stt.ListenMode.confirmation,
         ),
       );
     } catch (e) {
@@ -2568,7 +2579,7 @@ class _MessengerViewState extends State<MessengerView> {
 
   Widget _buildComposer({required String hintText}) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
       decoration: const BoxDecoration(
         color: Colors.white,
         border: Border(top: BorderSide(color: _subtleDivider)),
@@ -2578,7 +2589,47 @@ class _MessengerViewState extends State<MessengerView> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            // Unified Pill Input with integrated Voice-to-Text icon inside suffix
+            // 1. Record Voice Message (opens recorder + preview + editable transcript)
+            Tooltip(
+              message: 'Record Voice Message',
+              child: Material(
+                color: CeladonColors.softMint,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: _handleOpenVoiceRecorder,
+                  child: const Padding(
+                    padding: EdgeInsets.all(11),
+                    child: Icon(Icons.mic_rounded, color: CeladonColors.primary, size: 20),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+
+            // 2. Voice-to-Text Live Dictation (types live spoken words into text box)
+            Tooltip(
+              message: _isDictating ? 'Stop Voice Typing' : 'Voice to Text',
+              child: Material(
+                color: _isDictating ? const Color(0xFFFEE2E2) : CeladonColors.softMint,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: _toggleLiveDictation,
+                  child: Padding(
+                    padding: const EdgeInsets.all(11),
+                    child: Icon(
+                      _isDictating ? Icons.stop_circle_rounded : Icons.mic_none_rounded,
+                      color: _isDictating ? CeladonColors.error : CeladonColors.primary,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+
+            // 3. Center Pill Input Field
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
@@ -2590,7 +2641,7 @@ class _MessengerViewState extends State<MessengerView> {
                 ),
                 child: Row(
                   children: [
-                    // Attach Photo, Video or Document from local storage (or Record Video)
+                    // Attach Photo, Video or Document from local storage
                     Tooltip(
                       message: 'Attach Photo, Video or Document',
                       child: IconButton(
@@ -2614,7 +2665,7 @@ class _MessengerViewState extends State<MessengerView> {
                         onSubmitted: (_) => _handleSendText(),
                         style: const TextStyle(fontSize: 14.5, color: CeladonColors.textPrimary),
                         decoration: InputDecoration(
-                          hintText: _isDictating ? 'Listening... speak now' : hintText,
+                          hintText: _isDictating ? '🎙️ Listening... speak now' : hintText,
                           hintStyle: TextStyle(
                             fontSize: 13.5,
                             color: _isDictating ? CeladonColors.error : const Color(0xFF64748B),
@@ -2623,21 +2674,6 @@ class _MessengerViewState extends State<MessengerView> {
                           contentPadding: const EdgeInsets.fromLTRB(2, 11, 4, 11),
                           border: InputBorder.none,
                         ),
-                      ),
-                    ),
-                    // Distinct Voice-to-Text (Speech Dictation) button inside the pill
-                    Tooltip(
-                      message: 'Voice to Text',
-                      child: IconButton(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
-                        icon: Icon(
-                          _isDictating ? Icons.stop_circle_rounded : Icons.graphic_eq_rounded,
-                          size: 20,
-                          color: _isDictating ? CeladonColors.error : const Color(0xFF64748B),
-                        ),
-                        onPressed: _toggleLiveDictation,
                       ),
                     ),
                     // Quick Record Video & Send button inside the pill
@@ -2660,24 +2696,8 @@ class _MessengerViewState extends State<MessengerView> {
               ),
             ),
             const SizedBox(width: 8),
-            // Record Voice Message button (opens recorder + preview + editable transcript)
-            Tooltip(
-              message: 'Record Voice Message',
-              child: Material(
-                color: CeladonColors.softMint,
-                shape: const CircleBorder(),
-                child: InkWell(
-                  customBorder: const CircleBorder(),
-                  onTap: _handleOpenVoiceRecorder,
-                  child: const Padding(
-                    padding: EdgeInsets.all(11),
-                    child: Icon(Icons.mic_rounded, color: CeladonColors.primary, size: 20),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            // Primary Send button
+
+            // 4. Primary Send button
             Material(
               color: CeladonColors.primary,
               shape: const CircleBorder(),

@@ -16,9 +16,10 @@ class ReGenApp extends StatelessWidget {
       title: 'ReGen',
       debugShowCheckedModeBanner: false,
       theme: CeladonTheme.lightTheme,
-      home: const VirtualDeviceFrame(
-        child: SplashScreen(),
+      builder: (context, child) => VirtualDeviceFrame(
+        child: child ?? const SizedBox.shrink(),
       ),
+      home: const SplashScreen(),
     );
   }
 }

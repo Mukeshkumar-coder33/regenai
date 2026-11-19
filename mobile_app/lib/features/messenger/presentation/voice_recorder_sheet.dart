@@ -222,16 +222,24 @@ class _VoiceRecorderSheetState extends State<VoiceRecorderSheet> {
     try {
       final available = await _speech.initialize(
         onStatus: (status) {
-          if ((status == 'done' || status == 'notListening') && mounted) {
+          if (status == 'done' && mounted) {
             setState(() => _isDictatingTranscript = false);
           }
         },
         onError: (err) {
           if (mounted) {
-            setState(() {
-              _isDictatingTranscript = false;
-              _errorText = 'Speech-to-text error: ${err.errorMsg}';
-            });
+            final msg = err.errorMsg.toLowerCase();
+            if (msg.contains('permission') || msg.contains('not-allowed') || msg.contains('denied')) {
+              setState(() {
+                _isDictatingTranscript = false;
+                _errorText = 'Microphone permission denied for speech-to-text.';
+              });
+            } else if (!msg.contains('timeout') && !msg.contains('no_match') && !msg.contains('no-speech')) {
+              setState(() {
+                _isDictatingTranscript = false;
+                _errorText = 'Speech-to-text: ${err.errorMsg}';
+              });
+            }
           }
         },
       );
@@ -250,9 +258,11 @@ class _VoiceRecorderSheetState extends State<VoiceRecorderSheet> {
       await _speech.listen(
         onResult: (res) {
           if (!mounted) return;
+          final words = res.recognizedWords.trim();
+          if (words.isEmpty) return;
           final combined = baseText.isEmpty
-              ? res.recognizedWords
-              : '$baseText ${res.recognizedWords}';
+              ? words
+              : '$baseText $words';
           setState(() {
             _transcriptController.text = combined;
             _transcriptController.selection = TextSelection.fromPosition(
@@ -262,7 +272,8 @@ class _VoiceRecorderSheetState extends State<VoiceRecorderSheet> {
         },
         listenOptions: stt.SpeechListenOptions(
           partialResults: true,
-          listenMode: stt.ListenMode.dictation,
+          cancelOnError: false,
+          listenMode: stt.ListenMode.confirmation,
         ),
       );
     } catch (e) {

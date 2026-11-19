@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import '../core/theme/celadon_theme.dart';
 import '../core/widgets/virtual_device_frame.dart';
+import '../features/messenger/presentation/call_overlay.dart';
 import '../features/splash/presentation/splash_screen.dart';
 
 /// ReGenApp Root Widget
 ///
 /// Sets up global MaterialApp configuration, Celadon theme,
+/// wraps with CallOverlay for app-wide WebRTC call signaling,
 /// and wraps the screens in a Virtual Device Simulator for web/desktop.
 class ReGenApp extends StatelessWidget {
   const ReGenApp({super.key});
@@ -17,7 +19,9 @@ class ReGenApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: CeladonTheme.lightTheme,
       builder: (context, child) => VirtualDeviceFrame(
-        child: child ?? const SizedBox.shrink(),
+        child: CallOverlay(
+          child: child ?? const SizedBox.shrink(),
+        ),
       ),
       home: const SplashScreen(),
     );

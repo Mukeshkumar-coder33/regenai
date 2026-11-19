@@ -316,21 +316,24 @@ class DmConversationModel {
           break;
         }
       }
-    }
-    if (otherId.isEmpty) {
-      for (final d in rawDetails) {
-        final dId = d.userId.trim();
-        if (dId.isNotEmpty &&
-            !myIds.contains(dId.toLowerCase()) &&
-            !myIds.contains(d.username.trim().toLowerCase()) &&
-            !myIds.contains(d.id.trim().toLowerCase())) {
-          otherId = dId;
-          break;
+      if (otherId.isEmpty) {
+        for (final d in rawDetails) {
+          final dId = d.userId.trim();
+          if (dId.isNotEmpty &&
+              !myIds.contains(dId.toLowerCase()) &&
+              !myIds.contains(d.username.trim().toLowerCase()) &&
+              !myIds.contains(d.id.trim().toLowerCase())) {
+            otherId = dId;
+            break;
+          }
         }
       }
-    }
-    if (otherId.isEmpty && rawParticipants.isNotEmpty) {
-      otherId = rawParticipants.first;
+      if (otherId.isEmpty && rawParticipants.length > 1) {
+        otherId = rawParticipants.firstWhere(
+          (p) => !myIds.contains(p.trim().toLowerCase()),
+          orElse: () => rawParticipants.last,
+        );
+      }
     }
 
     String otherName = '';
@@ -417,8 +420,16 @@ class DirectMessageModel {
     this.attachments = const [],
   });
 
-  String get displayContent =>
-      (decryptedContent != null && decryptedContent!.isNotEmpty) ? decryptedContent! : content;
+  String get displayContent {
+    if (decryptedContent != null && decryptedContent!.isNotEmpty) {
+      return decryptedContent!;
+    }
+    if (encrypted && iv.isNotEmpty) {
+      final isGibberish = !content.contains(' ') && content.length >= 16;
+      if (isGibberish) return '🔒 Encrypted message';
+    }
+    return content;
+  }
 
   bool get hasAudioAttachment => attachments.any((a) => a.isAudio);
 

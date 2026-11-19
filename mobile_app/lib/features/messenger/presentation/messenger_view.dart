@@ -86,6 +86,8 @@ class _MessengerViewState extends State<MessengerView> {
     super.initState();
     _messengerService = widget.messengerService ?? MessengerService();
     _dashboardService = widget.dashboardService ?? DashboardService();
+    WebRtcCallManager.instance.bindUser(widget.user);
+    MessengerSocketService.instance.ensureConnected();
     _activeTab = 0;
     _attachSocketListeners();
     _loadMessengerData();
@@ -119,6 +121,45 @@ class _MessengerViewState extends State<MessengerView> {
       }
     }
     return null;
+  }
+
+  /// Resolves the actual other peer identifier for 1-to-1 chats,
+  /// guaranteeing it never returns the current user themselves.
+  String _resolvePeerId(DmConversationModel conv) {
+    final mySet = <String>{
+      _myUserId.trim().toLowerCase(),
+      widget.user.userId.trim().toLowerCase(),
+      widget.user.id.trim().toLowerCase(),
+      widget.user.username.trim().toLowerCase(),
+    }..removeWhere((s) => s.isEmpty);
+
+    if (conv.otherUserId.trim().isNotEmpty &&
+        !mySet.contains(conv.otherUserId.trim().toLowerCase())) {
+      return conv.otherUserId.trim();
+    }
+    for (final p in conv.participants) {
+      final pTrim = p.trim();
+      if (pTrim.isNotEmpty && !mySet.contains(pTrim.toLowerCase())) {
+        return pTrim;
+      }
+    }
+    for (final d in conv.participantDetails) {
+      final dId = d.userId.trim();
+      if (dId.isNotEmpty && !mySet.contains(dId.toLowerCase())) {
+        return dId;
+      }
+    }
+    for (final c in _contacts) {
+      final cId = c.userId.trim();
+      if (cId.isNotEmpty && !mySet.contains(cId.toLowerCase())) {
+        if (conv.participants.any((p) =>
+            p.toLowerCase() == cId.toLowerCase() ||
+            p.toLowerCase() == c.username.toLowerCase())) {
+          return cId;
+        }
+      }
+    }
+    return conv.otherUserId;
   }
 
   /// Resolves a conversation's display title to the real Employee / Owner Name
@@ -437,14 +478,28 @@ class _MessengerViewState extends State<MessengerView> {
         out.add(m);
         continue;
       }
-      if (key == null) {
-        out.add(m);
+      SecretKey? effectiveKey = key ?? _activeSharedKey;
+      if (effectiveKey == null && _activeConversation != null) {
+        final peerId = _resolvePeerId(_activeConversation!);
+        final peerPub = _activeConversation!.publicKeys[peerId];
+        if (peerPub != null && peerPub.isNotEmpty) {
+          effectiveKey = await E2eCryptoService.deriveSharedKey(
+            _activeConversation!.conversationId,
+            peerPub,
+          );
+          if (effectiveKey != null && mounted) {
+            _activeSharedKey = effectiveKey;
+          }
+        }
+      }
+      if (effectiveKey == null) {
+        final isCipher = !m.content.contains(' ') && m.content.length >= 16;
+        out.add(m.copyWith(decryptedContent: isCipher ? '🔒 Encrypted message' : m.content));
         continue;
       }
-      final plain = await E2eCryptoService.decryptMessage(key, m.content, m.iv);
+      final plain = await E2eCryptoService.decryptMessage(effectiveKey, m.content, m.iv);
       if (plain == '🔒 Unable to decrypt') {
-        // Only mark encrypted if content actually looks like long base64 ciphertext
-        final isCipher = m.content.length > 40 && !m.content.contains(' ');
+        final isCipher = !m.content.contains(' ') && m.content.length >= 16;
         out.add(m.copyWith(decryptedContent: isCipher ? '🔒 Encrypted message' : m.content));
       } else {
         out.add(m.copyWith(decryptedContent: plain));
@@ -519,13 +574,6 @@ class _MessengerViewState extends State<MessengerView> {
         String contentToSend = text;
         bool encrypted = false;
         String iv = '';
-
-        if (!_activeConversation!.isGroup && _e2eActive && _activeSharedKey != null) {
-          final enc = await E2eCryptoService.encryptMessage(_activeSharedKey!, text);
-          contentToSend = enc.ciphertext;
-          iv = enc.iv;
-          encrypted = true;
-        }
 
         final sent = await _messengerService.sendDirectMessage(
           user: widget.user,
@@ -791,7 +839,7 @@ class _MessengerViewState extends State<MessengerView> {
         listenOptions: stt.SpeechListenOptions(
           partialResults: true,
           cancelOnError: false,
-          listenMode: stt.ListenMode.confirmation,
+          listenMode: stt.ListenMode.dictation,
         ),
       );
     } catch (e) {
@@ -2300,8 +2348,15 @@ class _MessengerViewState extends State<MessengerView> {
                         conversationId: conv.conversationId,
                       );
                     } else {
+                      final targetPeerId = _resolvePeerId(conv);
+                      if (targetPeerId.isEmpty || _myUserId.toLowerCase() == targetPeerId.toLowerCase()) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Cannot initiate a call with yourself.')),
+                        );
+                        return;
+                      }
                       WebRtcCallManager.instance.startCall(
-                        recipientId: conv.otherUserId,
+                        recipientId: targetPeerId,
                         recipientName: displayName,
                         mediaType: 'voice',
                       );
@@ -2320,8 +2375,15 @@ class _MessengerViewState extends State<MessengerView> {
                         conversationId: conv.conversationId,
                       );
                     } else {
+                      final targetPeerId = _resolvePeerId(conv);
+                      if (targetPeerId.isEmpty || _myUserId.toLowerCase() == targetPeerId.toLowerCase()) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Cannot initiate a call with yourself.')),
+                        );
+                        return;
+                      }
                       WebRtcCallManager.instance.startCall(
-                        recipientId: conv.otherUserId,
+                        recipientId: targetPeerId,
                         recipientName: displayName,
                         mediaType: 'video',
                       );
@@ -2574,7 +2636,9 @@ class _MessengerViewState extends State<MessengerView> {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // MODERN UNIFIED COMPOSER BAR (SINGLE PILL + DISTINCT VOICE ACTIONS)
+  // PROFESSIONAL COMPOSER BAR
+  // Left: Spacious Expanded text box
+  // Right: [ Attach Media ] [ Record Video ] [ Voice/Dictate ] [ Send ]
   // ═══════════════════════════════════════════════════════════════
 
   Widget _buildComposer({required String hintText}) {
@@ -2589,7 +2653,78 @@ class _MessengerViewState extends State<MessengerView> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            // 1. Record Voice Message (opens recorder + preview + editable transcript)
+            // 1. LEFT SIDE: Spacious, professional message text input box (Expanded)
+            Expanded(
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 44),
+                decoration: BoxDecoration(
+                  color: _searchFill,
+                  borderRadius: BorderRadius.circular(24),
+                  border: _isDictating
+                      ? Border.all(color: CeladonColors.error, width: 1.5)
+                      : Border.all(color: CeladonColors.border.withValues(alpha: 0.6)),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: TextField(
+                  controller: _messageController,
+                  textInputAction: TextInputAction.send,
+                  minLines: 1,
+                  maxLines: 5,
+                  onSubmitted: (_) => _handleSendText(),
+                  style: const TextStyle(fontSize: 14.5, color: CeladonColors.textPrimary),
+                  decoration: InputDecoration(
+                    hintText: _isDictating ? '🎙️ Listening... speak now' : hintText,
+                    hintStyle: TextStyle(
+                      fontSize: 13.5,
+                      color: _isDictating ? CeladonColors.error : const Color(0xFF64748B),
+                    ),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                    border: InputBorder.none,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+
+            // 2. RIGHT SIDE ACTION ICONS:
+            // (A) Media icon: Attach Photo, Video or Document
+            Tooltip(
+              message: 'Attach Photo, Video or Document',
+              child: Material(
+                color: CeladonColors.softMint,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: _isSending ? null : _handleOpenMediaPicker,
+                  child: const Padding(
+                    padding: EdgeInsets.all(8),
+                    child: Icon(Icons.attach_file_rounded, color: CeladonColors.primary, size: 19),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+
+            // (B) Video Record: Quick record video message
+            Tooltip(
+              message: 'Record Video',
+              child: Material(
+                color: CeladonColors.softMint,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: _isSending ? null : _handleRecordVideo,
+                  child: const Padding(
+                    padding: EdgeInsets.all(8),
+                    child: Icon(Icons.videocam_rounded, color: CeladonColors.primary, size: 19),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+
+            // (C) Voice Note Recorder Sheet
             Tooltip(
               message: 'Record Voice Message',
               child: Material(
@@ -2599,15 +2734,15 @@ class _MessengerViewState extends State<MessengerView> {
                   customBorder: const CircleBorder(),
                   onTap: _handleOpenVoiceRecorder,
                   child: const Padding(
-                    padding: EdgeInsets.all(11),
-                    child: Icon(Icons.mic_rounded, color: CeladonColors.primary, size: 20),
+                    padding: EdgeInsets.all(8),
+                    child: Icon(Icons.mic_rounded, color: CeladonColors.primary, size: 19),
                   ),
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 4),
 
-            // 2. Voice-to-Text Live Dictation (types live spoken words into text box)
+            // (D) Voice-to-Text Live Dictation
             Tooltip(
               message: _isDictating ? 'Stop Voice Typing' : 'Voice to Text',
               child: Material(
@@ -2617,87 +2752,19 @@ class _MessengerViewState extends State<MessengerView> {
                   customBorder: const CircleBorder(),
                   onTap: _toggleLiveDictation,
                   child: Padding(
-                    padding: const EdgeInsets.all(11),
+                    padding: const EdgeInsets.all(8),
                     child: Icon(
                       _isDictating ? Icons.stop_circle_rounded : Icons.mic_none_rounded,
                       color: _isDictating ? CeladonColors.error : CeladonColors.primary,
-                      size: 20,
+                      size: 19,
                     ),
                   ),
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 4),
 
-            // 3. Center Pill Input Field
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: _searchFill,
-                  borderRadius: BorderRadius.circular(24),
-                  border: _isDictating
-                      ? Border.all(color: CeladonColors.error, width: 1.3)
-                      : null,
-                ),
-                child: Row(
-                  children: [
-                    // Attach Photo, Video or Document from local storage
-                    Tooltip(
-                      message: 'Attach Photo, Video or Document',
-                      child: IconButton(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                        constraints: const BoxConstraints(minWidth: 34, minHeight: 36),
-                        icon: const Icon(
-                          Icons.attach_file_rounded,
-                          size: 20,
-                          color: Color(0xFF64748B),
-                        ),
-                        onPressed: _isSending ? null : _handleOpenMediaPicker,
-                      ),
-                    ),
-                    Expanded(
-                      child: TextField(
-                        controller: _messageController,
-                        textInputAction: TextInputAction.send,
-                        minLines: 1,
-                        maxLines: 4,
-                        onSubmitted: (_) => _handleSendText(),
-                        style: const TextStyle(fontSize: 14.5, color: CeladonColors.textPrimary),
-                        decoration: InputDecoration(
-                          hintText: _isDictating ? '🎙️ Listening... speak now' : hintText,
-                          hintStyle: TextStyle(
-                            fontSize: 13.5,
-                            color: _isDictating ? CeladonColors.error : const Color(0xFF64748B),
-                          ),
-                          isDense: true,
-                          contentPadding: const EdgeInsets.fromLTRB(2, 11, 4, 11),
-                          border: InputBorder.none,
-                        ),
-                      ),
-                    ),
-                    // Quick Record Video & Send button inside the pill
-                    Tooltip(
-                      message: 'Record Video',
-                      child: IconButton(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.fromLTRB(2, 0, 8, 0),
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
-                        icon: const Icon(
-                          Icons.videocam_outlined,
-                          size: 21,
-                          color: Color(0xFF64748B),
-                        ),
-                        onPressed: _isSending ? null : _handleRecordVideo,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-
-            // 4. Primary Send button
+            // (E) Primary Send button
             Material(
               color: CeladonColors.primary,
               shape: const CircleBorder(),
@@ -2706,17 +2773,17 @@ class _MessengerViewState extends State<MessengerView> {
                 customBorder: const CircleBorder(),
                 onTap: _isSending ? null : _handleSendText,
                 child: Padding(
-                  padding: const EdgeInsets.all(11),
+                  padding: const EdgeInsets.all(9),
                   child: _isSending
                       ? const SizedBox(
-                          width: 20,
-                          height: 20,
+                          width: 19,
+                          height: 19,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
                             color: Colors.white,
                           ),
                         )
-                      : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                      : const Icon(Icons.send_rounded, color: Colors.white, size: 19),
                 ),
               ),
             ),

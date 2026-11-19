@@ -152,7 +152,14 @@ class MessengerMediaPicker {
       );
       if (file == null || !context.mounted) return null;
 
-      final bytes = await file.readAsBytes();
+      Uint8List bytes = await file.readAsBytes();
+      if (bytes.isEmpty) {
+        for (int i = 0; i < 6; i++) {
+          await Future.delayed(const Duration(milliseconds: 250));
+          bytes = await file.readAsBytes();
+          if (bytes.isNotEmpty) break;
+        }
+      }
       if (bytes.isEmpty) {
         if (context.mounted) {
           _showError(context, 'Recorded video was empty. Please try again.');
@@ -207,7 +214,14 @@ class MessengerMediaPicker {
       );
       if (file == null || !context.mounted) return null;
 
-      final bytes = await file.readAsBytes();
+      Uint8List bytes = await file.readAsBytes();
+      if (bytes.isEmpty) {
+        for (int i = 0; i < 6; i++) {
+          await Future.delayed(const Duration(milliseconds: 250));
+          bytes = await file.readAsBytes();
+          if (bytes.isNotEmpty) break;
+        }
+      }
       if (bytes.isEmpty) return null;
       if (bytes.length > _maxFileBytes) {
         if (context.mounted) _showError(context, 'Photo exceeds 10 MB limit.');
@@ -240,7 +254,14 @@ class MessengerMediaPicker {
       final XFile? file = await _picker.pickVideo(source: ImageSource.gallery);
       if (file == null || !context.mounted) return null;
 
-      final bytes = await file.readAsBytes();
+      Uint8List bytes = await file.readAsBytes();
+      if (bytes.isEmpty) {
+        for (int i = 0; i < 6; i++) {
+          await Future.delayed(const Duration(milliseconds: 250));
+          bytes = await file.readAsBytes();
+          if (bytes.isNotEmpty) break;
+        }
+      }
       if (bytes.isEmpty) return null;
       if (bytes.length > _maxVideoBytes) {
         if (context.mounted) _showError(context, 'Video exceeds 20 MB limit.');
@@ -755,10 +776,12 @@ class _VideoPlayerDialogState extends State<_VideoPlayerDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final maxVideoHeight = MediaQuery.of(context).size.height * 0.62;
+    final maxVideoHeight = MediaQuery.of(context).size.height * 0.58;
+    final maxVideoWidth = MediaQuery.of(context).size.width * 0.88;
     return Dialog(
       backgroundColor: Colors.black,
-      insetPadding: const EdgeInsets.all(14),
+      clipBehavior: Clip.antiAlias,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 20),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: SingleChildScrollView(
         child: Column(
@@ -794,8 +817,13 @@ class _VideoPlayerDialogState extends State<_VideoPlayerDialog> {
                 child: CircularProgressIndicator(color: Colors.white),
               )
             else ...[
-              ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: maxVideoHeight),
+              Container(
+                constraints: BoxConstraints(
+                  maxHeight: maxVideoHeight,
+                  maxWidth: maxVideoWidth,
+                ),
+                color: Colors.black,
+                alignment: Alignment.center,
                 child: AspectRatio(
                   aspectRatio: _controller!.value.aspectRatio > 0
                       ? _controller!.value.aspectRatio

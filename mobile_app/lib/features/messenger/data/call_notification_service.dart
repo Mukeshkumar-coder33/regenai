@@ -89,11 +89,13 @@ class CallNotificationService {
           importance: Importance.max,
           priority: Priority.max,
           category: AndroidNotificationCategory.call,
+          audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
           fullScreenIntent: true,
           ongoing: true,
           autoCancel: false,
           playSound: true,
           enableVibration: true,
+          vibrationPattern: Int64List.fromList([0, 1000, 1000, 1000, 1000, 1000]),
         ),
         iOS: const DarwinNotificationDetails(
           presentAlert: true,

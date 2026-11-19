@@ -134,5 +134,19 @@ class NotificationModel {
   bool get isPayment => type.contains('payment') || type.contains('payroll') || type.contains('salary') || type.contains('bonus');
   bool get isBirthday => title.toLowerCase().contains('birthday') || message.toLowerCase().contains('birthday');
   bool get isSystem => type == 'general' || type == 'policy';
+
+  String get formattedDate {
+    try {
+      final dt = DateTime.parse(createdAt);
+      final now = DateTime.now();
+      final diff = now.difference(dt);
+      if (diff.inMinutes < 1) return 'Just now';
+      if (diff.inHours < 1) return '${diff.inMinutes}m ago';
+      if (diff.inDays < 1) return '${diff.inHours}h ago';
+      return '${diff.inDays}d ago';
+    } catch (_) {
+      return '';
+    }
+  }
 }
 

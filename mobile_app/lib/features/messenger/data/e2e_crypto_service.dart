@@ -56,15 +56,55 @@ class E2eCryptoService {
   static Future<bool> hasKeyPair(String conversationId, {String? userId}) async {
     final prefs = await SharedPreferences.getInstance();
     final scoped = prefs.getString(_storageKey(conversationId, userId: userId));
-    if (scoped != null) return true;
+    if (scoped != null && scoped.isNotEmpty) return true;
     if (userId != null) {
-      return prefs.getString(_storageKey(conversationId)) != null;
+      final unscoped = prefs.getString(_storageKey(conversationId));
+      if (unscoped != null && unscoped.isNotEmpty) return true;
     }
     return false;
   }
 
-  /// Generate a new ECDH P-256 keypair, store private JWK locally, return public JWK JSON string.
-  static Future<String> generateKeyPair(String conversationId, {String? userId}) async {
+  /// Retrieve the stored public JWK JSON string from an existing stored private JWK
+  /// without re-generating or overwriting the private key.
+  static Future<String?> getStoredPublicKey(String conversationId, {String? userId}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      var rawPrivate = prefs.getString(_storageKey(conversationId, userId: userId));
+      if (rawPrivate == null && userId != null) {
+        rawPrivate = prefs.getString(_storageKey(conversationId));
+      }
+      if (rawPrivate == null || rawPrivate.isEmpty) return null;
+
+      final privMap = jsonDecode(rawPrivate) as Map<String, dynamic>;
+      if (privMap['x'] != null && privMap['y'] != null) {
+        final publicJwk = <String, dynamic>{
+          'kty': 'EC',
+          'crv': 'P-256',
+          'x': privMap['x'],
+          'y': privMap['y'],
+          'ext': true,
+        };
+        return jsonEncode(publicJwk);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Generate or retrieve an ECDH P-256 keypair.
+  /// If [force] is false (default) and a keypair already exists locally,
+  /// returns the stored public key to prevent key desynchronization.
+  static Future<String> generateKeyPair(
+    String conversationId, {
+    String? userId,
+    bool force = false,
+  }) async {
+    if (!force) {
+      final existingPub = await getStoredPublicKey(conversationId, userId: userId);
+      if (existingPub != null && existingPub.isNotEmpty) {
+        return existingPub;
+      }
+    }
+
     final keyGen = pc.ECKeyGenerator()
       ..init(
         pc.ParametersWithRandom(
@@ -114,10 +154,15 @@ class E2eCryptoService {
       if (rawPrivate == null && userId != null) {
         rawPrivate = prefs.getString(_storageKey(conversationId));
       }
-      if (rawPrivate == null) return null;
+      if (rawPrivate == null || rawPrivate.isEmpty) return null;
 
       final privMap = jsonDecode(rawPrivate) as Map<String, dynamic>;
-      final peerMap = jsonDecode(peerPublicJwkJson) as Map<String, dynamic>;
+
+      dynamic peerMapRaw = jsonDecode(peerPublicJwkJson);
+      if (peerMapRaw is String) {
+        peerMapRaw = jsonDecode(peerMapRaw);
+      }
+      final peerMap = peerMapRaw as Map<String, dynamic>;
 
       final d = _bytesToBigInt(_decodeBase64Url(privMap['d'].toString()));
       final peerX = _bytesToBigInt(_decodeBase64Url(peerMap['x'].toString()));

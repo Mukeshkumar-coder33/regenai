@@ -137,6 +137,14 @@ class RoleMenuRegistry {
       isDefaultBottomNav: true,
     ),
     RoleMenuItem(
+      id: 'leave',
+      label: 'Leave',
+      subtitle: 'Apply for leave & time off',
+      icon: Icons.beach_access_outlined,
+      activeIcon: Icons.beach_access_rounded,
+      isDefaultBottomNav: true,
+    ),
+    RoleMenuItem(
       id: 'profile',
       label: 'Profile',
       subtitle: 'Personal profile & details',
@@ -157,13 +165,6 @@ class RoleMenuRegistry {
       subtitle: 'Geofenced check-in & work logs',
       icon: Icons.event_available_outlined,
       activeIcon: Icons.event_available_rounded,
-    ),
-    RoleMenuItem(
-      id: 'leave',
-      label: 'Leave',
-      subtitle: 'Apply for leave & time off',
-      icon: Icons.beach_access_outlined,
-      activeIcon: Icons.beach_access_rounded,
     ),
     RoleMenuItem(
       id: 'payroll',

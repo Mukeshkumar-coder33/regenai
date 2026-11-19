@@ -1,3 +1,4 @@
+import 'dart:async';
 import '../../auth/presentation/login_screen.dart';
 import 'package:flutter/material.dart';
 import '../../../core/navigation/bottom_nav_customizer.dart';
@@ -52,7 +53,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   // Independent role-based bottom nav shortcut customization (Employee & Super Admin)
   List<String> get _defaultSlotIds => RoleMenuRegistry.getDefaultSlotsForRole(_currentUser);
   late List<String> _bottomNavSlots;
-  final List<GlobalKey> _bottomNavSlotKeys = List.generate(4, (_) => GlobalKey());
+  final List<GlobalKey> _bottomNavSlotKeys = List.generate(5, (_) => GlobalKey());
   String? _overridePageId;
 
   final PolicyService _policyService = PolicyService();
@@ -85,9 +86,12 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     }
   }
 
+  StreamSubscription<Map<String, dynamic>>? _notifSub;
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _notifSub?.cancel();
     MessengerSocketService.instance.disconnect();
     super.dispose();
   }
@@ -101,8 +105,29 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
 
   Future<void> _initRealtimeCommunication(UserModel user) async {
     WebRtcCallManager.instance.bindUser(user);
-    await CallNotificationService.instance.initialize();
+    await CallNotificationService.instance.initialize(onTap: (payload) {
+      if (payload['conversationId'] != null) {
+        _navigateToPage('messenger');
+      }
+    });
     await MessengerSocketService.instance.connect(user: user);
+
+    _notifSub?.cancel();
+    _notifSub = MessengerSocketService.instance.onNotification.listen((payload) {
+      final senderId = payload['senderId']?.toString() ?? '';
+      final myId = user.userId.isNotEmpty ? user.userId : user.id;
+      if (senderId != myId) {
+        final title = payload['title']?.toString() ?? payload['senderName']?.toString() ?? 'New Message';
+        final body = payload['message']?.toString() ?? '';
+        final convId = payload['conversationId']?.toString();
+        CallNotificationService.instance.showMessageNotification(
+          id: payload['_id']?.toString() ?? '${DateTime.now().millisecondsSinceEpoch}',
+          senderName: title,
+          preview: body,
+          conversationId: convId,
+        );
+      }
+    });
   }
 
   @override
@@ -163,6 +188,28 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   }
 
   void _navigateToPage(String pageId) {
+    if (pageId == 'messenger') {
+      final slotIdx = _bottomNavSlots.indexOf('messenger');
+      if (slotIdx != -1) {
+        setState(() {
+          _currentTabIndex = slotIdx;
+          _overridePageId = null;
+        });
+      } else {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => MessengerView(
+              key: ValueKey('messenger_${_currentUser.userId}_${_currentUser.role}'),
+              user: _currentUser,
+              embedded: true,
+              onBack: () => Navigator.of(context).pop(),
+              onOpenDrawer: _openDrawer,
+            ),
+          ),
+        );
+      }
+      return;
+    }
     final slotIdx = _bottomNavSlots.indexOf(pageId);
     if (slotIdx != -1) {
       setState(() {

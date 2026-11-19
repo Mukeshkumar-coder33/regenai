@@ -2349,9 +2349,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Heading exists without back arrow
+      // Header has ReGen brand, Messenger title, back arrow, and notification bell
+      expect(find.text('ReGen'), findsOneWidget);
       expect(find.text('Messenger'), findsOneWidget);
-      expect(find.byIcon(Icons.arrow_back_rounded), findsNothing);
+      expect(find.byIcon(Icons.arrow_back_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.notifications_outlined), findsOneWidget);
 
       // Re-pump widget with user B to verify didUpdateWidget adapts cleanly
       await tester.pumpWidget(
@@ -2414,12 +2416,21 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Open conversation
+      // Open conversation directly
       await tester.tap(find.text('eswaran M').last);
       await tester.pumpAndSettle();
 
+      // Individual chat screen:
+      // - NO "ReGen" heading
+      expect(find.text('ReGen'), findsNothing);
+      // - Person's name next to back arrow
+      expect(find.text('eswaran M'), findsWidgets);
+      expect(find.byIcon(Icons.arrow_back_rounded), findsOneWidget);
+      expect(find.byTooltip('Voice Call'), findsOneWidget);
+      expect(find.byTooltip('Video Call'), findsOneWidget);
+
       // Verify composer layout:
-      // 1. Media attachment icon is present
+      // 1. Media attachment icon is present inside the box
       expect(find.byTooltip('Attach Photo, Video or Document'), findsOneWidget);
       // 2. Video Record action is present
       expect(find.byTooltip('Record Video'), findsOneWidget);
@@ -2429,6 +2440,58 @@ void main() {
       expect(find.byTooltip('Voice to Text'), findsNothing);
       // 5. Send button is present
       expect(find.byIcon(Icons.send_rounded), findsOneWidget);
+    });
+
+    test('E2eCryptoService preserves keypair and exports public JWK without re-generation', () async {
+      final pub1 = await E2eCryptoService.generateKeyPair('test_conv_1', userId: 'userA');
+      expect(pub1, contains('P-256'));
+      expect(pub1, contains('"kty":"EC"'));
+
+      final storedPub = await E2eCryptoService.getStoredPublicKey('test_conv_1', userId: 'userA');
+      expect(storedPub, equals(pub1));
+
+      // Calling generateKeyPair without force should return the existing key
+      final pub2 = await E2eCryptoService.generateKeyPair('test_conv_1', userId: 'userA');
+      expect(pub2, equals(pub1));
+
+      // Key agreement test
+      final pubB = await E2eCryptoService.generateKeyPair('test_conv_1', userId: 'userB');
+      final sharedA = await E2eCryptoService.deriveSharedKey('test_conv_1', pubB, userId: 'userA');
+      final sharedB = await E2eCryptoService.deriveSharedKey('test_conv_1', pub1, userId: 'userB');
+
+      expect(sharedA, isNotNull);
+      expect(sharedB, isNotNull);
+
+      // Encrypt with sharedA, decrypt with sharedB
+      final encrypted = await E2eCryptoService.encryptMessage(sharedA!, 'Hello from User A');
+      final decrypted = await E2eCryptoService.decryptMessage(sharedB!, encrypted.ciphertext, encrypted.iv);
+      expect(decrypted, equals('Hello from User A'));
+    });
+
+    test('Employee role has 5 lower nav bar shortcuts matching company dock count', () {
+      final empUser = const UserModel(
+        id: 'emp_dock_5',
+        userId: 'EMP-5',
+        username: 'emp5',
+        name: 'Employee Five',
+        role: 'staff',
+        token: 'tok',
+      );
+      final defaultSlots = RoleMenuRegistry.getDefaultSlotsForRole(empUser);
+      expect(defaultSlots.length, equals(5));
+      expect(defaultSlots, equals(['home', 'tasks', 'calendar', 'leave', 'profile']));
+
+      final companyUser = const UserModel(
+        id: 'comp_dock_5',
+        userId: 'COMP-5',
+        username: 'comp5',
+        name: 'Company Five',
+        role: 'owner',
+        token: 'tok',
+      );
+      final companySlots = RoleMenuRegistry.getDefaultSlotsForRole(companyUser);
+      expect(companySlots.length, equals(5));
+      expect(companySlots, equals(['home', 'employees', 'calender', 'leave', 'profile']));
     });
 
     testWidgets('Employee Calendar: Month/Week and FAB removed, Present/Late/Absent & Holidays properly mapped',

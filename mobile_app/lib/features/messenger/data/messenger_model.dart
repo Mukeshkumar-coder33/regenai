@@ -1,3 +1,4 @@
+import 'dart:convert';
 import '../../../app/app_config.dart';
 
 // Messenger Data Models mapping directly to ReGen MongoDB backend APIs:
@@ -367,7 +368,13 @@ class DmConversationModel {
     final pubKeys = <String, String>{};
     if (json['publicKeys'] is Map) {
       (json['publicKeys'] as Map).forEach((k, v) {
-        if (v != null) pubKeys[k.toString()] = v.toString();
+        if (v != null) {
+          if (v is Map) {
+            pubKeys[k.toString()] = jsonEncode(v);
+          } else {
+            pubKeys[k.toString()] = v.toString();
+          }
+        }
       });
     }
 
@@ -425,8 +432,7 @@ class DirectMessageModel {
       return decryptedContent!;
     }
     if (encrypted && iv.isNotEmpty) {
-      final isGibberish = !content.contains(' ') && content.length >= 16;
-      if (isGibberish) return '🔒 Encrypted message';
+      return '🔒 Encrypted message';
     }
     return content;
   }

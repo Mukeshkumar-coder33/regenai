@@ -2,8 +2,11 @@ import 'dart:async';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter/material.dart';
 import '../../../core/theme/celadon_colors.dart';
+import '../../../core/widgets/brand_logo.dart';
 import '../../auth/data/user_model.dart';
 import '../../dashboard/data/dashboard_service.dart';
+import '../../notifications/data/notification_model.dart';
+import '../../notifications/data/notification_service.dart';
 import '../data/e2e_crypto_service.dart';
 import '../data/messenger_model.dart';
 import '../data/messenger_service.dart';
@@ -43,6 +46,9 @@ class MessengerView extends StatefulWidget {
 class _MessengerViewState extends State<MessengerView> {
   late MessengerService _messengerService;
   late DashboardService _dashboardService;
+
+  final NotificationService _notificationService = NotificationService();
+  List<NotificationModel> _notifications = [];
 
   // Tab 0 = Chats (1:1 & Groups), Tab 1 = Team Channel (hidden for Super Admin central portal)
   int _activeTab = 0;
@@ -298,6 +304,12 @@ class _MessengerViewState extends State<MessengerView> {
 
   Future<void> _loadMessengerData() async {
     setState(() => _isLoading = true);
+    final myId = widget.user.userId.isNotEmpty ? widget.user.userId : widget.user.id;
+    if (myId.isNotEmpty) {
+      _notificationService.getUserNotifications(myId).then((notifs) {
+        if (mounted) setState(() => _notifications = notifs);
+      }).catchError((_) {});
+    }
     try {
       final results = await Future.wait([
         _showTeamChannelTab
@@ -407,6 +419,61 @@ class _MessengerViewState extends State<MessengerView> {
   // E2E ENCRYPTION & MESSAGING ACTIONS
   // ═══════════════════════════════════════════════════════════════
 
+  String? _findMyKeyOnServer(DmConversationModel conv) {
+    final myCandidates = <String>{
+      _myUserId.trim().toLowerCase(),
+      widget.user.userId.trim().toLowerCase(),
+      widget.user.username.trim().toLowerCase(),
+      widget.user.id.trim().toLowerCase(),
+    }..removeWhere((s) => s.isEmpty);
+
+    for (final entry in conv.publicKeys.entries) {
+      if (myCandidates.contains(entry.key.trim().toLowerCase()) && entry.value.trim().isNotEmpty) {
+        return entry.value;
+      }
+    }
+    return null;
+  }
+
+  String? _resolvePeerPublicKey(DmConversationModel conv) {
+    final myCandidates = <String>{
+      _myUserId.trim().toLowerCase(),
+      widget.user.userId.trim().toLowerCase(),
+      widget.user.username.trim().toLowerCase(),
+      widget.user.id.trim().toLowerCase(),
+    }..removeWhere((s) => s.isEmpty);
+
+    final peerCandidates = <String>{
+      conv.otherUserId.trim().toLowerCase(),
+      conv.otherUserName.trim().toLowerCase(),
+    }..removeWhere((s) => s.isEmpty);
+
+    final contact = _findContactById(conv.otherUserId);
+    if (contact != null) {
+      if (contact.userId.trim().isNotEmpty) peerCandidates.add(contact.userId.trim().toLowerCase());
+      if (contact.username.trim().isNotEmpty) peerCandidates.add(contact.username.trim().toLowerCase());
+      if (contact.id.trim().isNotEmpty) peerCandidates.add(contact.id.trim().toLowerCase());
+    }
+
+    // 1. Direct match with peerCandidates
+    for (final entry in conv.publicKeys.entries) {
+      if (peerCandidates.contains(entry.key.trim().toLowerCase()) && entry.value.trim().isNotEmpty) {
+        return entry.value;
+      }
+    }
+
+    // 2. In 1-on-1 conversations, ANY key that is NOT mine is the peer's key!
+    if (!conv.isGroup) {
+      for (final entry in conv.publicKeys.entries) {
+        if (!myCandidates.contains(entry.key.trim().toLowerCase()) && entry.value.trim().isNotEmpty) {
+          return entry.value;
+        }
+      }
+    }
+
+    return null;
+  }
+
   Future<void> _setupE2eForConversation(DmConversationModel conv) async {
     if (conv.isGroup) {
       if (mounted) {
@@ -420,8 +487,23 @@ class _MessengerViewState extends State<MessengerView> {
 
     try {
       final hasLocal = await E2eCryptoService.hasKeyPair(conv.conversationId, userId: _myUserId);
-      final myKeyOnServer = conv.publicKeys[_myUserId];
-      if (!hasLocal || myKeyOnServer == null || myKeyOnServer.isEmpty) {
+      final myKeyOnServer = _findMyKeyOnServer(conv);
+
+      if (hasLocal) {
+        // If we already have a local keypair, NEVER overwrite it!
+        // If the server doesn't have it yet, publish our existing public key.
+        if (myKeyOnServer == null || myKeyOnServer.isEmpty) {
+          final pubJwkJson = await E2eCryptoService.getStoredPublicKey(conv.conversationId, userId: _myUserId);
+          if (pubJwkJson != null && pubJwkJson.isNotEmpty) {
+            await _messengerService.storePublicKey(
+              user: widget.user,
+              conversationId: conv.conversationId,
+              publicKeyJwkJson: pubJwkJson,
+            );
+          }
+        }
+      } else {
+        // Only generate a new keypair if no local key exists yet
         final pubJwkJson = await E2eCryptoService.generateKeyPair(conv.conversationId, userId: _myUserId);
         await _messengerService.storePublicKey(
           user: widget.user,
@@ -430,38 +512,7 @@ class _MessengerViewState extends State<MessengerView> {
         );
       }
 
-      String? peerPub;
-      final peerCandidates = <String>{
-        conv.otherUserId.trim().toLowerCase(),
-        conv.otherUserName.trim().toLowerCase(),
-      };
-      final contact = _findContactById(conv.otherUserId);
-      if (contact != null) {
-        peerCandidates.add(contact.userId.trim().toLowerCase());
-        peerCandidates.add(contact.username.trim().toLowerCase());
-        peerCandidates.add(contact.id.trim().toLowerCase());
-      }
-      for (final entry in conv.publicKeys.entries) {
-        if (peerCandidates.contains(entry.key.trim().toLowerCase())) {
-          peerPub = entry.value;
-          break;
-        }
-      }
-      // In 1-on-1 conversations, if still not found, any key in publicKeys not matching me is peer's key
-      if ((peerPub == null || peerPub.isEmpty) && !conv.isGroup) {
-        final myIds = <String>{
-          _myUserId.trim().toLowerCase(),
-          widget.user.userId.trim().toLowerCase(),
-          widget.user.username.trim().toLowerCase(),
-          widget.user.id.trim().toLowerCase(),
-        };
-        for (final entry in conv.publicKeys.entries) {
-          if (!myIds.contains(entry.key.trim().toLowerCase()) && entry.value.trim().isNotEmpty) {
-            peerPub = entry.value;
-            break;
-          }
-        }
-      }
+      final peerPub = _resolvePeerPublicKey(conv);
 
       if (peerPub != null && peerPub.isNotEmpty) {
         final shared = await E2eCryptoService.deriveSharedKey(
@@ -500,35 +551,35 @@ class _MessengerViewState extends State<MessengerView> {
     SecretKey? key,
   ) async {
     final out = <DirectMessageModel>[];
+    SecretKey? effectiveKey = key ?? _activeSharedKey;
+
+    if (effectiveKey == null && _activeConversation != null && !_activeConversation!.isGroup) {
+      final peerPub = _resolvePeerPublicKey(_activeConversation!);
+      if (peerPub != null && peerPub.isNotEmpty) {
+        effectiveKey = await E2eCryptoService.deriveSharedKey(
+          _activeConversation!.conversationId,
+          peerPub,
+          userId: _myUserId,
+        );
+        if (effectiveKey != null && mounted) {
+          _activeSharedKey = effectiveKey;
+          _e2eActive = true;
+        }
+      }
+    }
+
     for (final m in list) {
       if (!m.encrypted || m.iv.isEmpty) {
         out.add(m);
         continue;
       }
-      SecretKey? effectiveKey = key ?? _activeSharedKey;
-      if (effectiveKey == null && _activeConversation != null) {
-        final peerId = _resolvePeerId(_activeConversation!);
-        final peerPub = _activeConversation!.publicKeys[peerId];
-        if (peerPub != null && peerPub.isNotEmpty) {
-          effectiveKey = await E2eCryptoService.deriveSharedKey(
-            _activeConversation!.conversationId,
-            peerPub,
-            userId: _myUserId,
-          );
-          if (effectiveKey != null && mounted) {
-            _activeSharedKey = effectiveKey;
-          }
-        }
-      }
       if (effectiveKey == null) {
-        final isCipher = !m.content.contains(' ') && m.content.length >= 16;
-        out.add(m.copyWith(decryptedContent: isCipher ? '🔒 Encrypted message' : m.content));
+        out.add(m.copyWith(decryptedContent: '🔒 Encrypted message'));
         continue;
       }
       final plain = await E2eCryptoService.decryptMessage(effectiveKey, m.content, m.iv);
       if (plain == '🔒 Unable to decrypt') {
-        final isCipher = !m.content.contains(' ') && m.content.length >= 16;
-        out.add(m.copyWith(decryptedContent: isCipher ? '🔒 Encrypted message' : m.content));
+        out.add(m.copyWith(decryptedContent: '🔒 Encrypted message'));
       } else {
         out.add(m.copyWith(decryptedContent: plain));
       }
@@ -794,6 +845,21 @@ class _MessengerViewState extends State<MessengerView> {
   }
 
   Future<void> _startNewChatWith(MessengerContactModel contact) async {
+    // 1. Instant open if conversation already exists in memory
+    final existing = _conversations.where((c) {
+      if (c.isGroup) return false;
+      final peerId = _resolvePeerId(c).toLowerCase();
+      final target = contact.userId.trim().toLowerCase();
+      final alt = contact.username.trim().toLowerCase();
+      final other = c.otherUserId.trim().toLowerCase();
+      return peerId == target || peerId == alt || other == target || other == alt;
+    }).firstOrNull;
+
+    if (existing != null) {
+      await _openConversation(existing);
+      return;
+    }
+
     final conv = await _messengerService.getOrCreateConversation(
       user: widget.user,
       recipientId: contact.userId,
@@ -829,6 +895,162 @@ class _MessengerViewState extends State<MessengerView> {
         ),
       );
     }
+  }
+
+  void _showNotificationsSheet() {
+    final myId = widget.user.userId.isNotEmpty ? widget.user.userId : widget.user.id;
+    if (myId.isNotEmpty) {
+      _notificationService.getUserNotifications(myId).then((notifs) {
+        if (mounted) setState(() => _notifications = notifs);
+      }).catchError((_) {});
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: CeladonColors.cardBackground,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          return SizedBox(
+            height: MediaQuery.of(context).size.height * 0.75,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: CeladonColors.border,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Notifications',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: CeladonColors.textPrimary,
+                        ),
+                      ),
+                      if (_notifications.any((n) => !n.read))
+                        TextButton(
+                          onPressed: () async {
+                            final unread = _notifications.where((n) => !n.read).toList();
+                            for (final n in unread) {
+                              await _notificationService.markAsRead(n.id);
+                            }
+                            if (mounted) {
+                              setState(() {
+                                _notifications = _notifications.map((n) => n.copyWith(read: true)).toList();
+                              });
+                              setSheetState(() {});
+                            }
+                          },
+                          child: const Text(
+                            'Mark all read',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              color: CeladonColors.primary,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Expanded(
+                    child: _notifications.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'No notifications',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                          )
+                        : ListView.separated(
+                            itemCount: _notifications.length,
+                            separatorBuilder: (_, _) => const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                            itemBuilder: (_, i) {
+                              final notif = _notifications[i];
+                              return ListTile(
+                                dense: true,
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                leading: Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    color: notif.read ? const Color(0xFFF1F5F9) : CeladonColors.softMint,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    notif.isMessenger ? Icons.chat_bubble_outline_rounded : Icons.notifications_none_rounded,
+                                    size: 18,
+                                    color: notif.read ? const Color(0xFF64748B) : CeladonColors.primary,
+                                  ),
+                                ),
+                                title: Text(
+                                  notif.title,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: notif.read ? FontWeight.w500 : FontWeight.w700,
+                                    color: CeladonColors.textPrimary,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  notif.message,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 11.5,
+                                    color: Color(0xFF64748B),
+                                  ),
+                                ),
+                                trailing: Text(
+                                  notif.formattedDate,
+                                  style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
+                                ),
+                                onTap: () async {
+                                  if (!notif.read) {
+                                    await _notificationService.markAsRead(notif.id);
+                                    if (mounted) {
+                                      setState(() {
+                                        _notifications = _notifications.map((n) => n.id == notif.id ? n.copyWith(read: true) : n).toList();
+                                      });
+                                    }
+                                  }
+                                  if (!ctx.mounted) return;
+                                  Navigator.of(ctx).pop();
+                                  if (notif.conversationId != null && notif.conversationId!.isNotEmpty) {
+                                    final found = _conversations.where((c) => c.conversationId == notif.conversationId).firstOrNull;
+                                    if (found != null) {
+                                      _openConversation(found);
+                                    }
+                                  }
+                                },
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -2547,7 +2769,7 @@ class _MessengerViewState extends State<MessengerView> {
 
   Widget _buildComposer({required String hintText}) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
       decoration: const BoxDecoration(
         color: Colors.white,
         border: Border(top: BorderSide(color: _subtleDivider)),
@@ -2560,22 +2782,24 @@ class _MessengerViewState extends State<MessengerView> {
             // 1. LEFT SIDE: Spacious, professional message text input box (Expanded) with Media icon inside
             Expanded(
               child: Container(
-                constraints: const BoxConstraints(minHeight: 50),
+                constraints: const BoxConstraints(minHeight: 44),
                 decoration: BoxDecoration(
                   color: _searchFill,
-                  borderRadius: BorderRadius.circular(26),
+                  borderRadius: BorderRadius.circular(24),
                   border: Border.all(color: CeladonColors.border.withValues(alpha: 0.6)),
                 ),
-                padding: const EdgeInsets.only(left: 4, right: 14),
+                padding: const EdgeInsets.only(left: 2, right: 12),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     // Media icon inside the box!
                     IconButton(
-                      icon: const Icon(Icons.attach_file_rounded, color: CeladonColors.primary, size: 21),
+                      icon: const Icon(Icons.attach_file_rounded, color: CeladonColors.primary, size: 18),
                       tooltip: 'Attach Photo, Video or Document',
                       onPressed: _isSending ? null : _handleOpenMediaPicker,
                       visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.all(6),
+                      constraints: const BoxConstraints(),
                     ),
                     Expanded(
                       child: TextField(
@@ -2584,12 +2808,12 @@ class _MessengerViewState extends State<MessengerView> {
                         minLines: 1,
                         maxLines: 5,
                         onSubmitted: (_) => _handleSendText(),
-                        style: const TextStyle(fontSize: 15, color: CeladonColors.textPrimary),
+                        style: const TextStyle(fontSize: 14.5, color: CeladonColors.textPrimary),
                         decoration: InputDecoration(
                           hintText: hintText,
-                          hintStyle: const TextStyle(fontSize: 14, color: Color(0xFF64748B)),
+                          hintStyle: const TextStyle(fontSize: 13.5, color: Color(0xFF64748B)),
                           isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 11, horizontal: 4),
                           border: InputBorder.none,
                         ),
                       ),
@@ -2598,7 +2822,7 @@ class _MessengerViewState extends State<MessengerView> {
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 5),
 
             // 2. RIGHT SIDE ACTION ICONS:
             // (A) Video Record
@@ -2611,13 +2835,13 @@ class _MessengerViewState extends State<MessengerView> {
                   customBorder: const CircleBorder(),
                   onTap: _isSending ? null : _handleRecordVideo,
                   child: const Padding(
-                    padding: EdgeInsets.all(10),
-                    child: Icon(Icons.videocam_rounded, color: CeladonColors.primary, size: 21),
+                    padding: EdgeInsets.all(7.5),
+                    child: Icon(Icons.videocam_rounded, color: CeladonColors.primary, size: 17.5),
                   ),
                 ),
               ),
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 4),
 
             // (B) Voice Note Recorder Sheet
             Tooltip(
@@ -2629,13 +2853,13 @@ class _MessengerViewState extends State<MessengerView> {
                   customBorder: const CircleBorder(),
                   onTap: _handleOpenVoiceRecorder,
                   child: const Padding(
-                    padding: EdgeInsets.all(10),
-                    child: Icon(Icons.mic_rounded, color: CeladonColors.primary, size: 21),
+                    padding: EdgeInsets.all(7.5),
+                    child: Icon(Icons.mic_rounded, color: CeladonColors.primary, size: 17.5),
                   ),
                 ),
               ),
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 4),
 
             // (C) Primary Send button
             Material(
@@ -2646,23 +2870,54 @@ class _MessengerViewState extends State<MessengerView> {
                 customBorder: const CircleBorder(),
                 onTap: _isSending ? null : _handleSendText,
                 child: Padding(
-                  padding: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.all(7.5),
                   child: _isSending
                       ? const SizedBox(
-                          width: 21,
-                          height: 21,
+                          width: 17.5,
+                          height: 17.5,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
                             color: Colors.white,
                           ),
                         )
-                      : const Icon(Icons.send_rounded, color: Colors.white, size: 21),
+                      : const Icon(Icons.send_rounded, color: Colors.white, size: 17.5),
                 ),
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildNotificationBellButton() {
+    final unreadCount = _notifications.where((n) => !n.read).length;
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        IconButton(
+          tooltip: 'Notifications',
+          icon: const Icon(
+            Icons.notifications_outlined,
+            color: CeladonColors.primary,
+            size: 22,
+          ),
+          onPressed: _showNotificationsSheet,
+        ),
+        if (unreadCount > 0)
+          Positioned(
+            right: 8,
+            top: 8,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: const BoxDecoration(
+                color: Color(0xFFEF4444),
+                shape: BoxShape.circle,
+              ),
+              constraints: const BoxConstraints(minWidth: 8, minHeight: 8),
+            ),
+          ),
+      ],
     );
   }
 
@@ -2678,30 +2933,69 @@ class _MessengerViewState extends State<MessengerView> {
               elevation: 0,
               scrolledUnderElevation: 0,
               automaticallyImplyLeading: false,
+              leading: IconButton(
+                icon: const Icon(
+                  Icons.arrow_back_rounded,
+                  color: CeladonColors.textPrimary,
+                  size: 22,
+                ),
+                tooltip: 'Back',
+                onPressed: widget.onBack ??
+                    () {
+                      if (Navigator.of(context).canPop()) {
+                        Navigator.of(context).pop();
+                      } else if (widget.onOpenDrawer != null) {
+                        widget.onOpenDrawer!();
+                      }
+                    },
+              ),
+              titleSpacing: 0,
               title: Row(
                 children: [
-                  const Text(
-                    'Messenger',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 19,
-                      letterSpacing: -0.3,
-                      color: CeladonColors.textPrimary,
-                    ),
-                  ),
+                  const BrandLogo(size: 28, borderRadius: 8),
                   const SizedBox(width: 8),
-                  if (_socketConnected)
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF22C55E),
-                        shape: BoxShape.circle,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            'ReGen',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              color: CeladonColors.textPrimary,
+                              letterSpacing: -0.2,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          if (_socketConnected)
+                            Container(
+                              width: 7,
+                              height: 7,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF22C55E),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                        ],
                       ),
-                    ),
+                      const Text(
+                        'Messenger',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: CeladonColors.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
               actions: [
+                _buildNotificationBellButton(),
                 IconButton(
                   tooltip: 'New Group',
                   icon: const Icon(Icons.group_add_outlined, color: CeladonColors.primary, size: 22),

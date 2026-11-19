@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/celadon_colors.dart';
 import '../../attendance/data/attendance_model.dart';
 import '../../attendance/data/attendance_service.dart';
+import '../../attendance/data/work_schedule_model.dart';
 import '../../auth/data/user_model.dart';
 import '../../dashboard/data/dashboard_service.dart';
 import '../../dashboard/data/leave_model.dart';
@@ -55,6 +56,8 @@ class _CalendarViewState extends State<CalendarView> {
   bool _isLoading = true;
   String? _errorMessage;
 
+  WorkScheduleModel _workSchedule = const WorkScheduleModel();
+  List<HolidayModel> _rawHolidays = [];
   List<CalendarEventModel> _companyEvents = [];
   List<CalendarEventModel> _holidays = [];
   List<AttendanceModel> _attendance = [];
@@ -119,6 +122,27 @@ class _CalendarViewState extends State<CalendarView> {
     return '$dayName, ${dt.day} $monthName ${dt.year}';
   }
 
+  String _getDayName(DateTime dt) {
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    return days[(dt.weekday - 1).clamp(0, 6)];
+  }
+
+  bool _isNonWorkingDay(DateTime date) {
+    final daysPerWeek = _workSchedule.workingDaysPerWeek;
+    if (daysPerWeek == 5) {
+      return date.weekday == DateTime.saturday || date.weekday == DateTime.sunday;
+    } else if (daysPerWeek == 6) {
+      return date.weekday == DateTime.sunday;
+    } else if (daysPerWeek == 4) {
+      return date.weekday == DateTime.friday ||
+          date.weekday == DateTime.saturday ||
+          date.weekday == DateTime.sunday;
+    } else if (daysPerWeek == 7) {
+      return false;
+    }
+    return _workSchedule.isWeeklyOff(date);
+  }
+
   Future<void> _loadAllBackendData() async {
     setState(() {
       _isLoading = true;
@@ -128,11 +152,24 @@ class _CalendarViewState extends State<CalendarView> {
     final user = widget.user;
 
     try {
-      // 1. Fetch holidays from attendance service (matches Company Calendar exactly)
+      // 1. Fetch holidays and work schedule from attendance service (matches Company Calendar exactly)
       List<HolidayModel> holidayModels = [];
+      WorkScheduleModel schedule = const WorkScheduleModel();
       try {
-        holidayModels = await _attendanceService.getHolidays();
-      } catch (_) {}
+        final results = await Future.wait([
+          _attendanceService.getHolidays(),
+          _attendanceService.getWorkSchedule(),
+        ]);
+        holidayModels = results[0] as List<HolidayModel>;
+        schedule = results[1] as WorkScheduleModel;
+      } catch (_) {
+        try {
+          holidayModels = await _attendanceService.getHolidays();
+        } catch (_) {}
+        try {
+          schedule = await _attendanceService.getWorkSchedule();
+        } catch (_) {}
+      }
 
       if (holidayModels.isEmpty) {
         try {
@@ -255,6 +292,8 @@ class _CalendarViewState extends State<CalendarView> {
       final userList = remaining[2] as List<UserModel>;
 
       setState(() {
+        _workSchedule = schedule;
+        _rawHolidays = holidayModels;
         _companyEvents = eventsOnly;
         _holidays = holidaysOnly;
         _attendance = attList;
@@ -350,6 +389,21 @@ class _CalendarViewState extends State<CalendarView> {
       final hStr = h.dateTime.toIso8601String();
       if (hStr.startsWith(targetStr)) {
         return h;
+      }
+    }
+    for (final raw in _rawHolidays) {
+      if (!raw.isEvent && (raw.date == targetStr || raw.date.startsWith(targetStr))) {
+        return CalendarEventModel(
+          id: raw.id,
+          title: raw.name,
+          dateTime: DateTime(date.year, date.month, date.day),
+          time: 'All Day • Official Holiday',
+          category: 'Holiday',
+          description: raw.description,
+          companyId: raw.companyId,
+          roleAccess: 'all',
+          salaryDeduction: raw.salaryDeduction,
+        );
       }
     }
     return null;
@@ -668,7 +722,7 @@ class _CalendarViewState extends State<CalendarView> {
                   dayDate.month == today.month &&
                   dayDate.day == today.day;
               final isPast = dayDate.isBefore(today);
-              final isSunday = dayDate.weekday == DateTime.sunday;
+              final isNonWorking = _isNonWorkingDay(dayDate);
 
               // 1. Birthday Check
               final birthdayEmployees = _getBirthdayEmployees(dayDate);
@@ -682,30 +736,25 @@ class _CalendarViewState extends State<CalendarView> {
               final holiday = _getHolidayOnDate(dayDate);
               final isHoliday = holiday != null;
 
-              // 4. Approved Leave Check
+              // 4. Leave Check (both approved and unapproved leaves are considered absent in employee calendar)
               final leaves = _getLeavesOnDate(dayDate);
-              final hasApprovedLeave = leaves.any((l) => l.isApproved);
+              final hasLeave = leaves.isNotEmpty;
 
               // 5. Attendance Check
               final att = _getAttendanceOnDate(dayDate);
               bool isLate = false;
-              bool isPresent = false;
               bool isAbsent = false;
 
-              if (att != null) {
+              if (hasLeave) {
+                // In employee calendar, both approved and unapproved leaves are considered absent
+                isAbsent = true;
+              } else if (att != null) {
                 if (att.isLate || att.status.toLowerCase() == 'late') {
                   isLate = true;
                 } else if (att.status.toLowerCase() == 'absent') {
                   isAbsent = true;
-                } else if (att.isPresent ||
-                    att.isHalfDay ||
-                    att.status.toLowerCase() == 'present' ||
-                    att.status == '0' ||
-                    att.status.toLowerCase() == 'half_day' ||
-                    (att.checkIn != null && att.checkIn!.isNotEmpty)) {
-                  isPresent = true;
                 }
-              } else if (!isSunday && !isHoliday && !hasApprovedLeave) {
+              } else if (!isNonWorking && !isHoliday) {
                 if (!dayDate.isBefore(_startMonthDate)) {
                   if (isPast || isToday) {
                     isAbsent = true;
@@ -713,15 +762,15 @@ class _CalendarViewState extends State<CalendarView> {
                 }
               }
 
-              // Attendance Color
+              // Attendance Color: DO NOT give color for present in employee calendar!
+              // Only absent, late, event, holiday, birthday show color.
               Color? attendanceColor;
               if (isAbsent) {
                 attendanceColor = const Color(0xFFEF4444); // Red
               } else if (isLate) {
                 attendanceColor = const Color(0xFFF97316); // Amber/Orange
-              } else if (isPresent) {
-                attendanceColor = const Color(0xFF1B5E4B); // Green
               }
+              // Present is deliberately uncolored in employee calendar per user request
 
               // Special Day Color
               Color? specialDayColor;
@@ -739,7 +788,7 @@ class _CalendarViewState extends State<CalendarView> {
               Color textColor = CeladonColors.textPrimary;
 
               if (isDualColor) {
-                // Dual Color: Split diagonal half-and-half gradient between attendance status and event/birthday/holiday
+                // Dual Color: Split diagonal half-and-half gradient between attendance status (late/absent) and event/birthday/holiday
                 cellDecoration = BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
@@ -762,7 +811,7 @@ class _CalendarViewState extends State<CalendarView> {
                 );
                 textColor = Colors.white;
               } else if (attendanceColor != null) {
-                // Pure Attendance Color (Absent Red, Late Orange, Present Green)
+                // Pure Attendance Color (Absent Red, Late Orange)
                 cellDecoration = BoxDecoration(
                   color: attendanceColor,
                   borderRadius: BorderRadius.circular(6),
@@ -797,8 +846,8 @@ class _CalendarViewState extends State<CalendarView> {
                   ],
                 );
                 textColor = Colors.white;
-              } else if (isSunday) {
-                // Weekly off / Sunday
+              } else if (isNonWorking) {
+                // Weekly off / Saturday & Sunday per company work policy
                 cellDecoration = BoxDecoration(
                   color: CeladonColors.holidayLight,
                   borderRadius: BorderRadius.circular(6),
@@ -809,7 +858,7 @@ class _CalendarViewState extends State<CalendarView> {
                 );
                 textColor = CeladonColors.holidayGrey;
               } else {
-                // Regular Working Day
+                // Regular Working Day (including Present)
                 cellDecoration = BoxDecoration(
                   color: isSelected ? CeladonColors.primaryLight : Colors.transparent,
                   borderRadius: BorderRadius.circular(6),
@@ -872,7 +921,7 @@ class _CalendarViewState extends State<CalendarView> {
                               shape: BoxShape.circle,
                             ),
                           )
-                        else if (isLate || isPresent || isAbsent)
+                        else if (isLate || isAbsent)
                           Container(
                             margin: const EdgeInsets.only(top: 1.5),
                             width: 4,
@@ -891,18 +940,18 @@ class _CalendarViewState extends State<CalendarView> {
           ),
           const SizedBox(height: 14),
 
-          // Calendar Color Legend matching Company styling
+          // Calendar Color Legend matching Company styling (Present has no color in employee calendar)
           Wrap(
             alignment: WrapAlignment.center,
             spacing: 12,
             runSpacing: 6,
             children: [
-              _buildLegendDot(const Color(0xFF1B5E4B), 'Present'),
-              _buildLegendDot(const Color(0xFFF97316), 'Late'),
               _buildLegendDot(const Color(0xFFEF4444), 'Absent'),
+              _buildLegendDot(const Color(0xFFF97316), 'Late'),
               _buildLegendDot(const Color(0xFF7C3AED), 'Event ★'),
               _buildLegendDot(const Color(0xFF1E293B), 'Holiday'),
               _buildLegendDot(const Color(0xFFF59E0B), 'Birthday 🎂'),
+              _buildLegendDot(CeladonColors.holidayBorder, 'Weekly Off'),
             ],
           ),
         ],
@@ -943,7 +992,7 @@ class _CalendarViewState extends State<CalendarView> {
     final birthdays = _getBirthdayEmployees(_selectedDate);
     final tasks = _getTasksOnDate(_selectedDate);
     final leaves = _getLeavesOnDate(_selectedDate);
-    final hasApprovedLeave = leaves.any((l) => l.isApproved);
+    final hasLeave = leaves.isNotEmpty;
 
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -951,13 +1000,16 @@ class _CalendarViewState extends State<CalendarView> {
         _selectedDate.month == today.month &&
         _selectedDate.day == today.day;
     final isPast = _selectedDate.isBefore(today);
-    final isSunday = _selectedDate.weekday == DateTime.sunday;
+    final isNonWorking = _isNonWorkingDay(_selectedDate);
 
     bool isLate = false;
     bool isPresent = false;
     bool isAbsent = false;
 
-    if (att != null) {
+    if (hasLeave) {
+      // In employee calendar, both approved and unapproved leaves are considered absent
+      isAbsent = true;
+    } else if (att != null) {
       if (att.isLate || att.status.toLowerCase() == 'late') {
         isLate = true;
       } else if (att.status.toLowerCase() == 'absent') {
@@ -970,7 +1022,7 @@ class _CalendarViewState extends State<CalendarView> {
           (att.checkIn != null && att.checkIn!.isNotEmpty)) {
         isPresent = true;
       }
-    } else if (!isSunday && holiday == null && !hasApprovedLeave) {
+    } else if (!isNonWorking && holiday == null) {
       if (!_selectedDate.isBefore(_startMonthDate)) {
         if (isPast || isToday) {
           isAbsent = true;
@@ -1033,8 +1085,10 @@ class _CalendarViewState extends State<CalendarView> {
                       children: [
                         if (isToday)
                           _buildStatusChip('TODAY', CeladonColors.primary, Colors.white),
+                        if (isNonWorking)
+                          _buildStatusChip('WEEKLY OFF', CeladonColors.holidayGrey, Colors.white),
                         if (isAbsent)
-                          _buildStatusChip('ABSENT', const Color(0xFFEF4444), Colors.white),
+                          _buildStatusChip(hasLeave ? 'ABSENT (LEAVE)' : 'ABSENT', const Color(0xFFEF4444), Colors.white),
                         if (isLate)
                           _buildStatusChip(
                             att?.breakDelayMinutes != null && att!.breakDelayMinutes > 0
@@ -1063,10 +1117,10 @@ class _CalendarViewState extends State<CalendarView> {
           const SizedBox(height: 14),
 
           // 1. Attendance Record Detail Card
-          if (att != null) ...[
+          if (att != null && !hasLeave) ...[
             _buildAttendanceDetailItem(att),
             const SizedBox(height: 12),
-          ] else if (isAbsent) ...[
+          ] else if (isAbsent && !hasLeave) ...[
             _buildDetailCard(
               icon: Icons.cancel_outlined,
               header: 'Attendance Status (ABSENT)',
@@ -1078,12 +1132,12 @@ class _CalendarViewState extends State<CalendarView> {
               tag: isToday ? 'Pending Check-In' : 'Unexcused Absence',
             ),
             const SizedBox(height: 12),
-          ] else if (isSunday) ...[
+          ] else if (isNonWorking) ...[
             _buildInfoCard(
               icon: Icons.weekend_outlined,
               color: CeladonColors.holidayGrey,
-              title: 'Weekly Off (Sunday)',
-              subtitle: 'Official non-working weekend day for all team members.',
+              title: 'Weekly Off (${_getDayName(_selectedDate)})',
+              subtitle: 'Official non-working weekend day according to company work policy (${_workSchedule.workingDaysPerWeek} days/week).',
             ),
             const SizedBox(height: 12),
           ],
@@ -1150,18 +1204,16 @@ class _CalendarViewState extends State<CalendarView> {
             const SizedBox(height: 12),
           ],
 
-          // 5. Leave Request Card
+          // 5. Leave Request Card (both approved and unapproved are considered absent)
           if (leaves.isNotEmpty) ...[
             ...leaves.map((l) => Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: _buildDetailCard(
                     icon: Icons.flight_takeoff_rounded,
-                    header: 'Leave Request (${l.status.toUpperCase()})',
-                    headerColor: l.isApproved
-                        ? const Color(0xFF059669)
-                        : (l.isPending ? const Color(0xFFD97706) : const Color(0xFFDC4C4C)),
+                    header: 'Leave / Absence (${l.status.toUpperCase()})',
+                    headerColor: const Color(0xFFEF4444),
                     title: '${l.type.toUpperCase()} LEAVE',
-                    subtitle: l.reason?.isNotEmpty == true ? l.reason! : 'Applied leave request',
+                    subtitle: l.reason?.isNotEmpty == true ? l.reason! : 'Leave request recorded as absent',
                     tag: '${l.startDate} to ${l.endDate}',
                   ),
                 )),
@@ -1235,28 +1287,35 @@ class _CalendarViewState extends State<CalendarView> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Icon(
-                    att.isAbsent
-                        ? Icons.cancel_outlined
-                        : (att.isLate ? Icons.alarm_on_rounded : Icons.check_circle_outline_rounded),
-                    color: statusColor,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    att.isAbsent
-                        ? 'Absent on Duty'
-                        : (att.isLate ? 'Late Arrival Recorded' : 'Present • On Duty'),
-                    style: TextStyle(
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w800,
+              Expanded(
+                child: Row(
+                  children: [
+                    Icon(
+                      att.isAbsent
+                          ? Icons.cancel_outlined
+                          : (att.isLate ? Icons.alarm_on_rounded : Icons.check_circle_outline_rounded),
                       color: statusColor,
+                      size: 20,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        att.isAbsent
+                            ? 'Absent on Duty'
+                            : (att.isLate ? 'Late Arrival Recorded' : 'Present • On Duty'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w800,
+                          color: statusColor,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
@@ -1424,24 +1483,34 @@ class _CalendarViewState extends State<CalendarView> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        header,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: headerColor,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                      if (tag.isNotEmpty)
-                        Text(
-                          tag,
+                      Expanded(
+                        child: Text(
+                          header,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: headerColor.withValues(alpha: 0.8),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: headerColor,
+                            letterSpacing: 0.5,
                           ),
                         ),
+                      ),
+                      if (tag.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            tag,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: headerColor.withValues(alpha: 0.8),
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 3),

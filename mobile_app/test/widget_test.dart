@@ -2235,14 +2235,15 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // 1. Calendar title and legend
+      // 1. Calendar title and legend (Present has no color; Absent, Late, Event, Holiday, Birthday, Weekly Off shown)
       expect(find.text('Calendar'), findsOneWidget);
-      expect(find.text('Present'), findsOneWidget);
+      expect(find.text('Present'), findsNothing);
       expect(find.text('Late'), findsOneWidget);
       expect(find.text('Absent'), findsOneWidget);
       expect(find.text('Event ★'), findsOneWidget);
       expect(find.text('Holiday'), findsOneWidget);
       expect(find.text('Birthday 🎂'), findsOneWidget);
+      expect(find.text('Weekly Off'), findsOneWidget);
 
       // 2. Verified month is November 2026 matching joining month and year
       expect(find.textContaining('November 2026'), findsOneWidget);
@@ -2460,13 +2461,46 @@ void main() {
       // 2. No edit option or FloatingActionButton on calendar view itself
       expect(find.byType(FloatingActionButton), findsNothing);
 
-      // 3. Complete legend with Present, Late, Absent, Event, Holiday, Birthday
-      expect(find.text('Present'), findsOneWidget);
+      // 3. Complete legend with Absent, Late, Event, Holiday, Birthday, Weekly Off (Present has no color)
+      expect(find.text('Present'), findsNothing);
       expect(find.text('Late'), findsOneWidget);
       expect(find.text('Absent'), findsOneWidget);
       expect(find.text('Event ★'), findsOneWidget);
       expect(find.text('Holiday'), findsOneWidget);
       expect(find.text('Birthday 🎂'), findsOneWidget);
+      expect(find.text('Weekly Off'), findsOneWidget);
+    });
+
+    testWidgets('Employee Calendar: Work policy & holidays parity, present uncolored, and absent covers approved/unapproved leaves',
+        (WidgetTester tester) async {
+      final empUser = const UserModel(
+        id: 'emp_cal_parity',
+        userId: 'EMP-PARITY-1',
+        username: 'cal_parity',
+        name: 'Parity Employee',
+        role: 'staff',
+        company: 'krish Tech Computer',
+        joiningDate: '2026-11-01',
+        token: 'tok_parity',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarView(
+            user: empUser,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Legend has Weekly Off and Absent, but NOT Present
+      expect(find.text('Present'), findsNothing);
+      expect(find.text('Weekly Off'), findsOneWidget);
+      expect(find.text('Absent'), findsOneWidget);
+      expect(find.text('Late'), findsOneWidget);
+
+      // Selected Day Details section exists
+      expect(find.byIcon(Icons.event_note_rounded), findsOneWidget);
     });
 
     testWidgets('Employee Lower Nav & Drawer: squircle active tile parity, Team & Support removed, Executive Drawer matches Company UI',

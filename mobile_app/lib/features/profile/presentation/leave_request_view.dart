@@ -122,10 +122,11 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
                   children: [
                     IconButton(
                       icon: const Icon(
-                        Icons.arrow_back_ios_new_rounded,
-                        size: 20,
+                        Icons.arrow_back_rounded,
+                        size: 22,
                         color: CeladonColors.textPrimary,
                       ),
+                      tooltip: 'Back',
                       onPressed: () {
                         if (widget.onBack != null) {
                           widget.onBack!();
@@ -134,14 +135,13 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
                         }
                       },
                     ),
-                    const Expanded(
-                      child: Text(
-                        'Leave Requests',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: CeladonColors.textPrimary,
-                        ),
+                    const Text(
+                      'Leave Requests',
+                      style: TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                        color: CeladonColors.textPrimary,
+                        letterSpacing: -0.2,
                       ),
                     ),
                   ],

@@ -115,15 +115,16 @@ class _SettingsViewState extends State<SettingsView> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 1. Top Bar
+              // 1. Top Bar (Messenger Style)
               Row(
                 children: [
                   IconButton(
                     icon: const Icon(
-                      Icons.arrow_back_ios_new_rounded,
-                      size: 20,
+                      Icons.arrow_back_rounded,
+                      size: 22,
                       color: CeladonColors.textPrimary,
                     ),
+                    tooltip: 'Back',
                     onPressed: () {
                       if (widget.onBack != null) {
                         widget.onBack!();
@@ -135,9 +136,10 @@ class _SettingsViewState extends State<SettingsView> {
                   const Text(
                     'Settings',
                     style: TextStyle(
-                      fontSize: 22,
+                      fontSize: 19,
                       fontWeight: FontWeight.w800,
                       color: CeladonColors.textPrimary,
+                      letterSpacing: -0.2,
                     ),
                   ),
                 ],

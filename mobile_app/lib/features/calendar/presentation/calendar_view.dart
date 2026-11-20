@@ -530,60 +530,31 @@ class _CalendarViewState extends State<CalendarView> {
 
   Widget _buildHeaderBar() {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Row(
-          children: [
-            InkWell(
-              onTap: widget.onBack ??
-                  () {
-                    if (Navigator.of(context).canPop()) {
-                      Navigator.of(context).pop();
-                    } else if (widget.onOpenDrawer != null) {
-                      widget.onOpenDrawer!();
-                    }
-                  },
-              borderRadius: BorderRadius.circular(10),
-              child: Container(
-                width: 38,
-                height: 38,
-                margin: const EdgeInsets.only(right: 10),
-                decoration: BoxDecoration(
-                  color: CeladonColors.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.arrow_back_rounded,
-                  color: CeladonColors.primary,
-                  size: 22,
-                ),
-              ),
-            ),
-
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text(
-                  'WORKSPACE',
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.5,
-                    color: Color(0xFF829089),
-                  ),
-                ),
-                Text(
-                  'Calendar',
-                  style: TextStyle(
-                    fontSize: 21,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF17231F),
-                    letterSpacing: -0.3,
-                  ),
-                ),
-              ],
-            ),
-          ],
+        IconButton(
+          icon: const Icon(
+            Icons.arrow_back_rounded,
+            color: CeladonColors.textPrimary,
+            size: 22,
+          ),
+          tooltip: 'Back',
+          onPressed: widget.onBack ??
+              () {
+                if (Navigator.of(context).canPop()) {
+                  Navigator.of(context).pop();
+                } else if (widget.onOpenDrawer != null) {
+                  widget.onOpenDrawer!();
+                }
+              },
+        ),
+        const Text(
+          'Calendar',
+          style: TextStyle(
+            fontSize: 19,
+            fontWeight: FontWeight.w800,
+            color: CeladonColors.textPrimary,
+            letterSpacing: -0.2,
+          ),
         ),
       ],
     );

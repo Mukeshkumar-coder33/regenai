@@ -227,44 +227,24 @@ class _EmployeePayrollViewState extends State<EmployeePayrollView> {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (widget.onBack != null) ...[
-                      InkWell(
-                        onTap: widget.onBack,
-                        borderRadius: BorderRadius.circular(10),
-                        child: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: const Color(0xFFE2E8F0)),
-                          ),
-                          child: const Icon(
-                            Icons.arrow_back_ios_new_rounded,
-                            size: 16,
-                            color: CeladonColors.textPrimary,
-                          ),
+                    if (widget.onBack != null)
+                      IconButton(
+                        icon: const Icon(
+                          Icons.arrow_back_rounded,
+                          color: CeladonColors.textPrimary,
+                          size: 22,
                         ),
+                        tooltip: 'Back',
+                        onPressed: widget.onBack,
                       ),
-                      const SizedBox(width: 10),
-                    ],
-                    const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'My Payroll',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            color: CeladonColors.textPrimary,
-                            letterSpacing: -0.3,
-                          ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          'Live earnings, payslips & monthly history',
-                          style: TextStyle(fontSize: 12, color: Color(0xFF475569)),
-                        ),
-                      ],
+                    const Text(
+                      'My Payroll',
+                      style: TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                        color: CeladonColors.textPrimary,
+                        letterSpacing: -0.2,
+                      ),
                     ),
                   ],
                 ),

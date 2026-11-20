@@ -1137,7 +1137,7 @@ void main() {
       await tester.tap(find.text('Employees').first);
       await tester.pumpAndSettle();
 
-      expect(find.text('Manage your team'), findsOneWidget);
+      expect(find.text('Employees'), findsWidgets);
       expect(find.text('eswaran M'), findsOneWidget);
 
       // Verify search box hint is present
@@ -1441,7 +1441,7 @@ void main() {
       // Verify search box exists and filter segment chips are removed
       expect(find.text('Search employee name, ID or leave...'), findsOneWidget);
       expect(find.text('Manage leave requests'), findsNothing);
-      expect(find.text('Search & review employee leave applications'), findsOneWidget);
+      expect(find.text('Leave Management'), findsWidgets);
 
       // Verify a leave card exists and tap opens leave details sheet
       final leaveCard = find.text('PENDING');

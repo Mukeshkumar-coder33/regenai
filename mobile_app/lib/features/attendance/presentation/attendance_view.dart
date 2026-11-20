@@ -510,11 +510,17 @@ class _AttendanceViewState extends State<AttendanceView> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // 1. Top Navigation Bar
+                      // 1. Top Navigation Bar (Messenger Style)
                       Row(
                         children: [
-                          InkWell(
-                            onTap: widget.onBack ??
+                          IconButton(
+                            icon: const Icon(
+                              Icons.arrow_back_rounded,
+                              color: CeladonColors.textPrimary,
+                              size: 22,
+                            ),
+                            tooltip: 'Back',
+                            onPressed: widget.onBack ??
                                 () {
                                   if (Navigator.of(context).canPop()) {
                                     Navigator.of(context).pop();
@@ -522,32 +528,17 @@ class _AttendanceViewState extends State<AttendanceView> {
                                     widget.onOpenDrawer!();
                                   }
                                 },
-                            borderRadius: BorderRadius.circular(10),
-                            child: Container(
-                              width: 38,
-                              height: 38,
-                              margin: const EdgeInsets.only(right: 8),
-                              decoration: BoxDecoration(
-                                color: CeladonColors.primary.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Icon(
-                                Icons.arrow_back_rounded,
-                                color: CeladonColors.primaryDark,
-                                size: 21,
-                              ),
+                          ),
+                          const Text(
+                            'Attendance',
+                            style: TextStyle(
+                              fontSize: 19,
+                              fontWeight: FontWeight.w800,
+                              color: CeladonColors.textPrimary,
+                              letterSpacing: -0.2,
                             ),
                           ),
-                          const Expanded(
-                            child: Text(
-                              'Attendance',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w800,
-                                color: CeladonColors.textPrimary,
-                              ),
-                            ),
-                          ),
+                          const Spacer(),
                           // Geofence status chip
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

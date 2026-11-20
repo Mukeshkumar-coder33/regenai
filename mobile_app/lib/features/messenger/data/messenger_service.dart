@@ -9,6 +9,16 @@ import 'messenger_model.dart';
 /// and `/api/notifications` endpoints with strict role-based scoping.
 class MessengerService {
   final http.Client _client;
+  static final Map<String, Map<String, String>> _convoKeysCache = {};
+
+  Map<String, String>? getCachedKeys(String conversationId) =>
+      _convoKeysCache[conversationId];
+
+  void cacheKeys(String conversationId, Map<String, String> keys) {
+    if (conversationId.isEmpty) return;
+    final existing = _convoKeysCache.putIfAbsent(conversationId, () => {});
+    existing.addAll(keys);
+  }
 
   MessengerService({http.Client? client}) : _client = client ?? http.Client();
 
@@ -197,6 +207,16 @@ class MessengerService {
         final list = raw is List
             ? raw
             : (raw is Map && raw['conversations'] is List ? raw['conversations'] as List : []);
+        for (final item in list.whereType<Map<String, dynamic>>()) {
+          final cId = (item['_id'] ?? item['id'] ?? item['conversationId'] ?? '').toString();
+          if (cId.isNotEmpty && item['publicKeys'] is Map) {
+            final kMap = <String, String>{};
+            (item['publicKeys'] as Map).forEach((k, v) {
+              if (v != null) kMap[k.toString()] = v.toString();
+            });
+            cacheKeys(cId, kMap);
+          }
+        }
         final myIdentities = [user.userId, user.id, user.username];
         return list
             .whereType<Map<String, dynamic>>()
@@ -290,6 +310,16 @@ class MessengerService {
     try {
       final res = await _client.get(url, headers: headers).timeout(const Duration(seconds: 10));
       if (res.statusCode == 200) {
+        if (res.headers['x-conversation-keys'] != null) {
+          try {
+            final decoded = jsonDecode(res.headers['x-conversation-keys']!) as Map<String, dynamic>;
+            final keys = <String, String>{};
+            decoded.forEach((k, v) {
+              if (v != null) keys[k.toString()] = v.toString();
+            });
+            cacheKeys(conversationId, keys);
+          } catch (_) {}
+        }
         final raw = jsonDecode(res.body);
         final list = raw is List
             ? raw
@@ -384,7 +414,12 @@ class MessengerService {
             body: jsonEncode({'publicKey': publicKeyJwkJson}),
           )
           .timeout(const Duration(seconds: 8));
-      return res.statusCode == 200;
+      if (res.statusCode == 200) {
+        final myId = user.userId.isNotEmpty ? user.userId : user.id;
+        cacheKeys(conversationId, {myId: publicKeyJwkJson});
+        return true;
+      }
+      return false;
     } catch (_) {
       return false;
     }

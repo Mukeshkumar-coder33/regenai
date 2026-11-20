@@ -542,8 +542,20 @@ export const createHttpActor = (identity) => {
         }
         const me = await handleResponse(res);
         if (!me) return null;
+        let localSlots = null;
+        try {
+          const raw = localStorage.getItem('user_nav_slots');
+          if (raw) localSlots = JSON.parse(raw);
+        } catch (_) {}
+        const finalSlots = (Array.isArray(me.navSlots) && me.navSlots.length > 0)
+          ? me.navSlots
+          : (Array.isArray(localSlots) && localSlots.length > 0 ? localSlots : undefined);
+        if (Array.isArray(me.navSlots) && me.navSlots.length > 0) {
+          try { localStorage.setItem('user_nav_slots', JSON.stringify(me.navSlots)); } catch (_) {}
+        }
         return {
           ...me,
+          navSlots: finalSlots,
           avatar: normalizeAvatar(me.avatar),
           role: typeof me.role === 'string' ? { [me.role]: null } : me.role,
           salary: me.salary ? BigInt(me.salary) : undefined

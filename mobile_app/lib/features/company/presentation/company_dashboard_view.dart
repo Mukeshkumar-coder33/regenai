@@ -230,6 +230,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       roleKey: 'company',
       defaults: _defaultCompanySlots,
       validIds: validIds,
+      serverSlots: widget.user.navSlots,
     );
     if (mounted) {
       setState(() {
@@ -1484,7 +1485,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // Top Common Executive Header (☰, Logo, Bell, Avatar)
-                if (_activeCompanyPageId != 'messenger')
+                if (_activeCompanyPageId == 'home')
                   _buildTopAppBar(),
 
                 // Tab Content Body
@@ -1502,7 +1503,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               ],
             ),
           ),
-          bottomNavigationBar: (_activeCompanyPageId == 'messenger' && _companyMessengerInChat)
+          bottomNavigationBar: (_overridePageId != null ||
+                  (_activeCompanyPageId == 'messenger' && _companyMessengerInChat))
               ? null
               : _buildCompanyBottomNav(),
         ),
@@ -2379,27 +2381,54 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     final cycleLabel = _getMonthYearName(now);
     return SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
-            'Payroll & Compensation',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              color: CeladonColors.textPrimary,
-              letterSpacing: -0.4,
-            ),
-          ),
-          const SizedBox(height: 2),
-          const Text(
-            'Automated payroll processing & monthly slips',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: Color(0xFF475569),
-            ),
+          Row(
+            children: [
+              InkWell(
+                onTap: () => _navigateToCompanyPage('home'),
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  margin: const EdgeInsets.only(right: 10),
+                  decoration: BoxDecoration(
+                    color: CeladonColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.arrow_back_rounded,
+                    color: CeladonColors.primary,
+                    size: 22,
+                  ),
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text(
+                    'Payroll & Compensation',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: CeladonColors.textPrimary,
+                      letterSpacing: -0.4,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Automated payroll processing & monthly slips',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF475569),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           _buildGlassCard(
@@ -2512,27 +2541,54 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     final totalStaff = _allNonAdminEmployees.length;
     return SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
-            'Workforce Reports',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              color: CeladonColors.textPrimary,
-              letterSpacing: -0.4,
-            ),
-          ),
-          const SizedBox(height: 2),
-          const Text(
-            'Attendance analytics & monthly summary reports',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: Color(0xFF475569),
-            ),
+          Row(
+            children: [
+              InkWell(
+                onTap: () => _navigateToCompanyPage('home'),
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  margin: const EdgeInsets.only(right: 10),
+                  decoration: BoxDecoration(
+                    color: CeladonColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.arrow_back_rounded,
+                    color: CeladonColors.primary,
+                    size: 22,
+                  ),
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text(
+                    'Workforce Reports',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: CeladonColors.textPrimary,
+                      letterSpacing: -0.4,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Attendance analytics & monthly summary reports',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF475569),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           _buildGlassCard(
@@ -5118,29 +5174,52 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          const SizedBox(height: 14),
           // Header with + Add Employee Button
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  Text(
-                    'Employees',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800,
-                      color: CeladonColors.textPrimary,
-                      letterSpacing: -0.4,
+              Row(
+                children: [
+                  InkWell(
+                    onTap: () => _navigateToCompanyPage('home'),
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      margin: const EdgeInsets.only(right: 10),
+                      decoration: BoxDecoration(
+                        color: CeladonColors.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.arrow_back_rounded,
+                        color: CeladonColors.primary,
+                        size: 22,
+                      ),
                     ),
                   ),
-                  SizedBox(height: 2),
-                  Text(
-                    'Manage your team',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: CeladonColors.textMuted,
-                    ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text(
+                        'Employees',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                          color: CeladonColors.textPrimary,
+                          letterSpacing: -0.4,
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Manage your team',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: CeladonColors.textMuted,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -6573,6 +6652,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          const SizedBox(height: 14),
           // Header with Work Policy & Add Holiday Actions (Scrollable: Guaranteed 0 Overflow on all phones)
           Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -6580,26 +6660,48 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      Text(
-                        'Calender',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                          color: CeladonColors.textPrimary,
-                          letterSpacing: -0.4,
+                  Row(
+                    children: [
+                      InkWell(
+                        onTap: () => _navigateToCompanyPage('home'),
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          width: 38,
+                          height: 38,
+                          margin: const EdgeInsets.only(right: 10),
+                          decoration: BoxDecoration(
+                            color: CeladonColors.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.arrow_back_rounded,
+                            color: CeladonColors.primary,
+                            size: 22,
+                          ),
                         ),
                       ),
-                      SizedBox(height: 2),
-                      Text(
-                        'Company schedule, holidays & events',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: CeladonColors.textMuted,
-                        ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Text(
+                            'Calendar',
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                              color: CeladonColors.textPrimary,
+                              letterSpacing: -0.4,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Company schedule, holidays & events',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: CeladonColors.textMuted,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -8513,24 +8615,52 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          const SizedBox(height: 14),
           // Header
-          const Text(
-            'Leave Management',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              color: CeladonColors.textPrimary,
-              letterSpacing: -0.4,
-            ),
-          ),
-          const SizedBox(height: 2),
-          const Text(
-            'Search & review employee leave applications',
-            style: TextStyle(
-              fontSize: 13,
-              color: CeladonColors.textMuted,
-              fontWeight: FontWeight.w500,
-            ),
+          Row(
+            children: [
+              InkWell(
+                onTap: () => _navigateToCompanyPage('home'),
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  margin: const EdgeInsets.only(right: 10),
+                  decoration: BoxDecoration(
+                    color: CeladonColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.arrow_back_rounded,
+                    color: CeladonColors.primary,
+                    size: 22,
+                  ),
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text(
+                    'Leave Management',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: CeladonColors.textPrimary,
+                      letterSpacing: -0.4,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Search & review employee leave applications',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: CeladonColors.textMuted,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
           const SizedBox(height: 14),
 

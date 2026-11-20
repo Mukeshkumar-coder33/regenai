@@ -152,6 +152,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
       roleKey: _roleStorageKey,
       defaults: _defaultSlotIds,
       validIds: validIds,
+      serverSlots: _currentUser.navSlots,
     );
     if (mounted) {
       setState(() {
@@ -362,7 +363,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
               index: _currentTabIndex.clamp(0, _bottomNavSlots.length - 1),
               children: _bottomNavSlots.map(_buildPageById).toList(),
             ),
-      bottomNavigationBar: (_activePageId == 'messenger' && _messengerInChat)
+      bottomNavigationBar: (_overridePageId != null ||
+              (_activePageId == 'messenger' && _messengerInChat))
           ? null
           : Container(
               decoration: const BoxDecoration(

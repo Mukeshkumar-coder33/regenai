@@ -158,7 +158,12 @@ export const getOrCreateConversation = async (req, res) => {
       await convo.save();
     }
 
-    res.status(200).json(convo);
+    const convoObj = convo.toObject ? convo.toObject() : convo;
+    if (convo.publicKeys) {
+      convoObj.publicKeys = convo.publicKeys instanceof Map ? Object.fromEntries(convo.publicKeys) : convo.publicKeys;
+    }
+
+    res.status(200).json(convoObj);
   } catch (error) {
     console.error('[DM] getOrCreateConversation error:', error);
     res.status(500).json({ message: error.message });
@@ -297,8 +302,12 @@ export const getMyConversations = async (req, res) => {
         const otherPeer = !c.isGroup
           ? participantDetails.find((p) => p.userId !== myId) || participantDetails[0] || null
           : null;
+        const keysObj = c.publicKeys
+          ? (c.publicKeys instanceof Map ? Object.fromEntries(c.publicKeys) : c.publicKeys)
+          : {};
         return {
           ...c,
+          publicKeys: keysObj,
           unreadCount: unread,
           otherUser: otherPeer,
           participantDetails,
@@ -335,6 +344,14 @@ export const getConversationMessages = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(limit)
       .lean();
+
+    const keysObj = convo.publicKeys
+      ? (convo.publicKeys instanceof Map ? Object.fromEntries(convo.publicKeys) : convo.publicKeys)
+      : {};
+    try {
+      res.setHeader('x-conversation-keys', JSON.stringify(keysObj));
+      res.setHeader('Access-Control-Expose-Headers', 'x-conversation-keys');
+    } catch (_) {}
 
     res.status(200).json(msgs.reverse());
   } catch (error) {
@@ -391,11 +408,16 @@ export const sendDirectMessage = async (req, res) => {
     await convo.save();
 
     // Emit strictly to all participants (both website & Flutter receive instantly)
+    const activeKeys = convo.publicKeys
+      ? (convo.publicKeys instanceof Map ? Object.fromEntries(convo.publicKeys) : convo.publicKeys)
+      : {};
+
     await emitToParticipants(convo.participants, 'dm:change', {
       action: 'create',
       conversationId: convo._id.toString(),
       senderId: myId,
       message: msg,
+      publicKeys: activeKeys,
     });
 
     // Notify all other participants
@@ -478,12 +500,18 @@ export const storePublicKey = async (req, res) => {
     convo.publicKeys.set(actor.userId, typeof publicKey === 'string' ? publicKey : JSON.stringify(publicKey));
     await convo.save();
 
+    const activeKeys = convo.publicKeys
+      ? (convo.publicKeys instanceof Map ? Object.fromEntries(convo.publicKeys) : convo.publicKeys)
+      : {};
+
     await emitToParticipants(convo.participants, 'dm:key-exchange', {
       conversationId: convo._id.toString(),
       userId: actor.userId,
+      publicKey: typeof publicKey === 'string' ? publicKey : JSON.stringify(publicKey),
+      publicKeys: activeKeys,
     });
 
-    res.status(200).json({ success: true });
+    res.status(200).json({ success: true, publicKeys: activeKeys });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

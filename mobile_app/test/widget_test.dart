@@ -1477,7 +1477,6 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byIcon(Icons.arrow_back_rounded), findsOneWidget);
-      expect(find.text('Tasks'), findsOneWidget);
       expect(find.text('ReGen'), findsNothing);
       expect(find.text('Tasks & Schedules'), findsOneWidget);
       expect(find.text('Search by title, description, or assigned person...'), findsOneWidget);

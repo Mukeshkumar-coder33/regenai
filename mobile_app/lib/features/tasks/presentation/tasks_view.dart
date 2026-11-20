@@ -514,14 +514,8 @@ class _TasksViewState extends State<TasksView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // 1. Pinned Top Header with Brand, Company Name, Back Arrow & Avatar (hidden when embedded under CompanyDashboardView header)
-                  if (!widget.embedded) _buildHeader(),
-
-                  // 2. Section Header Title & Subtitle (Dashboard Style)
-                  Padding(
-                    padding: EdgeInsets.only(top: widget.embedded ? 8 : 0),
-                    child: _buildSectionHeader(),
-                  ),
+                  // Section Header Title & Subtitle with Back Arrow & Refresh Button
+                  _buildSectionHeader(),
 
                   // 3. Primary Segment Switcher: [General Task] vs [Projects]
                   Padding(
@@ -554,63 +548,71 @@ class _TasksViewState extends State<TasksView> {
     );
   }
 
-  // 1. Top App Bar (Matches Company Dashboard App Bar Exactly)
-  Widget _buildHeader() {
+  // Single Unified Header with Back Button, Title, Subtitle & Refresh
+  Widget _buildSectionHeader() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Left: Squircle Back Button
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: InkWell(
-              onTap: () {
-                if (_selectedProjectForDetail != null) {
-                  setState(() => _selectedProjectForDetail = null);
-                  return;
-                }
-                if (widget.onBack != null) {
-                  widget.onBack!();
-                } else if (Navigator.of(context).canPop()) {
-                  Navigator.of(context).pop();
-                }
-              },
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: CeladonColors.searchBackground,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: CeladonColors.border),
-                ),
-                child: const Icon(
-                  Icons.arrow_back_rounded,
-                  color: CeladonColors.textPrimary,
-                  size: 21,
-                ),
-              ),
-            ),
-          ),
-
-          // Title: "Tasks"
-          const Expanded(
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 12),
-              child: Text(
-                'Tasks',
-                style: TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.w800,
-                  color: CeladonColors.textPrimary,
-                  letterSpacing: -0.2,
+          Row(
+            children: [
+              InkWell(
+                onTap: () {
+                  if (_selectedProjectForDetail != null) {
+                    setState(() => _selectedProjectForDetail = null);
+                    return;
+                  }
+                  if (widget.onBack != null) {
+                    widget.onBack!();
+                  } else if (Navigator.of(context).canPop()) {
+                    Navigator.of(context).pop();
+                  } else if (widget.onOpenDrawer != null) {
+                    widget.onOpenDrawer!();
+                  }
+                },
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  margin: const EdgeInsets.only(right: 10),
+                  decoration: BoxDecoration(
+                    color: CeladonColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.arrow_back_rounded,
+                    color: CeladonColors.primary,
+                    size: 22,
+                  ),
                 ),
               ),
-            ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  Text(
+                    'Tasks & Schedules',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: CeladonColors.textPrimary,
+                      letterSpacing: -0.4,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Manage tasks, projects & workforce schedules',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF475569),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-
-          // Right: Refresh Button in Squircle Container
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: InkWell(
@@ -630,36 +632,6 @@ class _TasksViewState extends State<TasksView> {
                   size: 20,
                 ),
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Section Header (Matches Company Dashboard Sections Exactly)
-  Widget _buildSectionHeader() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: const [
-          Text(
-            'Tasks & Schedules',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              color: CeladonColors.textPrimary,
-              letterSpacing: -0.4,
-            ),
-          ),
-          SizedBox(height: 2),
-          Text(
-            'Manage tasks, projects & workforce schedules',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: Color(0xFF475569),
             ),
           ),
         ],

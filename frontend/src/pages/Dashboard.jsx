@@ -444,6 +444,42 @@ export default function Dashboard({ userProfile }) {
     { id: 'superadmin_console', label: 'Super Admin Console', icon: ShieldCheck, show: isSuperAdminUser, onClick: handleSwitchToSuperAdmin },
   ];
 
+  const sortedMenuItems = useMemo(() => {
+    let activeSlots = (userProfile?.navSlots && Array.isArray(userProfile.navSlots) && userProfile.navSlots.length > 0)
+      ? userProfile.navSlots
+      : null;
+
+    if (!activeSlots) {
+      try {
+        const stored = localStorage.getItem('user_nav_slots');
+        if (stored) activeSlots = JSON.parse(stored);
+      } catch (_) {}
+    }
+
+    if (!Array.isArray(activeSlots) || activeSlots.length === 0) {
+      return menuItems;
+    }
+
+    const slotMap = {
+      'tasks': 'schedules',
+      'employees': 'users',
+      'payroll': 'payments',
+      'settings': 'profile',
+      'calender': 'calendar'
+    };
+
+    const prioritizedIds = activeSlots.map(s => slotMap[s] || s);
+
+    return [...menuItems].sort((a, b) => {
+      const idxA = prioritizedIds.indexOf(a.id);
+      const idxB = prioritizedIds.indexOf(b.id);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return 0;
+    });
+  }, [userProfile?.navSlots, menuItems]);
+
   const renderModule = () => {
     switch (activeModule) {
       case 'home':
@@ -547,7 +583,7 @@ export default function Dashboard({ userProfile }) {
 
         {/* Sidebar Nav Items */}
         <nav className="flex-1 px-2.5 py-4 space-y-1.5 overflow-y-auto overflow-x-hidden">
-          {menuItems.filter(item => item.show).map((item) => {
+          {sortedMenuItems.filter(item => item.show).map((item) => {
             const isActive = activeModule === item.id || (item.id === 'profile' && activeModule === 'settings');
             const navButton = (
               <button
@@ -980,7 +1016,7 @@ export default function Dashboard({ userProfile }) {
               </SheetTitle>
             </SheetHeader>
             <div className="flex-1 overflow-y-auto px-3.5 py-4 space-y-1.5">
-              {menuItems.filter(item => item.show).map((item) => {
+              {sortedMenuItems.filter(item => item.show).map((item) => {
                 const isActive = activeModule === item.id || (item.id === 'profile' && activeModule === 'settings');
                 return (
                   <button

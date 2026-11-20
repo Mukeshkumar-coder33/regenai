@@ -72,6 +72,7 @@ class _SettingsViewState extends State<SettingsView> {
       roleKey: _roleKey,
       defaults: _defaultSlots,
       validIds: validIds,
+      serverSlots: widget.user?.navSlots,
     );
     if (mounted) {
       setState(() {
@@ -87,6 +88,7 @@ class _SettingsViewState extends State<SettingsView> {
       catalog: _catalog,
       currentSlots: _activeSlots,
       defaultSlots: _defaultSlots,
+      user: widget.user,
       onSlotsChanged: (updated) {
         setState(() {
           _activeSlots = List<String>.from(updated);

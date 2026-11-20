@@ -431,9 +431,6 @@ class DirectMessageModel {
     if (decryptedContent != null && decryptedContent!.isNotEmpty) {
       return decryptedContent!;
     }
-    if (encrypted && iv.isNotEmpty) {
-      return '🔒 Encrypted message';
-    }
     return content;
   }
 

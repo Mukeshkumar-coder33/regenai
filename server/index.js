@@ -553,6 +553,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
       company: user.company,
       avatar: user.avatar,
       mustChangePassword: user.mustChangePassword || false,
+      navSlots: user.navSlots || [],
       token,
       authSource: authResult.authSource
     });

@@ -30,6 +30,7 @@ const userSchema = new mongoose.Schema({
   tokenVersion: { type: Number, default: 0 },
   pgUserId: { type: String, sparse: true, index: true },
   syncedWithPg: { type: Boolean, default: false },
+  navSlots: [{ type: String }],
   lastLogin: { type: Date },
   lastActive: { type: Date },
   pushTokens: [{

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../features/auth/data/user_model.dart';
+import '../../features/dashboard/data/dashboard_service.dart';
+import '../storage/session_storage.dart';
 import '../theme/celadon_colors.dart';
 
 /// Immutable descriptor for a bottom-navigation / menu destination.
@@ -28,8 +31,23 @@ class BottomNavCustomizer {
     required String roleKey,
     required List<String> defaults,
     required Set<String> validIds,
+    List<String>? serverSlots,
   }) async {
     try {
+      if (serverSlots != null && serverSlots.length == defaults.length) {
+        final seen = <String>{};
+        final cleaned = <String>[];
+        for (final id in serverSlots) {
+          if (validIds.contains(id) && seen.add(id)) {
+            cleaned.add(id);
+          }
+        }
+        if (cleaned.length == defaults.length) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setStringList(_storageKey(roleKey), cleaned);
+          return cleaned;
+        }
+      }
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getStringList(_storageKey(roleKey));
       if (saved == null || saved.length != defaults.length) {
@@ -55,10 +73,19 @@ class BottomNavCustomizer {
   static Future<void> saveSlots({
     required String roleKey,
     required List<String> slots,
+    UserModel? user,
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(_storageKey(roleKey), slots);
+      if (user != null) {
+        final updated = user.copyWith(navSlots: slots);
+        await SessionStorage.saveSession(updated);
+        final targetId = user.id.isNotEmpty ? user.id : user.userId;
+        if (targetId.isNotEmpty) {
+          DashboardService().updateUser(targetId, {'navSlots': slots}).catchError((_) => user);
+        }
+      }
     } catch (_) {
       // Ignore storage errors in ephemeral environments
     }
@@ -172,6 +199,7 @@ class BottomNavCustomizer {
     required List<String> currentSlots,
     required List<String> defaultSlots,
     required void Function(List<String> updatedSlots) onSlotsChanged,
+    UserModel? user,
   }) async {
     NavShortcutItem shortcutForId(String id) {
       return catalog.firstWhere(
@@ -334,7 +362,7 @@ class BottomNavCustomizer {
                                       );
                                       if (selected != null && selected != currentId) {
                                         activeSlots[slotIndex] = selected;
-                                        await saveSlots(roleKey: roleKey, slots: activeSlots);
+                                        await saveSlots(roleKey: roleKey, slots: activeSlots, user: user);
                                         currentSlots[slotIndex] = selected;
                                         onSlotsChanged(List<String>.from(activeSlots));
                                         setSheetState(() {});
@@ -382,7 +410,7 @@ class BottomNavCustomizer {
                         TextButton.icon(
                           onPressed: () async {
                             final reset = List<String>.from(defaultSlots);
-                            await saveSlots(roleKey: roleKey, slots: reset);
+                            await saveSlots(roleKey: roleKey, slots: reset, user: user);
                             currentSlots
                               ..clear()
                               ..addAll(reset);

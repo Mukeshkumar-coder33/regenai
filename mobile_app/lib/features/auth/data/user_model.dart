@@ -20,6 +20,7 @@ class UserModel {
   final String? joiningDate;
   final String? dateOfBirth;
   final String? createdAt;
+  final List<String> navSlots;
 
   const UserModel({
     required this.id,
@@ -40,6 +41,7 @@ class UserModel {
     this.joiningDate,
     this.dateOfBirth,
     this.createdAt,
+    this.navSlots = const [],
   });
 
   /// Factory constructor to parse backend JSON response
@@ -64,6 +66,9 @@ class UserModel {
       joiningDate: json['joiningDate']?.toString(),
       dateOfBirth: (json['dateOfBirth'] ?? json['dob'])?.toString(),
       createdAt: json['createdAt']?.toString(),
+      navSlots: (json['navSlots'] is List)
+          ? (json['navSlots'] as List).map((e) => e.toString()).toList()
+          : const [],
     );
   }
 
@@ -88,6 +93,7 @@ class UserModel {
       'joiningDate': joiningDate,
       'dateOfBirth': dateOfBirth,
       'createdAt': createdAt,
+      'navSlots': navSlots,
     };
   }
 
@@ -110,6 +116,7 @@ class UserModel {
     String? joiningDate,
     String? dateOfBirth,
     String? createdAt,
+    List<String>? navSlots,
   }) {
     return UserModel(
       id: id ?? this.id,
@@ -130,6 +137,7 @@ class UserModel {
       joiningDate: joiningDate ?? this.joiningDate,
       dateOfBirth: dateOfBirth ?? this.dateOfBirth,
       createdAt: createdAt ?? this.createdAt,
+      navSlots: navSlots ?? this.navSlots,
     );
   }
 

@@ -46,7 +46,6 @@ class _MessengerViewState extends State<MessengerView> {
   late MessengerService _messengerService;
   late DashboardService _dashboardService;
 
-
   // Tab 0 = Chats (1:1 & Groups), Tab 1 = Team Channel (hidden for Super Admin central portal)
   int _activeTab = 0;
   bool _isLoading = true;
@@ -269,25 +268,47 @@ class _MessengerViewState extends State<MessengerView> {
       socket.onMessageChange.listen((_) {
         if (_showTeamChannelTab) _refreshTeamMessages();
       }),
-      socket.onDmChange.listen((payload) {
-        _refreshConversations();
+      socket.onDmChange.listen((payload) async {
         final convId = (payload['conversationId'] ?? '').toString();
         if (_activeConversation != null &&
             (convId.isEmpty || convId == _activeConversation!.conversationId)) {
-          _refreshActiveDmMessages();
+          if (payload['publicKeys'] is Map) {
+            final newKeys = <String, String>{};
+            (payload['publicKeys'] as Map).forEach((k, v) {
+              if (v != null) newKeys[k.toString()] = v.toString();
+            });
+            _messengerService.cacheKeys(_activeConversation!.conversationId, newKeys);
+            final merged = Map<String, String>.from(_activeConversation!.publicKeys)..addAll(newKeys);
+            _activeConversation = _activeConversation!.copyWith(publicKeys: merged);
+          }
+          if (_activeSharedKey == null) {
+            await _setupE2eForConversation(_activeConversation!);
+          }
+          await _refreshActiveDmMessages();
         }
+        _refreshConversations();
       }),
-      socket.onDmKeyExchange.listen((payload) {
+      socket.onDmKeyExchange.listen((payload) async {
         final convId = (payload['conversationId'] ?? '').toString();
         if (_activeConversation != null && convId == _activeConversation!.conversationId) {
-          _refreshConversations().then((_) {
-            final updated = _conversations.where((c) => c.conversationId == convId).firstOrNull;
-            if (updated != null && mounted) {
-              setState(() => _activeConversation = updated);
-              _setupE2eForConversation(updated);
-            }
-          });
+          final newKeys = <String, String>{};
+          if (payload['publicKeys'] is Map) {
+            (payload['publicKeys'] as Map).forEach((k, v) {
+              if (v != null) newKeys[k.toString()] = v.toString();
+            });
+          }
+          if (payload['userId'] != null && payload['publicKey'] != null) {
+            newKeys[payload['userId'].toString()] = payload['publicKey'].toString();
+          }
+          if (newKeys.isNotEmpty) {
+            _messengerService.cacheKeys(convId, newKeys);
+            final merged = Map<String, String>.from(_activeConversation!.publicKeys)..addAll(newKeys);
+            _activeConversation = _activeConversation!.copyWith(publicKeys: merged);
+          }
+          await _setupE2eForConversation(_activeConversation!);
+          await _refreshActiveDmMessages();
         }
+        _refreshConversations();
       }),
       socket.onPresenceUpdate.listen((payload) {
         final uid = (payload['userId'] ?? '').toString();
@@ -397,6 +418,14 @@ class _MessengerViewState extends State<MessengerView> {
   Future<void> _refreshActiveDmMessages() async {
     final conv = _activeConversation;
     if (conv == null) return;
+    final freshKeys = _messengerService.getCachedKeys(conv.conversationId);
+    if (freshKeys != null && freshKeys.isNotEmpty) {
+      final merged = Map<String, String>.from(conv.publicKeys)..addAll(freshKeys);
+      _activeConversation = conv.copyWith(publicKeys: merged);
+      if (_activeSharedKey == null) {
+        await _setupE2eForConversation(_activeConversation!);
+      }
+    }
     final raw = await _messengerService.getDirectMessages(
       user: widget.user,
       conversationId: conv.conversationId,
@@ -579,12 +608,12 @@ class _MessengerViewState extends State<MessengerView> {
         continue;
       }
       if (effectiveKey == null) {
-        out.add(m.copyWith(decryptedContent: '🔒 Encrypted message'));
+        out.add(m.copyWith(decryptedContent: m.content));
         continue;
       }
       final plain = await E2eCryptoService.decryptMessage(effectiveKey, m.content, m.iv);
       if (plain == '🔒 Unable to decrypt') {
-        out.add(m.copyWith(decryptedContent: '🔒 Encrypted message'));
+        out.add(m.copyWith(decryptedContent: m.content));
       } else {
         out.add(m.copyWith(decryptedContent: plain));
       }
@@ -593,6 +622,12 @@ class _MessengerViewState extends State<MessengerView> {
   }
 
   Future<void> _openConversation(DmConversationModel conv) async {
+    final cached = _messengerService.getCachedKeys(conv.conversationId);
+    if (cached != null && cached.isNotEmpty) {
+      final merged = Map<String, String>.from(conv.publicKeys)..addAll(cached);
+      conv = conv.copyWith(publicKeys: merged);
+    }
+
     setState(() {
       _activeConversation = conv;
       _isLoadingDm = true;
@@ -606,6 +641,17 @@ class _MessengerViewState extends State<MessengerView> {
       user: widget.user,
       conversationId: conv.conversationId,
     );
+
+    final freshKeys = _messengerService.getCachedKeys(conv.conversationId);
+    if (freshKeys != null && freshKeys.isNotEmpty) {
+      final merged = Map<String, String>.from(conv.publicKeys)..addAll(freshKeys);
+      conv = conv.copyWith(publicKeys: merged);
+      if (mounted) setState(() => _activeConversation = conv);
+      if (_activeSharedKey == null) {
+        await _setupE2eForConversation(conv);
+      }
+    }
+
     final msgs = await _decryptMessageList(rawMsgs, _activeSharedKey);
 
     _messengerService.markConversationRead(

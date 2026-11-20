@@ -53,15 +53,33 @@ class E2eCryptoService {
     return pc.FortunaRandom()..seed(pc.KeyParameter(seed));
   }
 
+  static String? _findStoredPrivateJwk(
+    SharedPreferences prefs,
+    String conversationId, {
+    String? userId,
+  }) {
+    if (userId != null && userId.trim().isNotEmpty) {
+      final k = _storageKey(conversationId, userId: userId);
+      final val = prefs.getString(k);
+      if (val != null && val.trim().isNotEmpty) return val;
+    }
+    final unscoped = prefs.getString('e2e_$conversationId');
+    if (unscoped != null && unscoped.trim().isNotEmpty) return unscoped;
+
+    for (final k in prefs.getKeys()) {
+      if (k.endsWith('_$conversationId') || k.endsWith(conversationId)) {
+        final val = prefs.getString(k);
+        if (val != null && val.contains('"d"') && val.contains('"x"')) {
+          return val;
+        }
+      }
+    }
+    return null;
+  }
+
   static Future<bool> hasKeyPair(String conversationId, {String? userId}) async {
     final prefs = await SharedPreferences.getInstance();
-    final scoped = prefs.getString(_storageKey(conversationId, userId: userId));
-    if (scoped != null && scoped.isNotEmpty) return true;
-    if (userId != null) {
-      final unscoped = prefs.getString(_storageKey(conversationId));
-      if (unscoped != null && unscoped.isNotEmpty) return true;
-    }
-    return false;
+    return _findStoredPrivateJwk(prefs, conversationId, userId: userId) != null;
   }
 
   /// Retrieve the stored public JWK JSON string from an existing stored private JWK
@@ -69,10 +87,7 @@ class E2eCryptoService {
   static Future<String?> getStoredPublicKey(String conversationId, {String? userId}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      var rawPrivate = prefs.getString(_storageKey(conversationId, userId: userId));
-      if (rawPrivate == null && userId != null) {
-        rawPrivate = prefs.getString(_storageKey(conversationId));
-      }
+      final rawPrivate = _findStoredPrivateJwk(prefs, conversationId, userId: userId);
       if (rawPrivate == null || rawPrivate.isEmpty) return null;
 
       final privMap = jsonDecode(rawPrivate) as Map<String, dynamic>;
@@ -150,10 +165,7 @@ class E2eCryptoService {
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      var rawPrivate = prefs.getString(_storageKey(conversationId, userId: userId));
-      if (rawPrivate == null && userId != null) {
-        rawPrivate = prefs.getString(_storageKey(conversationId));
-      }
+      final rawPrivate = _findStoredPrivateJwk(prefs, conversationId, userId: userId);
       if (rawPrivate == null || rawPrivate.isEmpty) return null;
 
       final privMap = jsonDecode(rawPrivate) as Map<String, dynamic>;

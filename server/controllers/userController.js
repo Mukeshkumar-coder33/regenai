@@ -255,7 +255,8 @@ export const getCurrentUser = async (req, res) => {
           phone: sa.phone || '',
           designation: sa.designation || 'Platform Administrator',
           department: sa.department || 'Central Administration',
-          status: sa.status
+          status: sa.status,
+          navSlots: sa.navSlots || []
         });
       }
     }
@@ -300,7 +301,8 @@ export const getUser = async (req, res) => {
           phone: sa.phone || '',
           designation: sa.designation || 'Platform Administrator',
           department: sa.department || 'Central Administration',
-          status: sa.status
+          status: sa.status,
+          navSlots: sa.navSlots || []
         });
       }
     }
@@ -346,6 +348,7 @@ export const updateUser = async (req, res) => {
         if (req.body.designation !== undefined) sa.designation = req.body.designation;
         if (req.body.department !== undefined) sa.department = req.body.department;
         if (req.body.avatar !== undefined) sa.avatar = req.body.avatar;
+        if (req.body.navSlots !== undefined) sa.navSlots = req.body.navSlots;
         await sa.save();
         return res.status(200).json({
           _id: sa._id,
@@ -360,7 +363,8 @@ export const updateUser = async (req, res) => {
           phone: sa.phone,
           designation: sa.designation,
           department: sa.department,
-          status: sa.status
+          status: sa.status,
+          navSlots: sa.navSlots || []
         });
       }
     }

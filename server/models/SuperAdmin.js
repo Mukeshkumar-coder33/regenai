@@ -14,6 +14,7 @@ const superAdminSchema = new mongoose.Schema({
   lastAvatarUpdate: { type: Date },
   status: { type: String, enum: ['active', 'inactive'], default: 'active' },
   tokenVersion: { type: Number, default: 0 },
+  navSlots: [{ type: String }],
   lastLogin: { type: Date },
   lastActive: { type: Date },
   pushTokens: [{

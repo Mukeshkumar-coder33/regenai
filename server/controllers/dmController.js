@@ -359,6 +359,111 @@ export const getConversationMessages = async (req, res) => {
   }
 };
 
+// ─── Get E2E public keys for a conversation ─────────────────────
+export const getConversationKeys = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const actor = await resolveMessengerActor(req.user?.userId, req.user?.role);
+    if (!actor) return res.status(401).json({ message: 'Unauthorized' });
+
+    const convo = await Conversation.findById(conversationId);
+    const access = canAccessConversation(actor, convo);
+    if (!access.allowed) {
+      return res.status(convo ? 403 : 404).json({ message: access.reason });
+    }
+
+    const keysObj = convo.publicKeys
+      ? (convo.publicKeys instanceof Map ? Object.fromEntries(convo.publicKeys) : convo.publicKeys)
+      : {};
+
+    res.status(200).json({ conversationId, publicKeys: keysObj });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ─── Get user's own persistent E2E keys for conversation ────────
+export const getUserConversationKey = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const actor = await resolveMessengerActor(req.user?.userId, req.user?.role);
+    if (!actor) return res.status(401).json({ message: 'Unauthorized' });
+
+    const convo = await Conversation.findById(conversationId);
+    const access = canAccessConversation(actor, convo);
+    if (!access.allowed) {
+      return res.status(convo ? 403 : 404).json({ message: access.reason });
+    }
+
+    const myId = actor.userId;
+    const privKey = convo.userKeys ? (convo.userKeys instanceof Map ? convo.userKeys.get(myId) : convo.userKeys[myId]) : null;
+    const pubKey = convo.publicKeys ? (convo.publicKeys instanceof Map ? convo.publicKeys.get(myId) : convo.publicKeys[myId]) : null;
+
+    res.status(200).json({
+      conversationId,
+      userId: myId,
+      privateKey: privKey || null,
+      publicKey: pubKey || null,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ─── Store user's persistent E2E keys for conversation ──────────
+export const storeUserConversationKey = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const actor = await resolveMessengerActor(req.user?.userId, req.user?.role);
+    if (!actor) return res.status(401).json({ message: 'Unauthorized' });
+
+    const { privateKey, publicKey } = req.body;
+    if (!publicKey) return res.status(400).json({ message: 'publicKey is required' });
+
+    const convo = await Conversation.findById(conversationId);
+    const access = canAccessConversation(actor, convo);
+    if (!access.allowed) {
+      return res.status(convo ? 403 : 404).json({ message: access.reason });
+    }
+
+    const myId = actor.userId;
+    if (!convo.publicKeys) convo.publicKeys = new Map();
+    if (!convo.userKeys) convo.userKeys = new Map();
+
+    const pubVal = typeof publicKey === 'string' ? publicKey : JSON.stringify(publicKey);
+    if (convo.publicKeys instanceof Map) {
+      convo.publicKeys.set(myId, pubVal);
+    } else {
+      convo.publicKeys[myId] = pubVal;
+    }
+
+    if (privateKey) {
+      const privVal = typeof privateKey === 'string' ? privateKey : JSON.stringify(privateKey);
+      if (convo.userKeys instanceof Map) {
+        convo.userKeys.set(myId, privVal);
+      } else {
+        convo.userKeys[myId] = privVal;
+      }
+    }
+    await convo.save();
+
+    const activeKeys = convo.publicKeys
+      ? (convo.publicKeys instanceof Map ? Object.fromEntries(convo.publicKeys) : convo.publicKeys)
+      : {};
+
+    await emitToParticipants(convo.participants, 'dm:key-exchange', {
+      conversationId: convo._id.toString(),
+      userId: myId,
+      publicKey: pubVal,
+      publicKeys: activeKeys,
+    });
+
+    res.status(200).json({ success: true, conversationId, publicKeys: activeKeys });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // ─── Send a direct or group message ─────────────────────────────
 export const sendDirectMessage = async (req, res) => {
   try {

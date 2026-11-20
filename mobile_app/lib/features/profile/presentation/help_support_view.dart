@@ -27,10 +27,11 @@ class HelpSupportView extends StatelessWidget {
                 children: [
                   IconButton(
                     icon: const Icon(
-                      Icons.arrow_back_ios_new_rounded,
-                      size: 20,
+                      Icons.arrow_back_rounded,
+                      size: 22,
                       color: CeladonColors.textPrimary,
                     ),
+                    tooltip: 'Back to Home',
                     onPressed: () {
                       if (onBack != null) {
                         onBack!();
@@ -39,12 +40,31 @@ class HelpSupportView extends StatelessWidget {
                       }
                     },
                   ),
-                  const Text(
-                    'Help & Support',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: CeladonColors.textPrimary,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Text(
+                          'Help & Support',
+                          style: TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w800,
+                            color: CeladonColors.textPrimary,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Get assistance, submit queries & review knowledge base articles',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: CeladonColors.textMuted,
+                            height: 1.3,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ),
                   ),
                 ],

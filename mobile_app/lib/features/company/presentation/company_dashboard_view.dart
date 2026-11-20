@@ -2396,13 +2396,31 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 tooltip: 'Back to Home',
                 onPressed: () => _navigateToCompanyPage('home'),
               ),
-              const Text(
-                'Payroll & Compensation',
-                style: TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.w800,
-                  color: CeladonColors.textPrimary,
-                  letterSpacing: -0.2,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text(
+                      'Payroll & Compensation',
+                      style: TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                        color: CeladonColors.textPrimary,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Process salary disbursements, deductions & pay history',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: CeladonColors.textMuted,
+                        height: 1.3,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -2533,13 +2551,31 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 tooltip: 'Back to Home',
                 onPressed: () => _navigateToCompanyPage('home'),
               ),
-              const Text(
-                'Workforce Reports',
-                style: TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.w800,
-                  color: CeladonColors.textPrimary,
-                  letterSpacing: -0.2,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text(
+                      'Workforce Reports',
+                      style: TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                        color: CeladonColors.textPrimary,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Analyze organizational metrics, attendance & productivity trends',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: CeladonColors.textMuted,
+                        height: 1.3,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -5141,16 +5177,34 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 tooltip: 'Back to Home',
                 onPressed: () => _navigateToCompanyPage('home'),
               ),
-              const Text(
-                'Employees',
-                style: TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.w800,
-                  color: CeladonColors.textPrimary,
-                  letterSpacing: -0.2,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text(
+                      'Employees',
+                      style: TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                        color: CeladonColors.textPrimary,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Manage workforce members, assignments & directory details',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: CeladonColors.textMuted,
+                        height: 1.3,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
               InkWell(
                 onTap: _showAddEmployeeDialog,
                 borderRadius: BorderRadius.circular(10),
@@ -6596,13 +6650,31 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     tooltip: 'Back to Home',
                     onPressed: () => _navigateToCompanyPage('home'),
                   ),
-                  const Text(
-                    'Calendar',
-                    style: TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.w800,
-                      color: CeladonColors.textPrimary,
-                      letterSpacing: -0.2,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Text(
+                          'Calendar',
+                          style: TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w800,
+                            color: CeladonColors.textPrimary,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'View company holidays, work shifts & schedule timelines',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: CeladonColors.textMuted,
+                            height: 1.3,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -8528,13 +8600,31 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 tooltip: 'Back to Home',
                 onPressed: () => _navigateToCompanyPage('home'),
               ),
-              const Text(
-                'Leave Management',
-                style: TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.w800,
-                  color: CeladonColors.textPrimary,
-                  letterSpacing: -0.2,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text(
+                      'Leave Management',
+                      style: TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                        color: CeladonColors.textPrimary,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Review employee time-off requests, balances & approvals',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: CeladonColors.textMuted,
+                        height: 1.3,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -9411,13 +9501,31 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               tooltip: 'Back to Home',
               onPressed: () => _navigateToCompanyPage('home'),
             ),
-            const Text(
-              'Company',
-              style: TextStyle(
-                fontSize: 19,
-                fontWeight: FontWeight.w800,
-                color: CeladonColors.textPrimary,
-                letterSpacing: -0.2,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text(
+                    'Company',
+                    style: TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                      color: CeladonColors.textPrimary,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Manage company information & organizational policies',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: CeladonColors.textMuted,
+                      height: 1.3,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
             ),
           ],
@@ -9751,13 +9859,31 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               tooltip: 'Back to Home',
               onPressed: () => _navigateToCompanyPage('home'),
             ),
-            const Text(
-              'Profile',
-              style: TextStyle(
-                fontSize: 19,
-                fontWeight: FontWeight.w800,
-                color: CeladonColors.textPrimary,
-                letterSpacing: -0.2,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text(
+                    'My Profile',
+                    style: TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                      color: CeladonColors.textPrimary,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Update personal credentials, contact info & account security',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: CeladonColors.textMuted,
+                      height: 1.3,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
             ),
           ],
@@ -9969,13 +10095,31 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               tooltip: 'Back to Home',
               onPressed: () => _navigateToCompanyPage('home'),
             ),
-            const Text(
-              'Settings',
-              style: TextStyle(
-                fontSize: 19,
-                fontWeight: FontWeight.w800,
-                color: CeladonColors.textPrimary,
-                letterSpacing: -0.2,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text(
+                    'Settings',
+                    style: TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                      color: CeladonColors.textPrimary,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Configure system preferences, navigation docks & notifications',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: CeladonColors.textMuted,
+                      height: 1.3,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
             ),
           ],
@@ -10071,36 +10215,39 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       borderRadius: 18,
       margin: const EdgeInsets.only(bottom: 10),
       padding: EdgeInsets.zero,
-      child: ListTile(
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: const BoxDecoration(
-            color: CeladonColors.searchBackground,
-            shape: BoxShape.circle,
+      child: Material(
+        color: Colors.transparent,
+        child: ListTile(
+          leading: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: const BoxDecoration(
+              color: CeladonColors.searchBackground,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: CeladonColors.primary, size: 18),
           ),
-          child: Icon(icon, color: CeladonColors.primary, size: 18),
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontSize: 13.5,
-            fontWeight: FontWeight.w700,
-            color: CeladonColors.textPrimary,
+          title: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w700,
+              color: CeladonColors.textPrimary,
+            ),
           ),
-        ),
-        subtitle: Text(
-          subtitle,
-          style: const TextStyle(
-            fontSize: 11.5,
-            color: CeladonColors.textSecondary,
+          subtitle: Text(
+            subtitle,
+            style: const TextStyle(
+              fontSize: 11.5,
+              color: CeladonColors.textSecondary,
+            ),
           ),
+          trailing: const Icon(
+            Icons.chevron_right_rounded,
+            color: CeladonColors.textMuted,
+            size: 18,
+          ),
+          onTap: onTap,
         ),
-        trailing: const Icon(
-          Icons.chevron_right_rounded,
-          color: CeladonColors.textMuted,
-          size: 18,
-        ),
-        onTap: onTap,
       ),
     );
   }

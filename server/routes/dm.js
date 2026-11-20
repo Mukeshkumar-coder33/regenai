@@ -8,6 +8,9 @@ import {
   sendDirectMessage,
   markAsRead,
   storePublicKey,
+  getConversationKeys,
+  getUserConversationKey,
+  storeUserConversationKey,
   editDirectMessage,
   deleteDirectMessage
 } from '../controllers/dmController.js';
@@ -28,7 +31,10 @@ router.post('/conversations/:conversationId/messages', sendDirectMessage);
 router.put('/conversations/:conversationId/read', markAsRead);
 
 // E2E key exchange
+router.get('/conversations/:conversationId/keys', getConversationKeys);
 router.post('/conversations/:conversationId/keys', storePublicKey);
+router.get('/conversations/:conversationId/my-key', getUserConversationKey);
+router.post('/conversations/:conversationId/my-key', storeUserConversationKey);
 
 // Edit / Delete individual messages
 router.put('/messages/:messageId', editDirectMessage);

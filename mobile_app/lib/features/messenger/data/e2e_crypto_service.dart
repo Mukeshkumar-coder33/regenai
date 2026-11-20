@@ -25,8 +25,11 @@ class E2eCryptoService {
   }
 
   static Uint8List _decodeBase64Url(String input) {
-    final normalized = base64Url.normalize(input);
-    return Uint8List.fromList(base64Url.decode(normalized));
+    var clean = input.trim().replaceAll('-', '+').replaceAll('_', '/');
+    while (clean.length % 4 != 0) {
+      clean += '=';
+    }
+    return Uint8List.fromList(base64Decode(clean));
   }
 
   static Uint8List _bigIntToFixedBytes(BigInt value, int length) {
@@ -59,10 +62,24 @@ class E2eCryptoService {
     String? userId,
   }) {
     if (userId != null && userId.trim().isNotEmpty) {
-      final k = _storageKey(conversationId, userId: userId);
+      final uClean = userId.trim().toLowerCase();
+      final k = 'e2e_${uClean}_$conversationId';
       final val = prefs.getString(k);
       if (val != null && val.trim().isNotEmpty) return val;
+
+      // Search for keys strictly prefixed with this user's identity
+      for (final key in prefs.getKeys()) {
+        final kl = key.toLowerCase();
+        if (kl.startsWith('e2e_${uClean}_') && (kl.endsWith('_$conversationId') || kl.endsWith(conversationId))) {
+          final v = prefs.getString(key);
+          if (v != null && v.contains('"d"') && v.contains('"x"')) {
+            return v;
+          }
+        }
+      }
     }
+
+    // Fallback: check unscoped or conversation-level key
     final unscoped = prefs.getString('e2e_$conversationId');
     if (unscoped != null && unscoped.trim().isNotEmpty) return unscoped;
 
@@ -80,6 +97,20 @@ class E2eCryptoService {
   static Future<bool> hasKeyPair(String conversationId, {String? userId}) async {
     final prefs = await SharedPreferences.getInstance();
     return _findStoredPrivateJwk(prefs, conversationId, userId: userId) != null;
+  }
+
+  static Future<String?> getStoredPrivateKey(String conversationId, {String? userId}) async {
+    final prefs = await SharedPreferences.getInstance();
+    return _findStoredPrivateJwk(prefs, conversationId, userId: userId);
+  }
+
+  static Future<void> storeImportedPrivateKey(
+    String conversationId,
+    String privateKeyJwkJson, {
+    String? userId,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_storageKey(conversationId, userId: userId), privateKeyJwkJson);
   }
 
   /// Retrieve the stored public JWK JSON string from an existing stored private JWK
@@ -226,8 +257,8 @@ class E2eCryptoService {
     String ivB64,
   ) async {
     try {
-      final combined = base64Decode(ciphertextB64);
-      final nonce = base64Decode(ivB64);
+      final combined = _decodeBase64Url(ciphertextB64);
+      final nonce = _decodeBase64Url(ivB64);
       if (combined.length < 16) return '🔒 Unable to decrypt';
 
       final cipherBytes = combined.sublist(0, combined.length - 16);

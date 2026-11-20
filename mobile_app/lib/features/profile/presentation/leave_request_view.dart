@@ -135,13 +135,31 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
                         }
                       },
                     ),
-                    const Text(
-                      'Leave Requests',
-                      style: TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.w800,
-                        color: CeladonColors.textPrimary,
-                        letterSpacing: -0.2,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          Text(
+                            'Leave Requests',
+                            style: TextStyle(
+                              fontSize: 19,
+                              fontWeight: FontWeight.w800,
+                              color: CeladonColors.textPrimary,
+                              letterSpacing: -0.2,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Apply for time off, view approval statuses & balance history',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: CeladonColors.textMuted,
+                              height: 1.3,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
                       ),
                     ),
                   ],

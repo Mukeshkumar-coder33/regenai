@@ -575,15 +575,34 @@ class _TasksViewState extends State<TasksView> {
               }
             },
           ),
-          const Text(
-            'Tasks & Schedules',
-            style: TextStyle(
-              fontSize: 19,
-              fontWeight: FontWeight.w800,
-              color: CeladonColors.textPrimary,
-              letterSpacing: -0.2,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Text(
+                  'Tasks & Schedules',
+                  style: TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w800,
+                    color: CeladonColors.textPrimary,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Track deliverables, project schedules & assignment deadlines',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: CeladonColors.textMuted,
+                    height: 1.3,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
           ),
+          const SizedBox(width: 8),
           const Spacer(),
           IconButton(
             tooltip: 'Refresh tasks',

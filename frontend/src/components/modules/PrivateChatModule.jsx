@@ -27,7 +27,7 @@ import {
 import { toast } from 'sonner';
 import {
   generateKeyPair, hasKeyPair, deriveSharedKey,
-  encryptMessage, decryptMessage, getStoredPrivateKey
+  encryptMessage, decryptMessage, getStoredPrivateKey, storeImportedPrivateKey
 } from '../../utils/e2e';
 import { stopMediaStream, parseMediaError } from '../../lib/mediaUtils';
 import EmojiPicker from '../EmojiPicker';
@@ -487,11 +487,36 @@ export default function PrivateChatModule({ userProfile }) {
 
     const setupE2E = async () => {
       try {
-        // 1. Generate our key pair if we don't have one
+        // 1. Fetch persistent key from server or generate our key pair
         if (!hasKeyPair(activeConvoId)) {
-          const pubKey = await generateKeyPair(activeConvoId);
-          // storeKey mutation automatically invalidates dm-conversations, so no need to refetch manually
-          await storeKey.mutateAsync({ conversationId: activeConvoId, publicKey: pubKey });
+          const token = localStorage.getItem('token');
+          let gotServerKey = false;
+          try {
+            const res = await fetch(`/api/dm/conversations/${activeConvoId}/my-key`, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) {
+              const keyData = await res.json();
+              if (keyData.privateKey) {
+                storeImportedPrivateKey(activeConvoId, keyData.privateKey);
+                gotServerKey = true;
+              }
+            }
+          } catch (_) {}
+
+          if (!gotServerKey) {
+            const pubKey = await generateKeyPair(activeConvoId);
+            const privKey = getStoredPrivateKey(activeConvoId);
+            try {
+              await fetch(`/api/dm/conversations/${activeConvoId}/my-key`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ privateKey: privKey, publicKey: pubKey })
+              });
+            } catch (_) {
+              await storeKey.mutateAsync({ conversationId: activeConvoId, publicKey: pubKey });
+            }
+          }
         }
 
         // 2. Check if peer has published their key

@@ -398,6 +398,34 @@ class MessengerService {
     }
   }
 
+  /// Fetch E2E public keys for a conversation (`GET /api/dm/conversations/:id/keys`)
+  Future<Map<String, String>> getConversationKeys({
+    required UserModel user,
+    required String conversationId,
+  }) async {
+    final headers = await _getHeaders(user: user);
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/dm/conversations/$conversationId/keys');
+    try {
+      final res = await _client.get(url, headers: headers).timeout(const Duration(seconds: 8));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final keys = <String, String>{};
+        if (data is Map && data['publicKeys'] is Map) {
+          (data['publicKeys'] as Map).forEach((k, v) {
+            if (v != null) keys[k.toString()] = v.toString();
+          });
+        }
+        if (keys.isNotEmpty) {
+          cacheKeys(conversationId, keys);
+        }
+        return keys;
+      }
+      return {};
+    } catch (_) {
+      return {};
+    }
+  }
+
   /// Store ECDH P-256 public key for E2E encryption (`POST /api/dm/conversations/:id/keys`)
   Future<bool> storePublicKey({
     required UserModel user,
@@ -412,6 +440,58 @@ class MessengerService {
             url,
             headers: headers,
             body: jsonEncode({'publicKey': publicKeyJwkJson}),
+          )
+          .timeout(const Duration(seconds: 8));
+      if (res.statusCode == 200) {
+        final myId = user.userId.isNotEmpty ? user.userId : user.id;
+        cacheKeys(conversationId, {myId: publicKeyJwkJson});
+        return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Get user's own persistent keypair from server (`GET /api/dm/conversations/:id/my-key`)
+  Future<({String? privateKey, String? publicKey})> getUserConversationKey({
+    required UserModel user,
+    required String conversationId,
+  }) async {
+    final headers = await _getHeaders(user: user);
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/dm/conversations/$conversationId/my-key');
+    try {
+      final res = await _client.get(url, headers: headers).timeout(const Duration(seconds: 8));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final priv = data['privateKey']?.toString();
+        final pub = data['publicKey']?.toString();
+        return (privateKey: priv, publicKey: pub);
+      }
+      return (privateKey: null, publicKey: null);
+    } catch (_) {
+      return (privateKey: null, publicKey: null);
+    }
+  }
+
+  /// Store user's persistent keypair on server (`POST /api/dm/conversations/:id/my-key`)
+  Future<bool> storeUserConversationKey({
+    required UserModel user,
+    required String conversationId,
+    required String privateKeyJwkJson,
+    required String publicKeyJwkJson,
+  }) async {
+    final headers = await _getHeaders(user: user);
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/dm/conversations/$conversationId/my-key');
+    try {
+      final res = await _client
+          .post(
+            url,
+            headers: headers,
+            body: jsonEncode({
+              'privateKey': privateKeyJwkJson,
+              'publicKey': publicKeyJwkJson,
+            }),
           )
           .timeout(const Duration(seconds: 8));
       if (res.statusCode == 200) {

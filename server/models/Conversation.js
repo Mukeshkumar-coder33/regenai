@@ -22,6 +22,13 @@ const conversationSchema = new mongoose.Schema({
     type: Map,
     of: String, // userId → JWK JSON string
     default: {}
+  },
+  // User key store: stores each participant's private key for this conversation
+  // accessible ONLY by that specific participant via authenticated GET /conversations/:id/my-key
+  userKeys: {
+    type: Map,
+    of: String, // userId → private JWK JSON string
+    default: {}
   }
 }, { timestamps: true });
 

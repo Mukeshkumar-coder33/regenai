@@ -335,6 +335,7 @@ class WebRtcCallManager extends ChangeNotifier {
     if (_callPhase != CallPhase.incoming || _callId == null || _peerId == null) return;
     final socket = MessengerSocketService.instance;
     await CallNotificationService.instance.cancelCallNotification(_callId!);
+    await CallNotificationService.instance.cancelAllCallNotifications();
 
     final wantVideo = _callMediaType == 'video';
     final perm = await _requestMediaPermissions(requireVideo: wantVideo);
@@ -435,6 +436,7 @@ class WebRtcCallManager extends ChangeNotifier {
   Future<void> rejectIncomingCall({String reason = 'declined'}) async {
     if (_callId != null && _peerId != null) {
       await CallNotificationService.instance.cancelCallNotification(_callId!);
+      await CallNotificationService.instance.cancelAllCallNotifications();
       MessengerSocketService.instance.emit('call:reject', {
         'callId': _callId,
         'callerId': _peerId,
@@ -447,6 +449,7 @@ class WebRtcCallManager extends ChangeNotifier {
   Future<void> endCall() async {
     if (_callId != null && _peerId != null) {
       await CallNotificationService.instance.cancelCallNotification(_callId!);
+      await CallNotificationService.instance.cancelAllCallNotifications();
       MessengerSocketService.instance.emit('call:end', {
         'callId': _callId,
         'targetUserId': _peerId,
@@ -507,6 +510,7 @@ class WebRtcCallManager extends ChangeNotifier {
     if (_callId != null) {
       await CallNotificationService.instance.cancelCallNotification(_callId!);
     }
+    await CallNotificationService.instance.cancelAllCallNotifications();
 
     try {
       _localStream?.getTracks().forEach((t) => t.stop());

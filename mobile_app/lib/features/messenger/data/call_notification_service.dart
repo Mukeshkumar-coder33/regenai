@@ -89,10 +89,11 @@ class CallNotificationService {
           importance: Importance.max,
           priority: Priority.max,
           category: AndroidNotificationCategory.call,
-          audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
+          audioAttributesUsage: AudioAttributesUsage.notification,
+          visibility: NotificationVisibility.public,
           fullScreenIntent: true,
-          ongoing: true,
-          autoCancel: false,
+          ongoing: false,
+          autoCancel: true,
           playSound: true,
           enableVibration: true,
           vibrationPattern: Int64List.fromList([0, 1000, 1000, 1000, 1000, 1000]),
@@ -132,6 +133,13 @@ class CallNotificationService {
     } catch (_) {}
   }
 
+  Future<void> cancelAllCallNotifications() async {
+    if (!_initialized || !_isMobilePlatform) return;
+    try {
+      await _plugin.cancelAll();
+    } catch (_) {}
+  }
+
   Future<void> showMessageNotification({
     required String id,
     required String senderName,
@@ -147,6 +155,10 @@ class CallNotificationService {
           channelDescription: 'New text and voice messages in ReGen Messenger',
           importance: Importance.high,
           priority: Priority.high,
+          category: AndroidNotificationCategory.message,
+          visibility: NotificationVisibility.public,
+          playSound: true,
+          enableVibration: true,
         ),
         iOS: DarwinNotificationDetails(
           presentAlert: true,

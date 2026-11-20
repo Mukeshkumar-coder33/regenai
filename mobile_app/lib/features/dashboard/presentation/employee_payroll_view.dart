@@ -222,32 +222,45 @@ class _EmployeePayrollViewState extends State<EmployeePayrollView> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (widget.onBack != null)
-                      IconButton(
-                        icon: const Icon(
-                          Icons.arrow_back_rounded,
-                          color: CeladonColors.textPrimary,
-                          size: 22,
-                        ),
-                        tooltip: 'Back',
-                        onPressed: widget.onBack,
-                      ),
-                    const Text(
-                      'My Payroll',
-                      style: TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.w800,
-                        color: CeladonColors.textPrimary,
-                        letterSpacing: -0.2,
-                      ),
+                if (widget.onBack != null)
+                  IconButton(
+                    icon: const Icon(
+                      Icons.arrow_back_rounded,
+                      color: CeladonColors.textPrimary,
+                      size: 22,
                     ),
-                  ],
+                    tooltip: 'Back',
+                    onPressed: widget.onBack,
+                  ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text(
+                        'My Payroll',
+                        style: TextStyle(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w800,
+                          color: CeladonColors.textPrimary,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'View monthly salary slips, deductions & compensation history',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: CeladonColors.textMuted,
+                          height: 1.3,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 8),
                 GestureDetector(
                   onTap: _showYearPicker,
                   child: Container(

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter/material.dart';
 import '../../../core/theme/celadon_colors.dart';
@@ -281,8 +282,24 @@ class _MessengerViewState extends State<MessengerView> {
             final merged = Map<String, String>.from(_activeConversation!.publicKeys)..addAll(newKeys);
             _activeConversation = _activeConversation!.copyWith(publicKeys: merged);
           }
-          if (_activeSharedKey == null) {
-            await _setupE2eForConversation(_activeConversation!);
+          await _setupE2eForConversation(_activeConversation!);
+
+          // If a new message arrived in real-time, decrypt and append immediately for zero latency
+          if (payload['message'] is Map<String, dynamic> && payload['action'] == 'create') {
+            final incomingMsg = DirectMessageModel.fromJson(payload['message'] as Map<String, dynamic>);
+            if (!_directMessages.any((m) => m.id == incomingMsg.id)) {
+              DirectMessageModel decryptedMsg = incomingMsg;
+              if (incomingMsg.encrypted && incomingMsg.iv.isNotEmpty && _activeSharedKey != null) {
+                final plain = await E2eCryptoService.decryptMessage(_activeSharedKey!, incomingMsg.content, incomingMsg.iv);
+                decryptedMsg = incomingMsg.copyWith(
+                  decryptedContent: plain == '🔒 Unable to decrypt' ? '🔒 Encrypted message' : plain,
+                );
+              }
+              if (mounted) {
+                setState(() => _directMessages.add(decryptedMsg));
+                _scrollToBottom();
+              }
+            }
           }
           await _refreshActiveDmMessages();
         }
@@ -508,6 +525,21 @@ class _MessengerViewState extends State<MessengerView> {
     return null;
   }
 
+  bool _keysMatch(String? a, String? b) {
+    if (a == null || b == null) return false;
+    if (a.trim() == b.trim()) return true;
+    try {
+      dynamic ma = jsonDecode(a);
+      if (ma is String) ma = jsonDecode(ma);
+      dynamic mb = jsonDecode(b);
+      if (mb is String) mb = jsonDecode(mb);
+      if (ma is Map && mb is Map) {
+        return ma['x'] == mb['x'] && ma['y'] == mb['y'];
+      }
+    } catch (_) {}
+    return false;
+  }
+
   Future<void> _setupE2eForConversation(DmConversationModel conv) async {
     if (conv.isGroup) {
       if (mounted) {
@@ -520,33 +552,72 @@ class _MessengerViewState extends State<MessengerView> {
     }
 
     try {
-      final hasLocal = await E2eCryptoService.hasKeyPair(conv.conversationId, userId: _myUserId);
-      final myKeyOnServer = _findMyKeyOnServer(conv);
-
-      if (hasLocal) {
-        // If we already have a local keypair, NEVER overwrite it!
-        // If the server doesn't have it yet, publish our existing public key.
-        if (myKeyOnServer == null || myKeyOnServer.isEmpty) {
-          final pubJwkJson = await E2eCryptoService.getStoredPublicKey(conv.conversationId, userId: _myUserId);
-          if (pubJwkJson != null && pubJwkJson.isNotEmpty) {
-            await _messengerService.storePublicKey(
-              user: widget.user,
-              conversationId: conv.conversationId,
-              publicKeyJwkJson: pubJwkJson,
-            );
-          }
-        }
-      } else {
-        // Only generate a new keypair if no local key exists yet
-        final pubJwkJson = await E2eCryptoService.generateKeyPair(conv.conversationId, userId: _myUserId);
-        await _messengerService.storePublicKey(
-          user: widget.user,
-          conversationId: conv.conversationId,
-          publicKeyJwkJson: pubJwkJson,
+      String? activeLocalPub;
+      // 1. First check if server has our persistent keypair for this conversation
+      final serverMyKey = await _messengerService.getUserConversationKey(
+        user: widget.user,
+        conversationId: conv.conversationId,
+      );
+      if (serverMyKey.privateKey != null && serverMyKey.privateKey!.isNotEmpty) {
+        await E2eCryptoService.storeImportedPrivateKey(
+          conv.conversationId,
+          serverMyKey.privateKey!,
+          userId: _myUserId,
         );
+        activeLocalPub = serverMyKey.publicKey ??
+            await E2eCryptoService.getStoredPublicKey(conv.conversationId, userId: _myUserId);
+      } else {
+        // Fall back to local keypair or generate a new persistent keypair
+        final hasLocal = await E2eCryptoService.hasKeyPair(conv.conversationId, userId: _myUserId);
+        if (hasLocal) {
+          activeLocalPub = await E2eCryptoService.getStoredPublicKey(conv.conversationId, userId: _myUserId);
+        } else {
+          activeLocalPub = await E2eCryptoService.generateKeyPair(conv.conversationId, userId: _myUserId);
+        }
+        final priv = await E2eCryptoService.getStoredPrivateKey(conv.conversationId, userId: _myUserId);
+        if (priv != null && activeLocalPub != null) {
+          await _messengerService.storeUserConversationKey(
+            user: widget.user,
+            conversationId: conv.conversationId,
+            privateKeyJwkJson: priv,
+            publicKeyJwkJson: activeLocalPub,
+          );
+        }
       }
 
-      final peerPub = _resolvePeerPublicKey(conv);
+      final myKeyOnServer = _findMyKeyOnServer(conv);
+      if (activeLocalPub != null && activeLocalPub.isNotEmpty) {
+        // Always ensure server has our current active public key so peers never encrypt with outdated keys
+        if (myKeyOnServer == null || !_keysMatch(myKeyOnServer, activeLocalPub)) {
+          await _messengerService.storePublicKey(
+            user: widget.user,
+            conversationId: conv.conversationId,
+            publicKeyJwkJson: activeLocalPub,
+          );
+          final updatedKeys = Map<String, String>.from(conv.publicKeys)..[_myUserId] = activeLocalPub;
+          conv = conv.copyWith(publicKeys: updatedKeys);
+          if (mounted && _activeConversation?.conversationId == conv.conversationId) {
+            _activeConversation = conv;
+          }
+        }
+      }
+
+      var peerPub = _resolvePeerPublicKey(conv);
+      if (peerPub == null || peerPub.isEmpty) {
+        // Fetch fresh keys from server if not found in conversation model
+        final freshKeys = await _messengerService.getConversationKeys(
+          user: widget.user,
+          conversationId: conv.conversationId,
+        );
+        if (freshKeys.isNotEmpty) {
+          final merged = Map<String, String>.from(conv.publicKeys)..addAll(freshKeys);
+          conv = conv.copyWith(publicKeys: merged);
+          if (mounted && _activeConversation?.conversationId == conv.conversationId) {
+            _activeConversation = conv;
+          }
+          peerPub = _resolvePeerPublicKey(conv);
+        }
+      }
 
       if (peerPub != null && peerPub.isNotEmpty) {
         final shared = await E2eCryptoService.deriveSharedKey(
@@ -559,7 +630,7 @@ class _MessengerViewState extends State<MessengerView> {
             _activeSharedKey = shared;
             _e2eActive = shared != null;
           });
-          if (shared != null) {
+          if (shared != null && _directMessages.isNotEmpty) {
             final decrypted = await _decryptMessageList(_directMessages, shared);
             if (mounted) setState(() => _directMessages = decrypted);
           }
@@ -588,7 +659,18 @@ class _MessengerViewState extends State<MessengerView> {
     SecretKey? effectiveKey = key ?? _activeSharedKey;
 
     if (effectiveKey == null && _activeConversation != null && !_activeConversation!.isGroup) {
-      final peerPub = _resolvePeerPublicKey(_activeConversation!);
+      var peerPub = _resolvePeerPublicKey(_activeConversation!);
+      if (peerPub == null || peerPub.isEmpty) {
+        final freshKeys = await _messengerService.getConversationKeys(
+          user: widget.user,
+          conversationId: _activeConversation!.conversationId,
+        );
+        if (freshKeys.isNotEmpty) {
+          final merged = Map<String, String>.from(_activeConversation!.publicKeys)..addAll(freshKeys);
+          _activeConversation = _activeConversation!.copyWith(publicKeys: merged);
+          peerPub = _resolvePeerPublicKey(_activeConversation!);
+        }
+      }
       if (peerPub != null && peerPub.isNotEmpty) {
         effectiveKey = await E2eCryptoService.deriveSharedKey(
           _activeConversation!.conversationId,
@@ -602,18 +684,47 @@ class _MessengerViewState extends State<MessengerView> {
       }
     }
 
+    bool didRetryKeyFetch = false;
     for (final m in list) {
       if (!m.encrypted || m.iv.isEmpty) {
         out.add(m);
         continue;
       }
       if (effectiveKey == null) {
-        out.add(m.copyWith(decryptedContent: m.content));
+        out.add(m.copyWith(decryptedContent: '🔒 Encrypted message'));
         continue;
       }
-      final plain = await E2eCryptoService.decryptMessage(effectiveKey, m.content, m.iv);
+      var plain = await E2eCryptoService.decryptMessage(effectiveKey, m.content, m.iv);
+      if (plain == '🔒 Unable to decrypt' && !didRetryKeyFetch && _activeConversation != null && !_activeConversation!.isGroup) {
+        didRetryKeyFetch = true;
+        final freshKeys = await _messengerService.getConversationKeys(
+          user: widget.user,
+          conversationId: _activeConversation!.conversationId,
+        );
+        if (freshKeys.isNotEmpty) {
+          final merged = Map<String, String>.from(_activeConversation!.publicKeys)..addAll(freshKeys);
+          _activeConversation = _activeConversation!.copyWith(publicKeys: merged);
+          final freshPeerPub = _resolvePeerPublicKey(_activeConversation!);
+          if (freshPeerPub != null && freshPeerPub.isNotEmpty) {
+            final freshShared = await E2eCryptoService.deriveSharedKey(
+              _activeConversation!.conversationId,
+              freshPeerPub,
+              userId: _myUserId,
+            );
+            if (freshShared != null) {
+              effectiveKey = freshShared;
+              if (mounted) {
+                _activeSharedKey = freshShared;
+                _e2eActive = true;
+              }
+              plain = await E2eCryptoService.decryptMessage(effectiveKey, m.content, m.iv);
+            }
+          }
+        }
+      }
+
       if (plain == '🔒 Unable to decrypt') {
-        out.add(m.copyWith(decryptedContent: m.content));
+        out.add(m.copyWith(decryptedContent: '🔒 Encrypted message'));
       } else {
         out.add(m.copyWith(decryptedContent: plain));
       }
@@ -2727,25 +2838,49 @@ class _MessengerViewState extends State<MessengerView> {
               titleSpacing: 0,
               title: Row(
                 children: [
-                  const Text(
-                    'Messenger',
-                    style: TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.w800,
-                      color: CeladonColors.textPrimary,
-                      letterSpacing: -0.2,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'Messenger',
+                              style: TextStyle(
+                                fontSize: 19,
+                                fontWeight: FontWeight.w800,
+                                color: CeladonColors.textPrimary,
+                                letterSpacing: -0.2,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            if (_socketConnected)
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFF22C55E),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        const Text(
+                          'Direct & group encrypted communications',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: CeladonColors.textMuted,
+                            height: 1.25,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  if (_socketConnected)
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF22C55E),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
                 ],
               ),
               actions: [

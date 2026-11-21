@@ -16,13 +16,14 @@ class CallNotificationService {
   CallNotificationService._();
   static final CallNotificationService instance = CallNotificationService._();
 
-  static const String callChannelId = 'regen_incoming_calls';
+  static const String callChannelId = 'regen_incoming_calls_v2';
   static const String callChannelName = 'Incoming Voice & Video Calls';
-  static const String messageChannelId = 'regen_messages';
-  static const String messageChannelName = 'ReGen Messenger Messages';
+  static const String messageChannelId = 'regen_messages_v2';
+  static const String messageChannelName = 'ReGen Messages';
 
   final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
   bool _initialized = false;
+  final Set<String> _activeCallNotificationIds = <String>{};
   void Function(Map<String, dynamic> payload)? onNotificationTapped;
 
   bool get _isMobilePlatform =>
@@ -66,6 +67,31 @@ class CallNotificationService {
           .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
       await androidImpl?.requestNotificationsPermission();
 
+      // Explicitly create notification channels with sound & vibration
+      // to ensure migration from any legacy/silent channels on the device.
+      const callChannel = AndroidNotificationChannel(
+        callChannelId,
+        callChannelName,
+        description: 'Real-time incoming voice and video calls from ReGen Messenger',
+        importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
+        audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
+      );
+
+      const messageChannel = AndroidNotificationChannel(
+        messageChannelId,
+        messageChannelName,
+        description: 'New text and voice messages in ReGen Messenger',
+        importance: Importance.high,
+        playSound: true,
+        enableVibration: true,
+        audioAttributesUsage: AudioAttributesUsage.notification,
+      );
+
+      await androidImpl?.createNotificationChannel(callChannel);
+      await androidImpl?.createNotificationChannel(messageChannel);
+
       _initialized = true;
     } catch (e) {
       debugPrint('[CallNotificationService] init skipped/failed: $e');
@@ -80,6 +106,10 @@ class CallNotificationService {
     bool isMeeting = false,
   }) async {
     if (!_initialized || !_isMobilePlatform) return;
+    // Deduplicate: if this exact call is already notified, do not trigger duplicate alert
+    if (_activeCallNotificationIds.contains(callId)) return;
+    _activeCallNotificationIds.add(callId);
+
     try {
       final details = NotificationDetails(
         android: AndroidNotificationDetails(
@@ -89,11 +119,11 @@ class CallNotificationService {
           importance: Importance.max,
           priority: Priority.max,
           category: AndroidNotificationCategory.call,
-          audioAttributesUsage: AudioAttributesUsage.notification,
+          audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
           visibility: NotificationVisibility.public,
           fullScreenIntent: true,
-          ongoing: false,
-          autoCancel: true,
+          ongoing: true,
+          autoCancel: false,
           playSound: true,
           enableVibration: true,
           vibrationPattern: Int64List.fromList([0, 1000, 1000, 1000, 1000, 1000]),
@@ -127,6 +157,7 @@ class CallNotificationService {
   }
 
   Future<void> cancelCallNotification(String callId) async {
+    _activeCallNotificationIds.remove(callId);
     if (!_initialized || !_isMobilePlatform) return;
     try {
       await _plugin.cancel(id: callId.hashCode & 0x7FFFFFFF);
@@ -134,6 +165,7 @@ class CallNotificationService {
   }
 
   Future<void> cancelAllCallNotifications() async {
+    _activeCallNotificationIds.clear();
     if (!_initialized || !_isMobilePlatform) return;
     try {
       await _plugin.cancelAll();
@@ -174,7 +206,7 @@ class CallNotificationService {
         notificationDetails: details,
         payload: jsonEncode({
           'type': 'message',
-          'conversationId': ?conversationId,
+          'conversationId': conversationId,
         }),
       );
     } catch (_) {}

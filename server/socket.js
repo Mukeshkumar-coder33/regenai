@@ -13,6 +13,7 @@ import mongoose from 'mongoose';
 import User from './models/User.js';
 import SuperAdmin from './models/SuperAdmin.js';
 import Conversation from './models/Conversation.js';
+import DirectMessage from './models/DirectMessage.js';
 import Notification from './models/Notification.js';
 import {
   resolveMessengerActor,
@@ -196,6 +197,29 @@ export function initSocketIO(httpServer) {
       const convId = data?.conversationId ? String(data.conversationId) : null;
       if (!convId || userActiveConversations.get(String(userId)) === convId) {
         userActiveConversations.delete(String(userId));
+      }
+    });
+
+    socket.on('dm:read', async (data) => {
+      try {
+        const convId = data?.conversationId ? String(data.conversationId) : null;
+        if (!convId) return;
+        const convo = await Conversation.findById(convId);
+        if (!convo) return;
+        await DirectMessage.updateMany(
+          { conversationId: convo._id, readBy: { $ne: String(userId) } },
+          { $addToSet: { readBy: String(userId) } }
+        );
+        const unique = new Set((convo.participants || []).map(normalizeId).filter(Boolean));
+        for (const pid of unique) {
+          emitToUser(pid, 'dm:change', {
+            action: 'read',
+            conversationId: convo._id.toString(),
+            userId: String(userId),
+          });
+        }
+      } catch (err) {
+        console.error('[Socket] dm:read error:', err.message);
       }
     });
 

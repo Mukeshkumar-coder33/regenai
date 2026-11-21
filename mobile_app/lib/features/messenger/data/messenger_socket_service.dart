@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../../../app/app_config.dart';
 import '../../../core/storage/session_storage.dart';
+import '../../../core/utils/json_normalizer.dart';
 import '../../auth/data/user_model.dart';
 
 /// Singleton Socket.IO client connecting to the existing ReGen backend at `/ws`.
@@ -15,9 +16,25 @@ class MessengerSocketService {
   String? _activeToken;
   String? _activeUserId;
   bool _isConnected = false;
+  String? _activeConversationId;
 
   bool get isConnected => _isConnected && (_socket?.connected ?? false);
   String? get activeUserId => _activeUserId;
+  String? get activeConversationId => _activeConversationId;
+
+  /// True if the user is currently viewing the specified conversation
+  bool isConversationActive(String? convId) =>
+      convId != null && _activeConversationId != null && _activeConversationId == convId;
+
+  /// Notifies the server and suppresses local notifications for active conversation
+  void setActiveConversation(String? convId) {
+    _activeConversationId = convId;
+    if (convId != null && convId.isNotEmpty) {
+      emit('dm:join-conversation', {'conversationId': convId});
+    } else {
+      emit('dm:leave-conversation', {});
+    }
+  }
 
   final _connectionController = StreamController<bool>.broadcast();
   final _messageChangeController = StreamController<Map<String, dynamic>>.broadcast();
@@ -30,6 +47,7 @@ class MessengerSocketService {
   final _callIncomingController = StreamController<Map<String, dynamic>>.broadcast();
   final _callAcceptedController = StreamController<Map<String, dynamic>>.broadcast();
   final _callRejectedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _callCancelledController = StreamController<Map<String, dynamic>>.broadcast();
   final _callSignalController = StreamController<Map<String, dynamic>>.broadcast();
   final _callEndedController = StreamController<Map<String, dynamic>>.broadcast();
 
@@ -51,6 +69,7 @@ class MessengerSocketService {
   Stream<Map<String, dynamic>> get onCallIncoming => _callIncomingController.stream;
   Stream<Map<String, dynamic>> get onCallAccepted => _callAcceptedController.stream;
   Stream<Map<String, dynamic>> get onCallRejected => _callRejectedController.stream;
+  Stream<Map<String, dynamic>> get onCallCancelled => _callCancelledController.stream;
   Stream<Map<String, dynamic>> get onCallSignal => _callSignalController.stream;
   Stream<Map<String, dynamic>> get onCallEnded => _callEndedController.stream;
 
@@ -62,9 +81,7 @@ class MessengerSocketService {
   Stream<Map<String, dynamic>> get onMeetingError => _meetingErrorController.stream;
 
   static Map<String, dynamic> _asMap(dynamic data) {
-    if (data is Map<String, dynamic>) return data;
-    if (data is Map) return Map<String, dynamic>.from(data);
-    return <String, dynamic>{};
+    return normalizeJsonMap(data);
   }
 
   /// Connect (or reuse existing socket) for the authenticated ReGen user.
@@ -109,6 +126,9 @@ class MessengerSocketService {
       _isConnected = true;
       _connectionController.add(true);
       debugPrint('[ReGen WS] connected as $uid');
+      if (_activeConversationId != null && _activeConversationId!.isNotEmpty) {
+        socket.emit('dm:join-conversation', {'conversationId': _activeConversationId});
+      }
     });
 
     socket.onDisconnect((reason) {
@@ -134,6 +154,7 @@ class MessengerSocketService {
     socket.on('call:incoming', (d) => _callIncomingController.add(_asMap(d)));
     socket.on('call:accepted', (d) => _callAcceptedController.add(_asMap(d)));
     socket.on('call:rejected', (d) => _callRejectedController.add(_asMap(d)));
+    socket.on('call:cancelled', (d) => _callCancelledController.add(_asMap(d)));
     socket.on('call:signal', (d) => _callSignalController.add(_asMap(d)));
     socket.on('call:ended', (d) => _callEndedController.add(_asMap(d)));
 

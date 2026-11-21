@@ -605,14 +605,17 @@ class _ProfileViewState extends State<ProfileView> {
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 26),
           child: Column(
             children: [
-              // Top App Bar Row with Hamburger Icon
+              // Top App Bar Row with Messenger-style header
               Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                     icon: const Icon(
                       Icons.arrow_back_rounded,
                       color: Colors.white,
-                      size: 24,
+                      size: 22,
                     ),
                     tooltip: 'Back to Home',
                     onPressed: () {
@@ -623,15 +626,33 @@ class _ProfileViewState extends State<ProfileView> {
                       }
                     },
                   ),
-                  const Expanded(
-                    child: Text(
-                      'Profile',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Text(
+                          'Profile',
+                          style: TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'View and manage your employee account details.',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: Colors.white70,
+                            height: 1.25,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ),
                   ),
                   IconButton(

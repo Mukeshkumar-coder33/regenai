@@ -1,3 +1,5 @@
+import '../../../core/utils/json_normalizer.dart';
+
 /// ReGen Notification Model
 ///
 /// Maps exactly to MongoDB `Notification` documents returned by `GET /api/notifications/user/:userId`.
@@ -38,7 +40,8 @@ class NotificationModel {
     this.read = false,
   });
 
-  factory NotificationModel.fromJson(Map<String, dynamic> json) {
+  factory NotificationModel.fromJson(dynamic raw) {
+    final Map<String, dynamic> json = normalizeJsonMap(raw);
     return NotificationModel(
       id: (json['id'] ?? json['_id'] ?? '').toString(),
       mongoId: json['_id']?.toString(),
@@ -53,8 +56,8 @@ class NotificationModel {
       callId: json['callId']?.toString(),
       meetingId: json['meetingId']?.toString(),
       actionStatus: (json['actionStatus'] ?? 'none').toString(),
-      metadata: json['metadata'] is Map<String, dynamic>
-          ? json['metadata'] as Map<String, dynamic>
+      metadata: json['metadata'] is Map
+          ? normalizeJsonMap(json['metadata'])
           : <String, dynamic>{},
       createdAt: (json['createdAt'] ?? DateTime.now().toIso8601String()).toString(),
       read: json['read'] == true,

@@ -12,7 +12,6 @@ import '../../company/presentation/company_dashboard_view.dart';
 import '../../messenger/data/call_notification_service.dart';
 import '../../messenger/data/messenger_socket_service.dart';
 import '../../messenger/data/webrtc_call_manager.dart';
-import '../../messenger/presentation/call_overlay.dart';
 import '../../messenger/presentation/messenger_view.dart';
 import '../../policies/data/policy_service.dart';
 import '../../profile/presentation/app_drawer.dart';
@@ -118,11 +117,20 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
       final senderId = payload['senderId']?.toString() ?? '';
       final myId = user.userId.isNotEmpty ? user.userId : user.id;
       if (senderId != myId) {
+        final type = (payload['type'] ?? 'general').toString();
+        // Never trigger message notifications for incoming calls (handled by WebRtcCallManager)
+        if (type == 'voice_call' || type == 'video_call' || type == 'team_meeting') {
+          return;
+        }
+        final convId = payload['conversationId']?.toString();
+        // Suppress notification if user is actively in this conversation in Messenger
+        if (convId != null && MessengerSocketService.instance.isConversationActive(convId)) {
+          return;
+        }
         final title = payload['title']?.toString() ?? payload['senderName']?.toString() ?? 'New Message';
         final body = payload['message']?.toString() ?? '';
-        final convId = payload['conversationId']?.toString();
         CallNotificationService.instance.showMessageNotification(
-          id: payload['_id']?.toString() ?? '${DateTime.now().millisecondsSinceEpoch}',
+          id: (payload['id'] ?? payload['_id'] ?? DateTime.now().millisecondsSinceEpoch).toString(),
           senderName: title,
           preview: body,
           conversationId: convId,
@@ -319,20 +327,18 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   Widget build(BuildContext context) {
     // Dedicated high-end Company Workspace Experience matching ReGen Design Specification
     if (_currentUser.isCompanyAdmin) {
-      return CallOverlay(
-        child: CompanyDashboardView(
-          user: _currentUser,
-          onOpenDrawer: _openDrawer,
-          onLogout: _handleLogout,
-          onUserUpdated: (updatedUser) {
-            setState(() {
-              _currentUser = updatedUser;
-              _overridePageId = null;
-            });
-            _loadRoleBottomNavSlots();
-            _initRealtimeCommunication(updatedUser);
-          },
-        ),
+      return CompanyDashboardView(
+        user: _currentUser,
+        onOpenDrawer: _openDrawer,
+        onLogout: _handleLogout,
+        onUserUpdated: (updatedUser) {
+          setState(() {
+            _currentUser = updatedUser;
+            _overridePageId = null;
+          });
+          _loadRoleBottomNavSlots();
+          _initRealtimeCommunication(updatedUser);
+        },
       );
     }
 
@@ -343,9 +349,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
       return _buildPolicyBarrierScreen();
     }
 
-    return CallOverlay(
-      onOpenMessenger: () => _navigateToPage('messenger'),
-      child: Scaffold(
+    return Scaffold(
       key: _scaffoldKey,
       backgroundColor: CeladonColors.background,
       drawer: AppDrawer(
@@ -395,7 +399,6 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                 ),
               ),
             ),
-    ),
     );
   }
 

@@ -22,7 +22,6 @@ import '../../dashboard/data/leave_model.dart';
 import '../../messenger/data/call_notification_service.dart';
 import '../../messenger/data/messenger_socket_service.dart';
 import '../../messenger/data/webrtc_call_manager.dart';
-import '../../messenger/presentation/call_overlay.dart';
 import '../../messenger/presentation/messenger_view.dart';
 import '../../notifications/data/notification_model.dart';
 import '../../notifications/data/notification_service.dart';
@@ -1555,10 +1554,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           _navigateToCompanyPage('home');
         }
       },
-      child: CallOverlay(
-        onOpenMessenger: () => _navigateToCompanyPage('messenger'),
-        child: Scaffold(
-          key: _scaffoldKey,
+      child: Scaffold(
+        key: _scaffoldKey,
           backgroundColor: CeladonColors.background,
           drawer: _buildCompanyDrawer(),
           body: SafeArea(
@@ -1589,7 +1586,6 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               ? null
               : _buildCompanyBottomNav(),
         ),
-      ),
     );
   }
 
@@ -5263,7 +5259,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         _selectedEmployeeDeptFilter != 'all';
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 18),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -8783,7 +8779,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                   if (monthly != null) casualMonthly = monthly;
                                   if (carry != null) casualCarry = carry;
                                   if (maxCarry != null) casualMaxCarry = maxCarry;
-                                  if (requiresApproval != null) casualRequiresApproval = requiresApproval;
+                                  if (requiresApproval != null) {
+                                    casualRequiresApproval = requiresApproval;
+                                    if (!requiresApproval) casualUnapprovedDeduction = 0.0;
+                                  }
                                   if (unapprovedDeduction != null) casualUnapprovedDeduction = unapprovedDeduction;
                                 });
                               },
@@ -8804,7 +8803,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                       if (monthly != null) sickMonthly = monthly;
                                       if (carry != null) sickCarry = carry;
                                       if (maxCarry != null) sickMaxCarry = maxCarry;
-                                      if (requiresApproval != null) sickRequiresApproval = requiresApproval;
+                                      if (requiresApproval != null) {
+                                        sickRequiresApproval = requiresApproval;
+                                        if (!requiresApproval) sickUnapprovedDeduction = 0.0;
+                                      }
                                       if (unapprovedDeduction != null) sickUnapprovedDeduction = unapprovedDeduction;
                                     });
                                   },
@@ -9053,7 +9055,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             value: requiresApproval,
             onChanged: (val) => onChanged(
               requiresApproval: val,
-              unapprovedDeduction: val ? unapprovedDeduction : 0.0,
+              unapprovedDeduction: val ? (unapprovedDeduction > 0 ? unapprovedDeduction : 100.0) : 0.0,
             ),
           ),
           const SizedBox(height: 8),
@@ -9277,27 +9279,47 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
 
   Widget _buildSummaryRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            flex: 4,
-            child: Text(
-              label,
-              style: const TextStyle(fontSize: 11.5, color: CeladonColors.textMuted, fontWeight: FontWeight.w600),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            flex: 5,
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              style: const TextStyle(fontSize: 11.5, color: CeladonColors.textPrimary, fontWeight: FontWeight.w800),
-            ),
-          ),
-        ],
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < 320) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(fontSize: 11.5, color: CeladonColors.textMuted, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: const TextStyle(fontSize: 11.5, color: CeladonColors.textPrimary, fontWeight: FontWeight.w800),
+                ),
+              ],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 4,
+                child: Text(
+                  label,
+                  style: const TextStyle(fontSize: 11.5, color: CeladonColors.textMuted, fontWeight: FontWeight.w600),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 5,
+                child: Text(
+                  value,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(fontSize: 11.5, color: CeladonColors.textPrimary, fontWeight: FontWeight.w800),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -9356,7 +9378,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 18),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -10236,7 +10258,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   // ---------------------------------------------------------
   Widget _buildProfileTab() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 18),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

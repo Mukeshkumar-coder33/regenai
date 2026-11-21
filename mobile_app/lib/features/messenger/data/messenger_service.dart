@@ -398,6 +398,12 @@ class MessengerService {
     }
   }
 
+  /// Alias for `markConversationRead`
+  Future<bool> markDirectMessagesAsRead({
+    required UserModel user,
+    required String conversationId,
+  }) => markConversationRead(user: user, conversationId: conversationId);
+
   /// Fetch E2E public keys for a conversation (`GET /api/dm/conversations/:id/keys`)
   Future<Map<String, String>> getConversationKeys({
     required UserModel user,

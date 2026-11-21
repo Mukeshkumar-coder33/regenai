@@ -118,11 +118,18 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
     final offs = _workSchedule.weeklyOffDays;
     if (days >= 7 || offs.isEmpty) {
       return '(7-day schedule; excludes holidays)';
-    } else if (days == 6 || (offs.length == 1 && offs.contains(0))) {
-      return '(6-day schedule; excludes Sundays & holidays)';
-    } else {
-      return '(5-day schedule; excludes Sat/Sun & holidays)';
     }
+    const dayNames = {
+      0: 'Sun',
+      1: 'Mon',
+      2: 'Tue',
+      3: 'Wed',
+      4: 'Thu',
+      5: 'Fri',
+      6: 'Sat',
+    };
+    final offNames = offs.map((d) => dayNames[d] ?? 'Off').join('/');
+    return '($days-day schedule; excludes $offNames & holidays)';
   }
 
   Future<void> _handleSubmit() async {
@@ -231,7 +238,7 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
           color: primaryGreen,
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -732,19 +739,19 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
     if (_policy.casualLeave.enabled) {
       availableTypes.add(const DropdownMenuItem(
         value: 'casual',
-        child: Text('Casual Leave (Paid)', overflow: TextOverflow.ellipsis),
+        child: Text('Casual Leave (Paid)', overflow: TextOverflow.ellipsis, maxLines: 1),
       ));
     }
     if (_policy.sickLeave.enabled) {
       availableTypes.add(const DropdownMenuItem(
         value: 'sick',
-        child: Text('Sick Leave (Paid)', overflow: TextOverflow.ellipsis),
+        child: Text('Sick Leave (Paid)', overflow: TextOverflow.ellipsis, maxLines: 1),
       ));
     }
     if (_policy.unpaidLeave.enabled) {
       availableTypes.add(const DropdownMenuItem(
         value: 'unpaid',
-        child: Text('Unpaid Leave (Loss of Pay)', overflow: TextOverflow.ellipsis),
+        child: Text('Unpaid Leave (Loss of Pay)', overflow: TextOverflow.ellipsis, maxLines: 1),
       ));
     }
 
@@ -784,8 +791,24 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
                 labelText: 'Leave Type *',
                 filled: true,
                 fillColor: const Color(0xFFF8FAF9),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
+              selectedItemBuilder: (BuildContext context) {
+                return availableTypes.map((item) {
+                  final text = (item.child as Text).data ?? '';
+                  return Text(
+                    text,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: CeladonColors.textPrimary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  );
+                }).toList();
+              },
               items: availableTypes,
               onChanged: (v) {
                 if (v != null) setState(() => _selectedLeaveType = v);

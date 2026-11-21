@@ -10,7 +10,6 @@ import '../data/messenger_model.dart';
 import '../data/messenger_service.dart';
 import '../data/messenger_socket_service.dart';
 import '../data/webrtc_call_manager.dart';
-import 'call_overlay.dart';
 import 'media_attachment_widgets.dart';
 import 'voice_recorder_sheet.dart';
 
@@ -68,6 +67,8 @@ class _MessengerViewState extends State<MessengerView> {
   final TextEditingController _messageController = TextEditingController();
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  bool _isAtBottom = true;
+  int _unreadBelowCount = 0;
 
   final List<StreamSubscription<dynamic>> _socketSubs = [];
 
@@ -95,11 +96,40 @@ class _MessengerViewState extends State<MessengerView> {
     WebRtcCallManager.instance.bindUser(widget.user);
     MessengerSocketService.instance.connect(user: widget.user);
     _activeTab = 0;
+    _scrollController.addListener(_handleScroll);
     _attachSocketListeners();
     _loadMessengerData();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _notifyChatState();
     });
+  }
+
+  void _handleScroll() {
+    if (!_scrollController.hasClients) return;
+    final max = _scrollController.position.maxScrollExtent;
+    final current = _scrollController.position.pixels;
+    final atBottom = (max - current) <= 60;
+    if (atBottom != _isAtBottom) {
+      setState(() {
+        _isAtBottom = atBottom;
+        if (atBottom) {
+          _unreadBelowCount = 0;
+        }
+      });
+      if (atBottom && _activeConversation != null) {
+        _markCurrentConversationRead();
+      }
+    }
+  }
+
+  void _markCurrentConversationRead() {
+    if (_activeConversation == null) return;
+    final convId = _activeConversation!.conversationId;
+    MessengerSocketService.instance.emit('dm:read', {'conversationId': convId});
+    _messengerService.markConversationRead(
+      user: widget.user,
+      conversationId: convId,
+    );
   }
 
   @override
@@ -134,12 +164,14 @@ class _MessengerViewState extends State<MessengerView> {
 
   @override
   void dispose() {
+    MessengerSocketService.instance.setActiveConversation(null);
     for (final s in _socketSubs) {
       s.cancel();
     }
     _socketSubs.clear();
     _messageController.dispose();
     _searchController.dispose();
+    _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
     super.dispose();
   }
@@ -281,19 +313,24 @@ class _MessengerViewState extends State<MessengerView> {
             _messengerService.cacheKeys(_activeConversation!.conversationId, newKeys);
             final merged = Map<String, String>.from(_activeConversation!.publicKeys)..addAll(newKeys);
             _activeConversation = _activeConversation!.copyWith(publicKeys: merged);
+            if (_activeSharedKey == null) {
+              await _setupE2eForConversation(_activeConversation!);
+            }
           }
-          await _setupE2eForConversation(_activeConversation!);
 
           // Real-time WhatsApp-like in-place read receipt updates (grey ticks -> blue ticks)
           if (payload['action'] == 'read') {
             final readUserId = (payload['userId'] ?? '').toString();
-            if (readUserId.isNotEmpty && mounted) {
+            final readByList = (payload['readBy'] is List)
+                ? (payload['readBy'] as List).map((e) => e.toString()).toList()
+                : <String>[];
+            if (mounted) {
               setState(() {
                 _directMessages = _directMessages.map<DirectMessageModel>((m) {
-                  if (!m.readBy.contains(readUserId)) {
-                    return m.copyWith(readBy: [...m.readBy, readUserId]);
-                  }
-                  return m;
+                  final updatedReadBy = Set<String>.from(m.readBy);
+                  if (readUserId.isNotEmpty) updatedReadBy.add(readUserId);
+                  if (readByList.isNotEmpty) updatedReadBy.addAll(readByList);
+                  return m.copyWith(readBy: updatedReadBy.toList());
                 }).toList();
               });
             }
@@ -303,32 +340,52 @@ class _MessengerViewState extends State<MessengerView> {
           final rawMsg = payload['message'];
           if (rawMsg is Map && payload['action'] == 'create') {
             final incomingMsg = DirectMessageModel.fromJson(Map<String, dynamic>.from(rawMsg));
-            if (!_directMessages.any((m) => m.id == incomingMsg.id)) {
-              DirectMessageModel decryptedMsg = incomingMsg;
-              if (incomingMsg.encrypted && incomingMsg.iv.isNotEmpty) {
-                SecretKey? keyToUse = _activeSharedKey;
-                if (keyToUse == null) {
-                  await _setupE2eForConversation(_activeConversation!);
-                  keyToUse = _activeSharedKey;
-                }
-                if (keyToUse != null) {
-                  final plain = await E2eCryptoService.decryptMessage(keyToUse, incomingMsg.content, incomingMsg.iv);
-                  if (plain != '🔒 Unable to decrypt') {
-                    decryptedMsg = incomingMsg.copyWith(decryptedContent: plain);
-                  } else {
-                    decryptedMsg = incomingMsg.copyWith(decryptedContent: '🔒 Encrypted message');
-                  }
-                } else {
-                  decryptedMsg = incomingMsg.copyWith(decryptedContent: '🔒 Encrypted message');
-                }
+            final isMine = incomingMsg.senderId == _myUserId;
+
+            // Deduplicate: check if message already present (either by real ID or local optimistic ID)
+            final existingIndex = _directMessages.indexWhere((m) =>
+                m.id == incomingMsg.id ||
+                (m.id.startsWith('local-dm-') &&
+                    m.senderId == incomingMsg.senderId &&
+                    m.content == incomingMsg.content));
+
+            DirectMessageModel decryptedMsg = incomingMsg;
+            if (incomingMsg.encrypted && incomingMsg.iv.isNotEmpty) {
+              SecretKey? keyToUse = _activeSharedKey;
+              if (keyToUse == null) {
+                await _setupE2eForConversation(_activeConversation!);
+                keyToUse = _activeSharedKey;
               }
-              if (mounted) {
-                setState(() => _directMessages.add(decryptedMsg));
+              if (keyToUse != null) {
+                final plain = await E2eCryptoService.decryptMessage(keyToUse, incomingMsg.content, incomingMsg.iv);
+                decryptedMsg = incomingMsg.copyWith(
+                  decryptedContent: (plain != '🔒 Unable to decrypt') ? plain : '🔒 Encrypted message',
+                );
+              } else {
+                decryptedMsg = incomingMsg.copyWith(decryptedContent: '🔒 Encrypted message');
+              }
+            }
+
+            if (mounted) {
+              setState(() {
+                if (existingIndex >= 0) {
+                  _directMessages[existingIndex] = decryptedMsg;
+                } else {
+                  _directMessages.add(decryptedMsg);
+                  if (!_isAtBottom && !isMine) {
+                    _unreadBelowCount++;
+                  }
+                }
+              });
+
+              if (_isAtBottom || isMine) {
                 _scrollToBottom();
+                if (!isMine) {
+                  _markCurrentConversationRead();
+                }
               }
             }
           }
-          await _refreshActiveDmMessages();
         }
         _refreshConversations();
       }),
@@ -761,6 +818,7 @@ class _MessengerViewState extends State<MessengerView> {
 
   void _closeActiveConversation() {
     if (_activeConversation != null) {
+      MessengerSocketService.instance.setActiveConversation(null);
       MessengerSocketService.instance.emit('dm:leave-conversation', {
         'conversationId': _activeConversation!.conversationId,
       });
@@ -769,6 +827,8 @@ class _MessengerViewState extends State<MessengerView> {
       _activeConversation = null;
       _activeSharedKey = null;
       _e2eActive = false;
+      _isAtBottom = true;
+      _unreadBelowCount = 0;
     });
     _notifyChatState();
   }
@@ -780,13 +840,17 @@ class _MessengerViewState extends State<MessengerView> {
       conv = conv.copyWith(publicKeys: merged);
     }
 
+    MessengerSocketService.instance.setActiveConversation(conv.conversationId);
     setState(() {
       _activeConversation = conv;
       _isLoadingDm = true;
       _activeSharedKey = null;
       _e2eActive = false;
+      _isAtBottom = true;
+      _unreadBelowCount = 0;
     });
     MessengerSocketService.instance.emit('dm:join-conversation', {'conversationId': conv.conversationId});
+    MessengerSocketService.instance.emit('dm:read', {'conversationId': conv.conversationId});
     _notifyChatState();
 
     await _setupE2eForConversation(conv);
@@ -2518,37 +2582,107 @@ class _MessengerViewState extends State<MessengerView> {
                           ),
                         ),
                       )
-                    : ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-                        itemCount: _directMessages.length,
-                        itemBuilder: (_, i) {
-                          final msg = _directMessages[i];
-                          final isMine = msg.senderId == _myUserId;
-                          final isRead = msg.readBy.any((uid) => uid != _myUserId);
-                          final isDelivered = isRead || isOnline || !msg.id.startsWith('local');
-                          final senderName = _resolveSenderName(msg.senderId, msg.senderName);
-                          return GestureDetector(
-                            onLongPress: () => _showMessageOptions(
-                              isTeam: false,
-                              id: msg.id,
-                              currentContent: msg.displayContent,
-                              isMine: isMine,
+                    : Stack(
+                        children: [
+                          ListView.builder(
+                            controller: _scrollController,
+                            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+                            itemCount: _directMessages.length,
+                            itemBuilder: (_, i) {
+                              final msg = _directMessages[i];
+                              final isMine = msg.senderId == _myUserId;
+                              final isRead = msg.readBy.any((uid) => uid != _myUserId);
+                              final isDelivered = isRead || isOnline || !msg.id.startsWith('local');
+                              final senderName = _resolveSenderName(msg.senderId, msg.senderName);
+                              return GestureDetector(
+                                onLongPress: () => _showMessageOptions(
+                                  isTeam: false,
+                                  id: msg.id,
+                                  currentContent: msg.displayContent,
+                                  isMine: isMine,
+                                ),
+                                child: _buildMessageBubble(
+                                  senderName: senderName,
+                                  showSenderName: !isMine && conv.isGroup,
+                                  content: msg.displayContent,
+                                  timestamp: _formatTime(msg.timestamp),
+                                  isMine: isMine,
+                                  edited: msg.editedAt != null,
+                                  isRead: isRead,
+                                  isDelivered: isDelivered,
+                                  showReadReceipt: isMine,
+                                  attachments: msg.attachments,
+                                ),
+                              );
+                            },
+                          ),
+                          if (!_isAtBottom)
+                            Positioned(
+                              bottom: 12,
+                              right: 14,
+                              child: GestureDetector(
+                                onTap: () {
+                                  _scrollToBottom();
+                                  setState(() {
+                                    _isAtBottom = true;
+                                    _unreadBelowCount = 0;
+                                  });
+                                  _markCurrentConversationRead();
+                                },
+                                child: Container(
+                                  width: 42,
+                                  height: 42,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: CeladonColors.border),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Color(0x1A000000),
+                                        blurRadius: 8,
+                                        offset: Offset(0, 3),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Stack(
+                                    clipBehavior: Clip.none,
+                                    children: [
+                                      const Center(
+                                        child: Icon(
+                                          Icons.keyboard_arrow_down_rounded,
+                                          color: CeladonColors.primary,
+                                          size: 26,
+                                        ),
+                                      ),
+                                      if (_unreadBelowCount > 0)
+                                        Positioned(
+                                          top: -2,
+                                          right: -2,
+                                          child: Container(
+                                            padding: const EdgeInsets.all(4),
+                                            decoration: const BoxDecoration(
+                                              color: CeladonColors.primary,
+                                              shape: BoxShape.circle,
+                                            ),
+                                            constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                                            child: Center(
+                                              child: Text(
+                                                '$_unreadBelowCount',
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w800,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
                             ),
-                            child: _buildMessageBubble(
-                              senderName: senderName,
-                              showSenderName: !isMine && conv.isGroup,
-                              content: msg.displayContent,
-                              timestamp: _formatTime(msg.timestamp),
-                              isMine: isMine,
-                              edited: msg.editedAt != null,
-                              isRead: isRead,
-                              isDelivered: isDelivered,
-                              showReadReceipt: isMine,
-                              attachments: msg.attachments,
-                            ),
-                          );
-                        },
+                        ],
                       ),
           ),
 
@@ -2971,10 +3105,7 @@ class _MessengerViewState extends State<MessengerView> {
           widget.onOpenDrawer!();
         }
       },
-      child: CallOverlay(
-        onOpenMessenger: () {},
-        child: scaffold,
-      ),
+      child: scaffold,
     );
   }
 }

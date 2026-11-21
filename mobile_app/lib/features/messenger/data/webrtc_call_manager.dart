@@ -145,6 +145,7 @@ class WebRtcCallManager extends ChangeNotifier {
       socket.onCallIncoming.listen(_handleIncomingCall),
       socket.onCallAccepted.listen(_handleCallAccepted),
       socket.onCallRejected.listen(_handleCallRejected),
+      socket.onCallCancelled.listen(_handleCallCancelled),
       socket.onCallSignal.listen(_handleCallSignal),
       socket.onCallEnded.listen(_handleCallEnded),
       socket.onMeetingStarted.listen(_handleMeetingStarted),
@@ -631,6 +632,15 @@ class WebRtcCallManager extends ChangeNotifier {
 
   Future<void> _handleCallEnded(Map<String, dynamic> data) async {
     _statusMessage = 'Call ended';
+    await _cleanupCall();
+  }
+
+  Future<void> _handleCallCancelled(Map<String, dynamic> data) async {
+    final cancelledCallId = data['callId']?.toString();
+    if (_callId != null && cancelledCallId != null && _callId != cancelledCallId) {
+      return;
+    }
+    _statusMessage = 'Call cancelled by caller';
     await _cleanupCall();
   }
 

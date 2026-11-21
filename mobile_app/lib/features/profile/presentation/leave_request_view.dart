@@ -2,7 +2,10 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import '../../../core/storage/session_storage.dart';
 import '../../../core/theme/celadon_colors.dart';
+import '../../attendance/data/attendance_service.dart';
+import '../../attendance/data/work_schedule_model.dart';
 import '../../auth/data/user_model.dart';
+import '../../calendar/data/holiday_model.dart';
 import '../../calendar/data/leave_service.dart';
 import '../../dashboard/data/leave_model.dart';
 
@@ -20,6 +23,7 @@ class LeaveRequestView extends StatefulWidget {
 class _LeaveRequestViewState extends State<LeaveRequestView> {
   final _formKey = GlobalKey<FormState>();
   final LeaveService _leaveService = LeaveService();
+  final AttendanceService _attendanceService = AttendanceService();
 
   String _selectedLeaveType = 'casual';
   final TextEditingController _reasonController = TextEditingController();
@@ -33,6 +37,8 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
 
   LeaveBalanceModel _balance = LeaveBalanceModel.initial();
   LeavePolicyModel _policy = LeavePolicyModel.defaultPolicy();
+  WorkScheduleModel _workSchedule = const WorkScheduleModel();
+  List<HolidayModel> _holidays = [];
 
   // History Filter & Pagination
   int _selectedFilterIndex = 0; // 0=All, 1=Pending, 2=Approved, 3=Rejected
@@ -63,6 +69,8 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
         _leaveService.getLeavePolicy(),
         _leaveService.getLeaveBalance(userId: myId),
         _leaveService.getUserLeaves(myId),
+        _attendanceService.getWorkSchedule(),
+        _attendanceService.getHolidays(),
       ]);
 
       if (mounted) {
@@ -70,6 +78,8 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
           _policy = results[0] as LeavePolicyModel;
           _balance = results[1] as LeaveBalanceModel;
           _leaves = results[2] as List<LeaveModel>;
+          _workSchedule = results[3] as WorkScheduleModel;
+          _holidays = results[4] as List<HolidayModel>;
 
           // Adjust selected type if currently selected is disabled
           if (_selectedLeaveType == 'casual' && !_policy.casualLeave.enabled) {
@@ -90,13 +100,29 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
     int count = 0;
     DateTime cur = DateTime(start.year, start.month, start.day);
     final endDay = DateTime(end.year, end.month, end.day);
+    final holidayDates = _holidays.map((h) => h.date.split('T').first).toSet();
     while (!cur.isAfter(endDay)) {
-      if (cur.weekday != DateTime.saturday && cur.weekday != DateTime.sunday) {
+      final isOff = _workSchedule.isWeeklyOff(cur);
+      final isoStr = "${cur.year}-${cur.month.toString().padLeft(2, '0')}-${cur.day.toString().padLeft(2, '0')}";
+      final isHoliday = holidayDates.contains(isoStr);
+      if (!isOff && !isHoliday) {
         count++;
       }
       cur = cur.add(const Duration(days: 1));
     }
     return count;
+  }
+
+  String _getWorkingDaysPolicyDescription() {
+    final days = _workSchedule.workingDaysPerWeek;
+    final offs = _workSchedule.weeklyOffDays;
+    if (days >= 7 || offs.isEmpty) {
+      return '(7-day schedule; excludes holidays)';
+    } else if (days == 6 || (offs.length == 1 && offs.contains(0))) {
+      return '(6-day schedule; excludes Sundays & holidays)';
+    } else {
+      return '(5-day schedule; excludes Sat/Sun & holidays)';
+    }
   }
 
   Future<void> _handleSubmit() async {
@@ -105,8 +131,8 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
     final workingDays = _calculateWorkingDays(_startDate, _endDate);
     if (workingDays <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Selected range has 0 working days (weekends only).'),
+        SnackBar(
+          content: Text('Selected range has 0 working days according to company work policy (${_workSchedule.workingDaysPerWeek} days/week).'),
           backgroundColor: CeladonColors.error,
         ),
       );
@@ -704,13 +730,22 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
     // Filter available leave types
     final availableTypes = <DropdownMenuItem<String>>[];
     if (_policy.casualLeave.enabled) {
-      availableTypes.add(const DropdownMenuItem(value: 'casual', child: Text('Casual Leave (Paid)')));
+      availableTypes.add(const DropdownMenuItem(
+        value: 'casual',
+        child: Text('Casual Leave (Paid)', overflow: TextOverflow.ellipsis),
+      ));
     }
     if (_policy.sickLeave.enabled) {
-      availableTypes.add(const DropdownMenuItem(value: 'sick', child: Text('Sick Leave (Paid)')));
+      availableTypes.add(const DropdownMenuItem(
+        value: 'sick',
+        child: Text('Sick Leave (Paid)', overflow: TextOverflow.ellipsis),
+      ));
     }
     if (_policy.unpaidLeave.enabled) {
-      availableTypes.add(const DropdownMenuItem(value: 'unpaid', child: Text('Unpaid Leave (Working-Day Deducted)')));
+      availableTypes.add(const DropdownMenuItem(
+        value: 'unpaid',
+        child: Text('Unpaid Leave (Loss of Pay)', overflow: TextOverflow.ellipsis),
+      ));
     }
 
     return Container(
@@ -741,6 +776,7 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
 
             // Leave Type
             DropdownButtonFormField<String>(
+              isExpanded: true,
               initialValue: availableTypes.any((t) => t.value == _selectedLeaveType)
                   ? _selectedLeaveType
                   : (availableTypes.isNotEmpty ? availableTypes.first.value : 'casual'),
@@ -844,7 +880,7 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      'Working Days: $workingDays day(s) (excludes Sat/Sun & holidays)',
+                      'Working Days: $workingDays day(s) ${_getWorkingDaysPolicyDescription()}',
                       style: const TextStyle(fontSize: 11, color: CeladonColors.textSecondary, fontWeight: FontWeight.w600),
                     ),
                   ),

@@ -2,7 +2,8 @@ import Leave from '../models/Leave.js';
 import Company from '../models/Company.js';
 import User from '../models/User.js';
 import Notification from '../models/Notification.js';
-import Holiday from '../models/Holiday.js';
+import PayrollSetting from '../models/PayrollSetting.js';
+import { getWeeklyOffDays } from '../utils/payrollCalculator.js';
 import mongoose from 'mongoose';
 import { resolveCompanyId } from '../utils/resolveCompanyId.js';
 import { emitToCompany, emitToUser } from '../socket.js';
@@ -47,11 +48,21 @@ export const calculateWorkingDaysBetween = async (companyId, startDateStr, endDa
     holidaySet = new Set(holidays.map(h => (h.date || '').split('T')[0]));
   } catch (_) {}
 
-  const weeklyOffs = [0, 6]; // Sunday, Saturday
+  // Dynamically resolve weekly off days from company work schedule / payroll settings
+  let weeklyOffs = [0, 6]; // Default Sat/Sun (5 days/week)
+  try {
+    if (companyId) {
+      const settings = await PayrollSetting.findOne({ companyId }).lean();
+      if (settings) {
+        weeklyOffs = getWeeklyOffDays(settings.workingDaysPerWeek, settings.weeklyOffDays);
+      }
+    }
+  } catch (_) {}
+
   let workingDays = 0;
   const curr = new Date(start);
   while (curr <= end) {
-    const dayOfWeek = curr.getDay();
+    const dayOfWeek = curr.getDay(); // 0 = Sunday
     const isoDate = curr.toISOString().split('T')[0];
     if (!weeklyOffs.includes(dayOfWeek) && !holidaySet.has(isoDate)) {
       workingDays++;

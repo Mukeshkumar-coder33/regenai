@@ -6,7 +6,9 @@ import '../../../core/theme/celadon_colors.dart';
 import '../../../core/widgets/brand_logo.dart';
 import '../../attendance/data/attendance_model.dart';
 import '../../attendance/data/attendance_service.dart';
+import '../../attendance/data/work_schedule_model.dart';
 import '../../auth/data/user_model.dart';
+import '../../calendar/data/holiday_model.dart';
 import '../../messenger/data/call_notification_service.dart';
 import '../../messenger/data/messenger_socket_service.dart';
 import '../../notifications/data/notification_model.dart';
@@ -77,6 +79,8 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
   Map<String, dynamic>? _currentMonthPayroll;
 
   List<NotificationModel> _notifications = [];
+  WorkScheduleModel _workSchedule = const WorkScheduleModel();
+  List<HolidayModel> _holidays = [];
   int _selectedNotificationFilter = 0; // 0=All, 1=Unread, 2=Tasks, 3=Leave, 4=Attendance, 5=Messenger
   StreamSubscription<Map<String, dynamic>>? _liveNotifSub;
   Timer? _taskTicker;
@@ -161,6 +165,8 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
             ? _notificationService.getUserNotifications(myId).catchError((_) => <NotificationModel>[])
             : Future.value(<NotificationModel>[]),
         _attendanceService.getTodayAttendance().catchError((_) => null),
+        _attendanceService.getWorkSchedule().catchError((_) => const WorkScheduleModel()),
+        _attendanceService.getHolidays().catchError((_) => <HolidayModel>[]),
       ]);
 
       if (!mounted) return;
@@ -172,6 +178,8 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
       final payrollPayload = results[4] as Map<String, dynamic>;
       final freshProfile = results[5] as UserModel;
       final notifs = results[6] as List<NotificationModel>;
+      final schedule = results[8] as WorkScheduleModel;
+      final holidayList = results[9] as List<HolidayModel>;
 
       if (freshProfile.userId.isNotEmpty || freshProfile.joiningDate != null) {
         _profileUser = _profileUser.copyWith(
@@ -224,6 +232,8 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
             : null;
         _payrollHistory = rawHist.whereType<Map<String, dynamic>>().toList();
         _notifications = notifs;
+        _workSchedule = schedule;
+        _holidays = holidayList;
         if (_selectedYear < _joiningYear) {
           _selectedYear = DateTime.now().year;
         }
@@ -395,6 +405,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
     int approvedLeave = 0;
     int scheduled = 0;
 
+    final holidayDates = _holidays.map((h) => h.date.split('T').first).toSet();
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
@@ -402,8 +413,9 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
     final limit = DateTime(end.year, end.month, end.day);
 
     while (!cursor.isAfter(limit)) {
-      final isWeekend = cursor.weekday == DateTime.saturday || cursor.weekday == DateTime.sunday;
+      final isOff = _workSchedule.isWeeklyOff(cursor);
       final key = "${cursor.year}-${cursor.month.toString().padLeft(2, '0')}-${cursor.day.toString().padLeft(2, '0')}";
+      final isHoliday = holidayDates.contains(key);
       final log = logsByDate[key];
 
       if (log != null) {
@@ -416,17 +428,17 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
           // 'present', 'half_day', 'halfday', '0', etc.
           present++;
         }
-      } else if (!isWeekend) {
+      } else if (!isOff && !isHoliday) {
         if (approvedLeaveDates.contains(key)) {
           approvedLeave++;
         } else if (cursor.isAfter(today)) {
-          // Future weekdays dynamically treated as scheduled working days
+          // Future working days dynamically treated as scheduled working days
           scheduled++;
         } else if (cursor.isAtSameMomentAs(today)) {
           // Today with no punch yet
           scheduled++;
         } else {
-          // Past unexcused weekday
+          // Past unexcused working day
           absent++;
         }
       }

@@ -128,18 +128,6 @@ class _CalendarViewState extends State<CalendarView> {
   }
 
   bool _isNonWorkingDay(DateTime date) {
-    final daysPerWeek = _workSchedule.workingDaysPerWeek;
-    if (daysPerWeek == 5) {
-      return date.weekday == DateTime.saturday || date.weekday == DateTime.sunday;
-    } else if (daysPerWeek == 6) {
-      return date.weekday == DateTime.sunday;
-    } else if (daysPerWeek == 4) {
-      return date.weekday == DateTime.friday ||
-          date.weekday == DateTime.saturday ||
-          date.weekday == DateTime.sunday;
-    } else if (daysPerWeek == 7) {
-      return false;
-    }
     return _workSchedule.isWeeklyOff(date);
   }
 

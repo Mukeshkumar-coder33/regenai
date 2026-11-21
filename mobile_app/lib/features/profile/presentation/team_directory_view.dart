@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../../core/theme/celadon_colors.dart';
 import '../../dashboard/data/dashboard_service.dart';
 
@@ -31,24 +32,34 @@ class _TeamDirectoryViewState extends State<TeamDirectoryView> {
     setState(() => _isLoading = true);
     try {
       final users = await _dashboardService.getUsers();
-      final members = users.map((u) {
-        final displayName = u.name.isNotEmpty ? u.name : u.username;
-        final initial = displayName.isNotEmpty ? displayName[0].toUpperCase() : '?';
-        final roleLabel = (u.designation != null && u.designation!.trim().isNotEmpty)
-            ? u.designation!.trim()
-            : u.roleDisplayName;
-        return _TeamMember(
-          name: displayName,
-          role: roleLabel,
-          department: (u.department != null && u.department!.trim().isNotEmpty)
-              ? u.department!.trim()
-              : (u.company ?? 'General'),
-          phone: (u.phone != null && u.phone!.trim().isNotEmpty) ? u.phone!.trim() : 'Not provided',
-          email: (u.email != null && u.email!.trim().isNotEmpty) ? u.email!.trim() : 'Not provided',
-          avatarLetter: initial,
-        );
-      }).toList()
-        ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      final members =
+          users.map((u) {
+            final displayName = u.name.isNotEmpty ? u.name : u.username;
+            final initial = displayName.isNotEmpty
+                ? displayName[0].toUpperCase()
+                : '?';
+            final roleLabel =
+                (u.designation != null && u.designation!.trim().isNotEmpty)
+                ? u.designation!.trim()
+                : u.roleDisplayName;
+            return _TeamMember(
+              name: displayName,
+              role: roleLabel,
+              department:
+                  (u.department != null && u.department!.trim().isNotEmpty)
+                  ? u.department!.trim()
+                  : (u.company ?? 'General'),
+              phone: (u.phone != null && u.phone!.trim().isNotEmpty)
+                  ? u.phone!.trim()
+                  : 'Not provided',
+              email: (u.email != null && u.email!.trim().isNotEmpty)
+                  ? u.email!.trim()
+                  : 'Not provided',
+              avatarLetter: initial,
+            );
+          }).toList()..sort(
+            (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+          );
       if (!mounted) return;
       setState(() {
         _allMembers = members;
@@ -84,32 +95,33 @@ class _TeamDirectoryViewState extends State<TeamDirectoryView> {
       body: SafeArea(
         child: Column(
           children: [
-            // 1. Top App Bar
+            // 1. Top App Bar (Messenger Style)
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 10),
               child: Row(
                 children: [
-                  if (widget.onBack != null || Navigator.of(context).canPop())
-                    IconButton(
-                      icon: const Icon(
-                        Icons.arrow_back_rounded,
-                        size: 22,
-                        color: CeladonColors.textPrimary,
-                      ),
-                      tooltip: 'Back to Home',
-                      onPressed: () {
-                        if (widget.onBack != null) {
-                          widget.onBack!();
-                        } else {
-                          Navigator.of(context).pop();
-                        }
-                      },
-                    )
-                  else
-                    const SizedBox(width: 4),
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                    icon: const Icon(
+                      Icons.arrow_back_rounded,
+                      size: 22,
+                      color: CeladonColors.textPrimary,
+                    ),
+                    tooltip: 'Back to Home',
+                    onPressed: () {
+                      if (widget.onBack != null) {
+                        widget.onBack!();
+                      } else if (Navigator.of(context).canPop()) {
+                        Navigator.of(context).pop();
+                      }
+                    },
+                  ),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: const [
                         Text(
                           'Directory',
@@ -122,13 +134,13 @@ class _TeamDirectoryViewState extends State<TeamDirectoryView> {
                         ),
                         SizedBox(height: 2),
                         Text(
-                          'Browse company members, department roles & colleague profiles',
+                          'Browse company members and team directory details.',
                           style: TextStyle(
                             fontSize: 11.5,
                             color: CeladonColors.textMuted,
-                            height: 1.3,
+                            height: 1.25,
                           ),
-                          maxLines: 2,
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],
@@ -153,7 +165,9 @@ class _TeamDirectoryViewState extends State<TeamDirectoryView> {
             Expanded(
               child: _isLoading
                   ? const Center(
-                      child: CircularProgressIndicator(color: CeladonColors.primary),
+                      child: CircularProgressIndicator(
+                        color: CeladonColors.primary,
+                      ),
                     )
                   : RefreshIndicator(
                       onRefresh: _loadTeam,
@@ -170,7 +184,8 @@ class _TeamDirectoryViewState extends State<TeamDirectoryView> {
                                       Icon(
                                         Icons.groups_outlined,
                                         size: 48,
-                                        color: CeladonColors.textMuted.withValues(alpha: 0.6),
+                                        color: CeladonColors.textMuted
+                                            .withValues(alpha: 0.6),
                                       ),
                                       const SizedBox(height: 12),
                                       const Text(
@@ -188,9 +203,13 @@ class _TeamDirectoryViewState extends State<TeamDirectoryView> {
                             )
                           : ListView.separated(
                               physics: const AlwaysScrollableScrollPhysics(),
-                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 8,
+                              ),
                               itemCount: filteredMembers.length,
-                              separatorBuilder: (_, _) => const SizedBox(height: 10),
+                              separatorBuilder: (_, _) =>
+                                  const SizedBox(height: 10),
                               itemBuilder: (context, index) {
                                 final member = filteredMembers[index];
                                 return _buildMemberCard(context, member);
@@ -380,7 +399,11 @@ class _TeamDirectoryViewState extends State<TeamDirectoryView> {
               const SizedBox(height: 20),
               const Divider(color: CeladonColors.divider),
               const SizedBox(height: 12),
-              _buildDetailItem(Icons.corporate_fare_rounded, 'Department', member.department),
+              _buildDetailItem(
+                Icons.corporate_fare_rounded,
+                'Department',
+                member.department,
+              ),
               const SizedBox(height: 10),
               _buildDetailItem(Icons.phone_outlined, 'Phone', member.phone),
               const SizedBox(height: 10),
@@ -395,7 +418,9 @@ class _TeamDirectoryViewState extends State<TeamDirectoryView> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: CeladonColors.primary,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 ),
               ),
@@ -464,7 +489,11 @@ class _TeamDirectoryViewState extends State<TeamDirectoryView> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.search_rounded, size: 19, color: CeladonColors.textMuted),
+                    const Icon(
+                      Icons.search_rounded,
+                      size: 19,
+                      color: CeladonColors.textMuted,
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: TextField(
@@ -500,7 +529,11 @@ class _TeamDirectoryViewState extends State<TeamDirectoryView> {
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close_rounded, size: 18, color: CeladonColors.textMuted),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        size: 18,
+                        color: CeladonColors.textMuted,
+                      ),
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
                       onPressed: () {
@@ -510,7 +543,11 @@ class _TeamDirectoryViewState extends State<TeamDirectoryView> {
                       },
                     ),
                     const SizedBox(width: 6),
-                    const Icon(Icons.filter_list_rounded, size: 20, color: CeladonColors.textMuted),
+                    const Icon(
+                      Icons.filter_list_rounded,
+                      size: 20,
+                      color: CeladonColors.textMuted,
+                    ),
                   ],
                 ),
               ),

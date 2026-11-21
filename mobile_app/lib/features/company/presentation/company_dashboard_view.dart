@@ -9049,34 +9049,52 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             subtitle: const Text('Leave is only considered paid upon owner approval', style: TextStyle(fontSize: 11, color: CeladonColors.textMuted)),
             activeThumbColor: CeladonColors.primary,
             value: requiresApproval,
-            onChanged: (val) => onChanged(requiresApproval: val),
+            onChanged: (val) => onChanged(
+              requiresApproval: val,
+              unapprovedDeduction: val ? unapprovedDeduction : 0.0,
+            ),
           ),
           const SizedBox(height: 8),
 
-          // Unapproved deduction rate
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Unapproved Absence Deduction', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: CeladonColors.textPrimary)),
-                    const SizedBox(height: 2),
-                    const Text('Deduction rate if taken without approval', style: TextStyle(fontSize: 11, color: CeladonColors.textMuted)),
-                  ],
+          // Unapproved deduction rate (Disabled if Require Approval is off)
+          Opacity(
+            opacity: requiresApproval ? 1.0 : 0.45,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Unapproved Absence Deduction', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: CeladonColors.textPrimary)),
+                      const SizedBox(height: 2),
+                      Text(
+                        requiresApproval
+                            ? 'Deduction rate if taken without approval'
+                            : 'Disabled (Approval not required for this leave)',
+                        style: const TextStyle(fontSize: 11, color: CeladonColors.textMuted),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: CeladonColors.background,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: CeladonColors.border),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: requiresApproval ? CeladonColors.background : CeladonColors.borderLight,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: CeladonColors.border),
+                  ),
+                  child: Text(
+                    requiresApproval ? '${unapprovedDeduction.toInt()}%' : 'Disabled',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                      color: requiresApproval ? CeladonColors.error : CeladonColors.textMuted,
+                    ),
+                  ),
                 ),
-                child: Text('${unapprovedDeduction.toInt()}%', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: CeladonColors.error)),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ],
@@ -9256,12 +9274,29 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   }
 
   Widget _buildSummaryRow(String label, String value) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: const TextStyle(fontSize: 11.5, color: CeladonColors.textMuted, fontWeight: FontWeight.w600)),
-        Text(value, style: const TextStyle(fontSize: 11.5, color: CeladonColors.textPrimary, fontWeight: FontWeight.w800)),
-      ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 4,
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 11.5, color: CeladonColors.textMuted, fontWeight: FontWeight.w600),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 5,
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: const TextStyle(fontSize: 11.5, color: CeladonColors.textPrimary, fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

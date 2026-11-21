@@ -375,7 +375,7 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
     required double remaining,
   }) {
     return Container(
-      width: 240,
+      width: 250,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -389,16 +389,19 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: CeladonColors.textPrimary,
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: CeladonColors.textPrimary,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
+              const SizedBox(width: 6),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                 decoration: BoxDecoration(
@@ -459,7 +462,7 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
 
   Widget _buildUnpaidBalanceCard() {
     return Container(
-      width: 240,
+      width: 250,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -473,16 +476,19 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Unpaid Leave',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: CeladonColors.textPrimary,
+              const Expanded(
+                child: Text(
+                  'Unpaid Leave',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: CeladonColors.textPrimary,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
+              const SizedBox(width: 6),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                 decoration: BoxDecoration(
@@ -574,15 +580,18 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
             children: [
               const Icon(Icons.calendar_month_rounded, color: goldenBlue, size: 20),
               const SizedBox(width: 8),
-              const Text(
-                'Upcoming Approved Leaves',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF1E3A8A),
+              const Expanded(
+                child: Text(
+                  'Upcoming Approved Leaves',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF1E3A8A),
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
@@ -815,9 +824,11 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
                 children: [
                   const Icon(Icons.info_outline_rounded, size: 14, color: CeladonColors.primary),
                   const SizedBox(width: 6),
-                  Text(
-                    'Working Days: $workingDays day(s) (excludes Sat/Sun & holidays)',
-                    style: const TextStyle(fontSize: 11, color: CeladonColors.textSecondary, fontWeight: FontWeight.w600),
+                  Expanded(
+                    child: Text(
+                      'Working Days: $workingDays day(s) (excludes Sat/Sun & holidays)',
+                      style: const TextStyle(fontSize: 11, color: CeladonColors.textSecondary, fontWeight: FontWeight.w600),
+                    ),
                   ),
                 ],
               ),
@@ -938,12 +949,15 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                leave.displayType.toUpperCase(),
-                style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary),
+              Expanded(
+                child: Text(
+                  leave.displayType.toUpperCase(),
+                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(color: statusBg, borderRadius: BorderRadius.circular(8)),
@@ -959,9 +973,12 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
             children: [
               const Icon(Icons.date_range_rounded, size: 14, color: CeladonColors.primary),
               const SizedBox(width: 6),
-              Text(
-                '${leave.startDate}  →  ${leave.endDate} (${leave.workingDays} working days)',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: CeladonColors.textSecondary),
+              Expanded(
+                child: Text(
+                  '${leave.startDate}  →  ${leave.endDate} (${leave.workingDays} working days)',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: CeladonColors.textSecondary),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
           ),

@@ -159,7 +159,19 @@ export const computeUserLeaveBalance = async (companyId, userId) => {
 
 export const getLeavePolicy = async (req, res) => {
   try {
-    const companyId = await resolveCompanyId(req);
+    let companyId = await resolveCompanyId(req, req.query);
+    if (!companyId && req.user?.companyId) companyId = req.user.companyId;
+    if (!companyId && (req.user?.username || req.user?.userId)) {
+      const comp = await Company.findOne({
+        $or: [{ ownerId: req.user.userId }, { ownerId: req.user.username }]
+      }).select('_id').lean();
+      if (comp) companyId = comp._id;
+    }
+    if (!companyId) {
+      const firstComp = await Company.findOne({}).select('_id').lean();
+      if (firstComp) companyId = firstComp._id;
+    }
+
     if (!companyId) {
       return res.status(200).json(DEFAULT_LEAVE_POLICY);
     }
@@ -177,7 +189,19 @@ export const getLeavePolicy = async (req, res) => {
 
 export const updateLeavePolicy = async (req, res) => {
   try {
-    const companyId = await resolveCompanyId(req);
+    let companyId = await resolveCompanyId(req, req.body);
+    if (!companyId && req.user?.companyId) companyId = req.user.companyId;
+    if (!companyId && (req.user?.username || req.user?.userId)) {
+      const comp = await Company.findOne({
+        $or: [{ ownerId: req.user.userId }, { ownerId: req.user.username }]
+      }).select('_id').lean();
+      if (comp) companyId = comp._id;
+    }
+    if (!companyId) {
+      const firstComp = await Company.findOne({}).select('_id').lean();
+      if (firstComp) companyId = firstComp._id;
+    }
+
     if (!companyId) {
       return res.status(400).json({ message: 'Company ID is required to configure leave policy' });
     }
@@ -187,9 +211,14 @@ export const updateLeavePolicy = async (req, res) => {
     if (sickLeave) updateObj['leavePolicy.sickLeave'] = sickLeave;
     if (unpaidLeave) updateObj['leavePolicy.unpaidLeave'] = unpaidLeave;
 
-    const comp = await Company.findByIdAndUpdate(companyId, { $set: updateObj }, { new: true, upsert: true });
+    const comp = await Company.findByIdAndUpdate(companyId, { $set: updateObj }, { new: true, upsert: true }).lean();
+    const fullPolicy = {
+      casualLeave: { ...DEFAULT_LEAVE_POLICY.casualLeave, ...(comp.leavePolicy?.casualLeave || {}) },
+      sickLeave: { ...DEFAULT_LEAVE_POLICY.sickLeave, ...(comp.leavePolicy?.sickLeave || {}) },
+      unpaidLeave: { ...DEFAULT_LEAVE_POLICY.unpaidLeave, ...(comp.leavePolicy?.unpaidLeave || {}) }
+    };
     emitToCompany('payroll:change', companyId, { action: 'leave_policy_updated' });
-    res.status(200).json(comp.leavePolicy);
+    res.status(200).json(fullPolicy);
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
@@ -201,7 +230,18 @@ export const getLeaveBalance = async (req, res) => {
     if (!targetUserId) {
       return res.status(400).json({ message: 'User ID required' });
     }
-    const companyId = await resolveCompanyId(req);
+    let companyId = await resolveCompanyId(req, req.query);
+    if (!companyId && req.user?.companyId) companyId = req.user.companyId;
+    if (!companyId && (req.user?.username || req.user?.userId)) {
+      const comp = await Company.findOne({
+        $or: [{ ownerId: req.user.userId }, { ownerId: req.user.username }]
+      }).select('_id').lean();
+      if (comp) companyId = comp._id;
+    }
+    if (!companyId) {
+      const firstComp = await Company.findOne({}).select('_id').lean();
+      if (firstComp) companyId = firstComp._id;
+    }
     const balance = await computeUserLeaveBalance(companyId, targetUserId);
     res.status(200).json(balance);
   } catch (error) {

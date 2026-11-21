@@ -1,5 +1,7 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
+
 import '../../../core/storage/session_storage.dart';
 import '../../auth/data/user_model.dart';
 import '../../dashboard/data/dashboard_service.dart';
@@ -46,7 +48,11 @@ class TasksView extends StatefulWidget {
     num durationValue,
     String durationUnit,
   ) {
-    return _TasksViewState.computeEndDateTime(startIso, durationValue, durationUnit);
+    return _TasksViewState.computeEndDateTime(
+      startIso,
+      durationValue,
+      durationUnit,
+    );
   }
 
   @override
@@ -62,8 +68,10 @@ class _TasksViewState extends State<TasksView> {
   String? _errorMessage;
 
   bool get _canManage =>
-      (widget.user?.isSuperAdmin == true || widget.user?.isCompanyAdmin == true) ||
-      (_loggedInUser?.isSuperAdmin == true || _loggedInUser?.isCompanyAdmin == true);
+      (widget.user?.isSuperAdmin == true ||
+          widget.user?.isCompanyAdmin == true) ||
+      (_loggedInUser?.isSuperAdmin == true ||
+          _loggedInUser?.isCompanyAdmin == true);
 
   // 0: General Task, 1: Projects
   int _activeMainSegment = 0;
@@ -72,8 +80,10 @@ class _TasksViewState extends State<TasksView> {
   int _selectedTaskFilter = 0;
 
   final TextEditingController _taskSearchController = TextEditingController();
-  final TextEditingController _projectSearchController = TextEditingController();
-  final TextEditingController _projectTaskSearchController = TextEditingController();
+  final TextEditingController _projectSearchController =
+      TextEditingController();
+  final TextEditingController _projectTaskSearchController =
+      TextEditingController();
 
   List<TaskModel> _tasks = [];
   List<ProjectModel> _projects = [];
@@ -82,7 +92,8 @@ class _TasksViewState extends State<TasksView> {
   // Selected project for full details view
   ProjectModel? _selectedProjectForDetail;
   ProjectModel? _overviewSelectedProject;
-  int _selectedProjectTaskFilter = 0; // 0: All, 1: Pending, 2: Completed, 3: Incomplete
+  int _selectedProjectTaskFilter =
+      0; // 0: All, 1: Pending, 2: Completed, 3: Incomplete
 
   Timer? _liveTicker;
 
@@ -114,7 +125,9 @@ class _TasksViewState extends State<TasksView> {
     if (task.startedAt != null && task.startedAt!.isNotEmpty) {
       startTime = DateTime.tryParse(task.startedAt!);
     }
-    if (startTime == null && task.startDate != null && task.startDate!.isNotEmpty) {
+    if (startTime == null &&
+        task.startDate != null &&
+        task.startDate!.isNotEmpty) {
       startTime = DateTime.tryParse(task.startDate!);
     }
     startTime ??= DateTime.now();
@@ -128,7 +141,11 @@ class _TasksViewState extends State<TasksView> {
 
   Future<void> _handleStartTask(TaskModel task) async {
     final nowIso = DateTime.now().toIso8601String();
-    final optimistic = task.copyWith(status: 'in_progress', startedAt: nowIso, startDate: nowIso);
+    final optimistic = task.copyWith(
+      status: 'in_progress',
+      startedAt: nowIso,
+      startDate: nowIso,
+    );
     setState(() {
       final idx = _tasks.indexWhere((t) => t.id == task.id);
       if (idx != -1) _tasks[idx] = optimistic;
@@ -151,9 +168,12 @@ class _TasksViewState extends State<TasksView> {
   Future<void> _handleCompleteTask(TaskModel task) async {
     final now = DateTime.now();
     final nowIso = now.toIso8601String();
-    final hour = now.hour > 12 ? now.hour - 12 : (now.hour == 0 ? 12 : now.hour);
+    final hour = now.hour > 12
+        ? now.hour - 12
+        : (now.hour == 0 ? 12 : now.hour);
     final ampm = now.hour >= 12 ? 'PM' : 'AM';
-    final formattedTime = '${hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} $ampm';
+    final formattedTime =
+        '${hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} $ampm';
 
     final optimistic = task.copyWith(
       status: 'done',
@@ -209,9 +229,13 @@ class _TasksViewState extends State<TasksView> {
       _loggedInUser = user;
 
       final results = await Future.wait([
-        _taskService.getTasks(isSuperAdmin: user?.isSuperAdmin ?? false).catchError((_) => <TaskModel>[]),
+        _taskService
+            .getTasks(isSuperAdmin: user?.isSuperAdmin ?? false)
+            .catchError((_) => <TaskModel>[]),
         _taskService.getProjects().catchError((_) => <ProjectModel>[]),
-        _dashboardService.getUsers(isSuperAdmin: user?.isSuperAdmin ?? false).catchError((_) => <UserModel>[]),
+        _dashboardService
+            .getUsers(isSuperAdmin: user?.isSuperAdmin ?? false)
+            .catchError((_) => <UserModel>[]),
       ]);
 
       if (mounted) {
@@ -268,7 +292,8 @@ class _TasksViewState extends State<TasksView> {
   }
 
   // General tasks only (non-project or all tasks)
-  List<TaskModel> get _generalTasks => _tasks.where((t) => !t.isProjectTask).toList();
+  List<TaskModel> get _generalTasks =>
+      _tasks.where((t) => !t.isProjectTask).toList();
 
   int get _totalTaskCount => _generalTasks.length;
   int get _pendingCount => _generalTasks.where((t) => t.isPending).length;
@@ -282,7 +307,11 @@ class _TasksViewState extends State<TasksView> {
     return _generalTasks.where((task) {
       // Role enforcement: Regular employees only see tasks assigned to them
       if (!_canManage && currentUser != null) {
-        final uid = (currentUser.userId.isNotEmpty ? currentUser.userId : currentUser.id).toLowerCase();
+        final uid =
+            (currentUser.userId.isNotEmpty
+                    ? currentUser.userId
+                    : currentUser.id)
+                .toLowerCase();
         final uname = currentUser.username.toLowerCase();
         final name = currentUser.name.toLowerCase();
         if (task.assignedTo != null && task.assignedTo!.isNotEmpty) {
@@ -301,10 +330,14 @@ class _TasksViewState extends State<TasksView> {
       // Search query across Title, Description, and Assigned Person
       if (query.isNotEmpty) {
         final titleMatch = task.title.toLowerCase().contains(query);
-        final descMatch = (task.description ?? '').toLowerCase().contains(query);
-        final assignedPersonName = _getAssigneeDisplayName(task.assignedTo).toLowerCase();
+        final descMatch = (task.description ?? '').toLowerCase().contains(
+          query,
+        );
+        final assignedPersonName = _getAssigneeDisplayName(task.assignedTo)
+            .toLowerCase();
         final assignedId = (task.assignedTo ?? '').toLowerCase();
-        final personMatch = assignedPersonName.contains(query) || assignedId.contains(query);
+        final personMatch =
+            assignedPersonName.contains(query) || assignedId.contains(query);
         if (!titleMatch && !descMatch && !personMatch) {
           return false;
         }
@@ -322,7 +355,9 @@ class _TasksViewState extends State<TasksView> {
         final nameMatch = proj.name.toLowerCase().contains(query);
         final descMatch = proj.description.toLowerCase().contains(query);
         final memberMatch = proj.assignedEmployees.any((m) {
-          final mName = (m['name'] ?? m['username'] ?? '').toString().toLowerCase();
+          final mName = (m['name'] ?? m['username'] ?? '')
+              .toString()
+              .toLowerCase();
           return mName.contains(query);
         });
         if (!nameMatch && !descMatch && !memberMatch) return false;
@@ -350,25 +385,33 @@ class _TasksViewState extends State<TasksView> {
 
     if (durationUnit.toLowerCase() == 'hours') {
       final now = DateTime.now();
-      final isToday = startDate.year == now.year &&
+      final isToday =
+          startDate.year == now.year &&
           startDate.month == now.month &&
           startDate.day == now.day;
-      final base = isToday ? now : DateTime(startDate.year, startDate.month, startDate.day, 9, 0);
+      final base = isToday
+          ? now
+          : DateTime(startDate.year, startDate.month, startDate.day, 9, 0);
       final target = base.add(Duration(minutes: (durVal * 60).round()));
-      final endStr = '${target.year.toString().padLeft(4, '0')}-${target.month.toString().padLeft(2, '0')}-${target.day.toString().padLeft(2, '0')}';
-      final dueTimeStr = '${target.hour.toString().padLeft(2, '0')}:${target.minute.toString().padLeft(2, '0')}';
+      final endStr =
+          '${target.year.toString().padLeft(4, '0')}-${target.month.toString().padLeft(2, '0')}-${target.day.toString().padLeft(2, '0')}';
+      final dueTimeStr =
+          '${target.hour.toString().padLeft(2, '0')}:${target.minute.toString().padLeft(2, '0')}';
       return {'endDate': endStr, 'dueTime': dueTimeStr};
     } else if (durationUnit.toLowerCase() == 'minutes') {
       final now = DateTime.now();
       final target = now.add(Duration(minutes: durVal.round()));
-      final endStr = '${target.year.toString().padLeft(4, '0')}-${target.month.toString().padLeft(2, '0')}-${target.day.toString().padLeft(2, '0')}';
-      final dueTimeStr = '${target.hour.toString().padLeft(2, '0')}:${target.minute.toString().padLeft(2, '0')}';
+      final endStr =
+          '${target.year.toString().padLeft(4, '0')}-${target.month.toString().padLeft(2, '0')}-${target.day.toString().padLeft(2, '0')}';
+      final dueTimeStr =
+          '${target.hour.toString().padLeft(2, '0')}:${target.minute.toString().padLeft(2, '0')}';
       return {'endDate': endStr, 'dueTime': dueTimeStr};
     } else {
       // Days
       final daysToAdd = durVal >= 1 ? durVal.round() : 1;
       final target = startDate.add(Duration(days: daysToAdd));
-      final endStr = '${target.year.toString().padLeft(4, '0')}-${target.month.toString().padLeft(2, '0')}-${target.day.toString().padLeft(2, '0')}';
+      final endStr =
+          '${target.year.toString().padLeft(4, '0')}-${target.month.toString().padLeft(2, '0')}-${target.day.toString().padLeft(2, '0')}';
       return {'endDate': endStr, 'dueTime': '18:00'};
     }
   }
@@ -381,12 +424,17 @@ class _TasksViewState extends State<TasksView> {
     setState(() {
       final idx = _tasks.indexWhere((t) => t.id == task.id);
       if (idx != -1) {
-        _tasks[idx] = task.copyWith(status: nextCompleted ? 'done' : 'in_progress');
+        _tasks[idx] = task.copyWith(
+          status: nextCompleted ? 'done' : 'in_progress',
+        );
       }
     });
 
     try {
-      final updated = await _taskService.toggleTaskComplete(task.id, nextCompleted);
+      final updated = await _taskService.toggleTaskComplete(
+        task.id,
+        nextCompleted,
+      );
       if (mounted) {
         setState(() {
           final idx = _tasks.indexWhere((t) => t.id == task.id);
@@ -394,8 +442,14 @@ class _TasksViewState extends State<TasksView> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            backgroundColor: nextCompleted ? CeladonColors.primary : const Color(0xFF3186C8),
-            content: Text(nextCompleted ? 'Task marked as completed' : 'Task resumed to In Progress'),
+            backgroundColor: nextCompleted
+                ? CeladonColors.primary
+                : const Color(0xFF3186C8),
+            content: Text(
+              nextCompleted
+                  ? 'Task marked as completed'
+                  : 'Task resumed to In Progress',
+            ),
           ),
         );
       }
@@ -422,13 +476,28 @@ class _TasksViewState extends State<TasksView> {
           borderRadius: BorderRadius.circular(20),
           side: BorderSide(color: CeladonColors.primary.withValues(alpha: 0.3)),
         ),
-        title: const Text('Delete Task', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
-        content: Text('Are you sure you want to delete "${task.title}"?', style: const TextStyle(color: Color(0xFFBACCC3))),
+        title: const Text(
+          'Delete Task',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+        ),
+        content: Text(
+          'Are you sure you want to delete "${task.title}"?',
+          style: const TextStyle(color: Color(0xFFBACCC3)),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel', style: TextStyle(color: Color(0xFF829089)))),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Color(0xFF829089)),
+            ),
+          ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444), foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+              foregroundColor: Colors.white,
+            ),
             child: const Text('Delete'),
           ),
         ],
@@ -442,13 +511,19 @@ class _TasksViewState extends State<TasksView> {
       if (mounted) {
         setState(() => _tasks.removeWhere((t) => t.id == task.id));
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(backgroundColor: Color(0xFFEF4444), content: Text('Task deleted successfully')),
+          const SnackBar(
+            backgroundColor: Color(0xFFEF4444),
+            content: Text('Task deleted successfully'),
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(backgroundColor: const Color(0xFFEF4444), content: Text('Error: $e')),
+          SnackBar(
+            backgroundColor: const Color(0xFFEF4444),
+            content: Text('Error: $e'),
+          ),
         );
       }
     }
@@ -465,7 +540,10 @@ class _TasksViewState extends State<TasksView> {
       },
       child: Scaffold(
         backgroundColor: CeladonColors.background,
-        floatingActionButton: (_canManage && _activeMainSegment != 1 && _overviewSelectedProject == null)
+        floatingActionButton:
+            (_canManage &&
+                _activeMainSegment != 1 &&
+                _overviewSelectedProject == null)
             ? Container(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(28),
@@ -492,12 +570,22 @@ class _TasksViewState extends State<TasksView> {
                     }
                   },
                   backgroundColor: CeladonColors.primary,
-                  icon: const Icon(Icons.add_rounded, color: Colors.white, size: 22),
+                  icon: const Icon(
+                    Icons.add_rounded,
+                    color: Colors.white,
+                    size: 22,
+                  ),
                   label: Text(
                     _activeMainSegment == 0
                         ? 'Add Task'
-                        : (_selectedProjectForDetail != null ? 'Add Project Task' : 'Create Project'),
-                    style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white, fontSize: 13.5),
+                        : (_selectedProjectForDetail != null
+                              ? 'Add Project Task'
+                              : 'Create Project'),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      fontSize: 13.5,
+                    ),
                   ),
                 ),
               )
@@ -505,9 +593,7 @@ class _TasksViewState extends State<TasksView> {
         body: Stack(
           children: [
             // Background: Clean Solid App Canvas
-            Positioned.fill(
-              child: Container(color: CeladonColors.background),
-            ),
+            Positioned.fill(child: Container(color: CeladonColors.background)),
 
             SafeArea(
               top: !widget.embedded,
@@ -519,25 +605,32 @@ class _TasksViewState extends State<TasksView> {
 
                   // 3. Primary Segment Switcher: [General Task] vs [Projects]
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 6,
+                    ),
                     child: _buildMainSegmentSwitcher(),
                   ),
 
                   // 4. Tab Body
                   Expanded(
                     child: _isLoading
-                        ? const Center(child: CircularProgressIndicator(color: CeladonColors.primary))
+                        ? const Center(
+                            child: CircularProgressIndicator(
+                              color: CeladonColors.primary,
+                            ),
+                          )
                         : _errorMessage != null
-                            ? _buildErrorState()
-                            : RefreshIndicator(
-                                onRefresh: _loadInitialData,
-                                color: CeladonColors.primary,
-                                child: _activeMainSegment == 0
-                                    ? _buildGeneralTasksTab()
-                                    : (_activeMainSegment == 1
-                                        ? _buildOverviewTab()
-                                        : _buildProjectsTab()),
-                              ),
+                        ? _buildErrorState()
+                        : RefreshIndicator(
+                            onRefresh: _loadInitialData,
+                            color: CeladonColors.primary,
+                            child: _activeMainSegment == 0
+                                ? _buildGeneralTasksTab()
+                                : (_activeMainSegment == 1
+                                      ? _buildOverviewTab()
+                                      : _buildProjectsTab()),
+                          ),
                   ),
                 ],
               ),
@@ -551,10 +644,13 @@ class _TasksViewState extends State<TasksView> {
   // Single Unified Header with Back Button, Title & Refresh (Messenger Style)
   Widget _buildSectionHeader() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 4, 16, 4),
+      padding: const EdgeInsets.fromLTRB(4, 8, 16, 6),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           IconButton(
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
             icon: const Icon(
               Icons.arrow_back_rounded,
               color: CeladonColors.textPrimary,
@@ -575,9 +671,11 @@ class _TasksViewState extends State<TasksView> {
               }
             },
           ),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: const [
                 Text(
                   'Tasks',
@@ -590,13 +688,13 @@ class _TasksViewState extends State<TasksView> {
                 ),
                 SizedBox(height: 2),
                 Text(
-                  'Track deliverables, project schedules & assignment deadlines',
+                  'Track project tasks and team deliverables.',
                   style: TextStyle(
                     fontSize: 11.5,
                     color: CeladonColors.textMuted,
-                    height: 1.3,
+                    height: 1.25,
                   ),
-                  maxLines: 2,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
@@ -708,7 +806,9 @@ class _TasksViewState extends State<TasksView> {
                 style: TextStyle(
                   fontSize: 11.5,
                   fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                  color: isSelected ? Colors.white : CeladonColors.textSecondary,
+                  color: isSelected
+                      ? Colors.white
+                      : CeladonColors.textSecondary,
                 ),
               ),
             ),
@@ -1043,7 +1143,10 @@ class _TasksViewState extends State<TasksView> {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: proj.status.toLowerCase() == 'completed'
                         ? const Color(0xFFDEF7EC)
@@ -1069,28 +1172,39 @@ class _TasksViewState extends State<TasksView> {
                 proj.description,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF475569),
-                ),
+                style: const TextStyle(fontSize: 12, color: Color(0xFF475569)),
               ),
             ],
             const SizedBox(height: 10),
             Row(
               children: [
-                const Icon(Icons.people_outline_rounded, size: 14, color: Color(0xFF475569)),
+                const Icon(
+                  Icons.people_outline_rounded,
+                  size: 14,
+                  color: Color(0xFF475569),
+                ),
                 const SizedBox(width: 4),
                 Text(
                   '${proj.assignedEmployees.length} members',
-                  style: const TextStyle(fontSize: 11, color: Color(0xFF475569)),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF475569),
+                  ),
                 ),
                 const Spacer(),
                 if (proj.dueDate != null && proj.dueDate!.isNotEmpty) ...[
-                  const Icon(Icons.event_outlined, size: 14, color: Color(0xFF475569)),
+                  const Icon(
+                    Icons.event_outlined,
+                    size: 14,
+                    color: Color(0xFF475569),
+                  ),
                   const SizedBox(width: 4),
                   Text(
                     proj.dueDate!,
-                    style: const TextStyle(fontSize: 11, color: Color(0xFF475569)),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF475569),
+                    ),
                   ),
                 ],
               ],
@@ -1103,12 +1217,18 @@ class _TasksViewState extends State<TasksView> {
 
   // Project Overview Detail Screen (Image 1 Structure with Dark Typography & Zero Redirection)
   Widget _buildProjectOverviewDetailView(ProjectModel proj) {
-    final projTasks = _tasks.where((t) => t.isProjectTask && t.projectId == proj.id).toList();
+    final projTasks = _tasks
+        .where((t) => t.isProjectTask && t.projectId == proj.id)
+        .toList();
     final totalCount = projTasks.length;
     final completedCount = projTasks.where((t) => t.isCompleted).length;
     final pendingCount = projTasks.where((t) => t.isPending).length;
-    final incompleteCount = projTasks.where((t) => !t.isCompleted && !t.isPending).length;
-    final rate = totalCount > 0 ? ((completedCount / totalCount) * 100).round() : 0;
+    final incompleteCount = projTasks
+        .where((t) => !t.isCompleted && !t.isPending)
+        .length;
+    final rate = totalCount > 0
+        ? ((completedCount / totalCount) * 100).round()
+        : 0;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
@@ -1121,7 +1241,11 @@ class _TasksViewState extends State<TasksView> {
             padding: const EdgeInsets.symmetric(vertical: 6),
             child: Row(
               children: const [
-                Icon(Icons.arrow_back_rounded, size: 18, color: CeladonColors.primary),
+                Icon(
+                  Icons.arrow_back_rounded,
+                  size: 18,
+                  color: CeladonColors.primary,
+                ),
                 SizedBox(width: 6),
                 Text(
                   'Back to Overview',
@@ -1163,7 +1287,10 @@ class _TasksViewState extends State<TasksView> {
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: proj.status.toLowerCase() == 'completed'
                           ? const Color(0xFFDEF7EC)
@@ -1198,11 +1325,19 @@ class _TasksViewState extends State<TasksView> {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    const Icon(Icons.event_outlined, size: 14, color: Color(0xFF475569)),
+                    const Icon(
+                      Icons.event_outlined,
+                      size: 14,
+                      color: Color(0xFF475569),
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       'Due ${proj.dueDate}',
-                      style: const TextStyle(fontSize: 11.5, color: Color(0xFF475569), fontWeight: FontWeight.w600),
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: Color(0xFF475569),
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ],
                 ),
@@ -1215,27 +1350,48 @@ class _TasksViewState extends State<TasksView> {
         // 3. Project Members (Exact Match to Image 1 with Dark Text)
         const Text(
           'Project Members',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary),
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+            color: CeladonColors.textPrimary,
+          ),
         ),
         const SizedBox(height: 8),
         if (proj.assignedEmployees.isEmpty)
-          const Text('No members assigned yet.', style: TextStyle(fontSize: 11.5, color: Color(0xFF475569)))
+          const Text(
+            'No members assigned yet.',
+            style: TextStyle(fontSize: 11.5, color: Color(0xFF475569)),
+          )
         else
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: proj.assignedEmployees.map((empMap) {
-                final empId = (empMap['userId'] ?? empMap['id'] ?? empMap['_id'] ?? '').toString();
-                final rawName = (empMap['name'] ?? empMap['username'] ?? '').toString();
-                final emp = _resolveEmployee(empId.isNotEmpty ? empId : rawName);
-                final name = rawName.isNotEmpty ? rawName : _getAssigneeDisplayName(empId);
+                final empId =
+                    (empMap['userId'] ?? empMap['id'] ?? empMap['_id'] ?? '')
+                        .toString();
+                final rawName = (empMap['name'] ?? empMap['username'] ?? '')
+                    .toString();
+                final emp = _resolveEmployee(
+                  empId.isNotEmpty ? empId : rawName,
+                );
+                final name = rawName.isNotEmpty
+                    ? rawName
+                    : _getAssigneeDisplayName(empId);
                 return Padding(
                   padding: const EdgeInsets.only(right: 12),
                   child: Row(
                     children: [
                       _buildEmployeeAvatarMini(emp, name),
                       const SizedBox(width: 6),
-                      Text(name, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: CeladonColors.textPrimary)),
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: CeladonColors.textPrimary,
+                        ),
+                      ),
                     ],
                   ),
                 );
@@ -1308,8 +1464,22 @@ class _TasksViewState extends State<TasksView> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Project Progress', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: CeladonColors.textPrimary)),
-                  Text('$rate%', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: CeladonColors.primary)),
+                  const Text(
+                    'Project Progress',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: CeladonColors.textPrimary,
+                    ),
+                  ),
+                  Text(
+                    '$rate%',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: CeladonColors.primary,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -1319,7 +1489,9 @@ class _TasksViewState extends State<TasksView> {
                   value: totalCount > 0 ? (completedCount / totalCount) : 0.0,
                   minHeight: 7,
                   backgroundColor: CeladonColors.border,
-                  valueColor: const AlwaysStoppedAnimation<Color>(CeladonColors.primary),
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                    CeladonColors.primary,
+                  ),
                 ),
               ),
             ],
@@ -1330,7 +1502,11 @@ class _TasksViewState extends State<TasksView> {
         // 6. Deliverables / Tasks List Overview
         const Text(
           'Project Tasks Overview',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary),
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+            color: CeladonColors.textPrimary,
+          ),
         ),
         const SizedBox(height: 8),
         if (projTasks.isEmpty)
@@ -1342,7 +1518,10 @@ class _TasksViewState extends State<TasksView> {
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: CeladonColors.border),
             ),
-            child: const Text('No tasks recorded for this project.', style: TextStyle(fontSize: 12, color: CeladonColors.textMuted)),
+            child: const Text(
+              'No tasks recorded for this project.',
+              style: TextStyle(fontSize: 12, color: CeladonColors.textMuted),
+            ),
           )
         else
           ...projTasks.map((t) => _buildTaskCard(t)),
@@ -1374,7 +1553,9 @@ class _TasksViewState extends State<TasksView> {
   }
 
   // 4 Metric Counter Cards: Total Tasks, Pending, Incomplete, Completed
-  Widget _buildTaskMetricsGrid({void Function(int filterIndex)? onTapOverride}) {
+  Widget _buildTaskMetricsGrid({
+    void Function(int filterIndex)? onTapOverride,
+  }) {
     return Row(
       children: [
         Expanded(
@@ -1528,14 +1709,22 @@ class _TasksViewState extends State<TasksView> {
               },
               child: const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 4),
-                child: Icon(Icons.close_rounded, size: 18, color: Color(0xFFBACCC3)),
+                child: Icon(
+                  Icons.close_rounded,
+                  size: 18,
+                  color: Color(0xFFBACCC3),
+                ),
               ),
             ),
           GestureDetector(
             onTap: _showTaskFilterSheet,
             child: const Padding(
               padding: EdgeInsets.only(left: 4, right: 2),
-              child: Icon(Icons.filter_list_rounded, size: 20, color: Color(0xFFBACCC3)),
+              child: Icon(
+                Icons.filter_list_rounded,
+                size: 20,
+                color: Color(0xFFBACCC3),
+              ),
             ),
           ),
         ],
@@ -1550,10 +1739,34 @@ class _TasksViewState extends State<TasksView> {
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         final options = [
-          {'label': 'All Tasks', 'count': _totalTaskCount, 'idx': 0, 'color': CeladonColors.primary, 'icon': Icons.assignment_rounded},
-          {'label': 'Pending (Active)', 'count': _pendingCount, 'idx': 1, 'color': const Color(0xFF06B6D4), 'icon': Icons.schedule_rounded},
-          {'label': 'Completed (Done)', 'count': _completedCount, 'idx': 2, 'color': CeladonColors.primary, 'icon': Icons.check_circle_outline_rounded},
-          {'label': 'Incomplete', 'count': _incompleteCount, 'idx': 3, 'color': const Color(0xFFEF4444), 'icon': Icons.cancel_outlined},
+          {
+            'label': 'All Tasks',
+            'count': _totalTaskCount,
+            'idx': 0,
+            'color': CeladonColors.primary,
+            'icon': Icons.assignment_rounded,
+          },
+          {
+            'label': 'Pending (Active)',
+            'count': _pendingCount,
+            'idx': 1,
+            'color': const Color(0xFF06B6D4),
+            'icon': Icons.schedule_rounded,
+          },
+          {
+            'label': 'Completed (Done)',
+            'count': _completedCount,
+            'idx': 2,
+            'color': CeladonColors.primary,
+            'icon': Icons.check_circle_outline_rounded,
+          },
+          {
+            'label': 'Incomplete',
+            'count': _incompleteCount,
+            'idx': 3,
+            'color': const Color(0xFFEF4444),
+            'icon': Icons.cancel_outlined,
+          },
         ];
 
         final media = MediaQuery.of(ctx);
@@ -1564,7 +1777,9 @@ class _TasksViewState extends State<TasksView> {
           child: Container(
             decoration: BoxDecoration(
               color: CeladonColors.cardBackground,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(22),
+              ),
               border: Border.all(color: CeladonColors.border, width: 1.0),
             ),
             child: SafeArea(
@@ -1583,10 +1798,18 @@ class _TasksViewState extends State<TasksView> {
                         children: [
                           const Text(
                             'Filter Tasks',
-                            style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary),
+                            style: TextStyle(
+                              fontSize: 16.5,
+                              fontWeight: FontWeight.w800,
+                              color: CeladonColors.textPrimary,
+                            ),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.close_rounded, color: CeladonColors.textMuted, size: 20),
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              color: CeladonColors.textMuted,
+                              size: 20,
+                            ),
                             onPressed: () => Navigator.pop(ctx),
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(),
@@ -1612,18 +1835,35 @@ class _TasksViewState extends State<TasksView> {
                             },
                             borderRadius: BorderRadius.circular(12),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 10,
+                              ),
                               decoration: BoxDecoration(
-                                color: isSelected ? optColor.withValues(alpha: 0.12) : CeladonColors.searchBackground,
+                                color: isSelected
+                                    ? optColor.withValues(alpha: 0.12)
+                                    : CeladonColors.searchBackground,
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: isSelected ? optColor : CeladonColors.border, width: isSelected ? 1.5 : 0.8),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? optColor
+                                      : CeladonColors.border,
+                                  width: isSelected ? 1.5 : 0.8,
+                                ),
                               ),
                               child: Row(
                                 children: [
                                   Container(
                                     padding: const EdgeInsets.all(7),
-                                    decoration: BoxDecoration(color: optColor.withValues(alpha: 0.20), borderRadius: BorderRadius.circular(8)),
-                                    child: Icon(icon, color: optColor, size: 18),
+                                    decoration: BoxDecoration(
+                                      color: optColor.withValues(alpha: 0.20),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Icon(
+                                      icon,
+                                      color: optColor,
+                                      size: 18,
+                                    ),
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
@@ -1631,22 +1871,40 @@ class _TasksViewState extends State<TasksView> {
                                       opt['label'] as String,
                                       style: TextStyle(
                                         fontSize: 13.5,
-                                        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                                        color: isSelected ? optColor : CeladonColors.textPrimary,
+                                        fontWeight: isSelected
+                                            ? FontWeight.w800
+                                            : FontWeight.w600,
+                                        color: isSelected
+                                            ? optColor
+                                            : CeladonColors.textPrimary,
                                       ),
                                     ),
                                   ),
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                    decoration: BoxDecoration(color: optColor.withValues(alpha: 0.20), borderRadius: BorderRadius.circular(10)),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: optColor.withValues(alpha: 0.20),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
                                     child: Text(
                                       '$count',
-                                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: optColor),
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: optColor,
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(width: 8),
                                   if (isSelected)
-                                    Icon(Icons.check_circle_rounded, color: optColor, size: 20)
+                                    Icon(
+                                      Icons.check_circle_rounded,
+                                      color: optColor,
+                                      size: 20,
+                                    )
                                   else
                                     const SizedBox(width: 20),
                                 ],
@@ -1678,14 +1936,14 @@ class _TasksViewState extends State<TasksView> {
     final statusColor = isDone
         ? CeladonColors.success
         : isIncomplete
-            ? CeladonColors.error
-            : (isRunning ? CeladonColors.primary : CeladonColors.warning);
+        ? CeladonColors.error
+        : (isRunning ? CeladonColors.primary : CeladonColors.warning);
 
     final statusText = isDone
         ? 'Completed'
         : isIncomplete
-            ? 'Incomplete'
-            : (task.isInProgress ? 'In Progress' : 'Pending');
+        ? 'Incomplete'
+        : (task.isInProgress ? 'In Progress' : 'Pending');
 
     final hasVoiceNote = (task.description ?? '').contains('[voice_note:');
 
@@ -1699,10 +1957,7 @@ class _TasksViewState extends State<TasksView> {
           decoration: BoxDecoration(
             color: CeladonColors.cardBackground,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: CeladonColors.border,
-              width: 1.0,
-            ),
+            border: Border.all(color: CeladonColors.border, width: 1.0),
             boxShadow: const [
               BoxShadow(
                 color: CeladonColors.shadow,
@@ -1718,11 +1973,16 @@ class _TasksViewState extends State<TasksView> {
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
                     decoration: BoxDecoration(
                       color: statusColor.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: statusColor.withValues(alpha: 0.40)),
+                      border: Border.all(
+                        color: statusColor.withValues(alpha: 0.40),
+                      ),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -1731,8 +1991,8 @@ class _TasksViewState extends State<TasksView> {
                           isDone
                               ? Icons.check_circle_rounded
                               : isIncomplete
-                                  ? Icons.cancel_rounded
-                                  : Icons.schedule_rounded,
+                              ? Icons.cancel_rounded
+                              : Icons.schedule_rounded,
                           size: 11,
                           color: statusColor,
                         ),
@@ -1756,18 +2016,34 @@ class _TasksViewState extends State<TasksView> {
                   if (hasVoiceNote) ...[
                     const SizedBox(width: 6),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: CeladonColors.infoLight,
                         borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: CeladonColors.info.withValues(alpha: 0.40)),
+                        border: Border.all(
+                          color: CeladonColors.info.withValues(alpha: 0.40),
+                        ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: const [
-                          Icon(Icons.mic_rounded, size: 10, color: CeladonColors.info),
+                          Icon(
+                            Icons.mic_rounded,
+                            size: 10,
+                            color: CeladonColors.info,
+                          ),
                           SizedBox(width: 3),
-                          Text('Voice Note', style: TextStyle(fontSize: 9.5, color: CeladonColors.info, fontWeight: FontWeight.w700)),
+                          Text(
+                            'Voice Note',
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              color: CeladonColors.info,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -1778,22 +2054,27 @@ class _TasksViewState extends State<TasksView> {
                   if (_canManage)
                     // Read-only status indicator for Company Management (Company cannot complete/incomplete once assigned)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: isDone
                             ? CeladonColors.successLight
                             : (isRunning
-                                ? CeladonColors.lightGreen
-                                : (isIncomplete
-                                    ? CeladonColors.errorLight
-                                    : CeladonColors.warningLight)),
+                                  ? CeladonColors.lightGreen
+                                  : (isIncomplete
+                                        ? CeladonColors.errorLight
+                                        : CeladonColors.warningLight)),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
                           color: isDone
                               ? CeladonColors.success
                               : (isRunning
-                                  ? CeladonColors.primary
-                                  : (isIncomplete ? CeladonColors.error : CeladonColors.warning)),
+                                    ? CeladonColors.primary
+                                    : (isIncomplete
+                                          ? CeladonColors.error
+                                          : CeladonColors.warning)),
                           width: 1.0,
                         ),
                       ),
@@ -1804,30 +2085,38 @@ class _TasksViewState extends State<TasksView> {
                             isDone
                                 ? Icons.check_circle_rounded
                                 : (isRunning
-                                    ? Icons.timer_rounded
-                                    : (isIncomplete ? Icons.cancel_rounded : Icons.schedule_rounded)),
+                                      ? Icons.timer_rounded
+                                      : (isIncomplete
+                                            ? Icons.cancel_rounded
+                                            : Icons.schedule_rounded)),
                             size: 13,
                             color: isDone
                                 ? CeladonColors.success
                                 : (isRunning
-                                    ? CeladonColors.primary
-                                    : (isIncomplete ? CeladonColors.error : CeladonColors.warning)),
+                                      ? CeladonColors.primary
+                                      : (isIncomplete
+                                            ? CeladonColors.error
+                                            : CeladonColors.warning)),
                           ),
                           const SizedBox(width: 4),
                           Text(
                             isDone
                                 ? 'Completed${task.completionTime != null ? ' ${task.completionTime}' : ''}'
                                 : (isRunning
-                                    ? 'Running ${_formatRunningDuration(task)}'
-                                    : (isIncomplete ? 'Incomplete' : 'Waiting to Start')),
+                                      ? 'Running ${_formatRunningDuration(task)}'
+                                      : (isIncomplete
+                                            ? 'Incomplete'
+                                            : 'Waiting to Start')),
                             style: TextStyle(
                               fontSize: 10.5,
                               fontWeight: FontWeight.w800,
                               color: isDone
                                   ? CeladonColors.success
                                   : (isRunning
-                                      ? CeladonColors.primary
-                                      : (isIncomplete ? CeladonColors.error : CeladonColors.warning)),
+                                        ? CeladonColors.primary
+                                        : (isIncomplete
+                                              ? CeladonColors.error
+                                              : CeladonColors.warning)),
                             ),
                           ),
                         ],
@@ -1837,12 +2126,28 @@ class _TasksViewState extends State<TasksView> {
                     // Quick Action Buttons for Employee
                     if (task.isToDo)
                       ElevatedButton.icon(
-                        icon: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 14),
-                        label: const Text('Start', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white)),
+                        icon: const Icon(
+                          Icons.play_arrow_rounded,
+                          color: Colors.white,
+                          size: 14,
+                        ),
+                        label: const Text(
+                          'Start',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: CeladonColors.primary,
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                           elevation: 0,
                           minimumSize: Size.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -1854,7 +2159,10 @@ class _TasksViewState extends State<TasksView> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 3,
+                            ),
                             decoration: BoxDecoration(
                               color: CeladonColors.lightGreen,
                               borderRadius: BorderRadius.circular(6),
@@ -1862,7 +2170,11 @@ class _TasksViewState extends State<TasksView> {
                             ),
                             child: Text(
                               _formatRunningDuration(task),
-                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: CeladonColors.primary),
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                color: CeladonColors.primary,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 6),
@@ -1874,7 +2186,11 @@ class _TasksViewState extends State<TasksView> {
                                 color: CeladonColors.primary,
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(Icons.check, size: 14, color: Colors.white),
+                              child: const Icon(
+                                Icons.check,
+                                size: 14,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 4),
@@ -1886,14 +2202,21 @@ class _TasksViewState extends State<TasksView> {
                                 color: CeladonColors.error,
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(Icons.close, size: 14, color: Colors.white),
+                              child: const Icon(
+                                Icons.close,
+                                size: 14,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
                         ],
                       )
                     else if (isDone)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
                         decoration: BoxDecoration(
                           color: CeladonColors.lightGreen,
                           borderRadius: BorderRadius.circular(8),
@@ -1901,7 +2224,11 @@ class _TasksViewState extends State<TasksView> {
                         ),
                         child: Text(
                           'Done${task.completionTime != null ? ' (${task.completionTime})' : ''}',
-                          style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: CeladonColors.primary),
+                          style: const TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800,
+                            color: CeladonColors.primary,
+                          ),
                         ),
                       ),
                 ],
@@ -1921,13 +2248,17 @@ class _TasksViewState extends State<TasksView> {
               ),
 
               // Description Snippet
-              if (task.description != null && task.description!.trim().isNotEmpty) ...[
+              if (task.description != null &&
+                  task.description!.trim().isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Text(
                   _cleanDescriptionSnippet(task.description!),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12, color: CeladonColors.textSecondary),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: CeladonColors.textSecondary,
+                  ),
                 ),
               ],
 
@@ -1949,13 +2280,20 @@ class _TasksViewState extends State<TasksView> {
                           assigneeName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: CeladonColors.textPrimary),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: CeladonColors.textPrimary,
+                          ),
                         ),
                         Text(
                           emp?.department?.isNotEmpty == true
                               ? emp!.department!
                               : (emp?.role ?? 'Staff'),
-                          style: const TextStyle(fontSize: 10, color: CeladonColors.textSecondary),
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: CeladonColors.textSecondary,
+                          ),
                         ),
                       ],
                     ),
@@ -1968,14 +2306,20 @@ class _TasksViewState extends State<TasksView> {
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.calendar_today_rounded, size: 11, color: CeladonColors.textMuted),
+                          const Icon(
+                            Icons.calendar_today_rounded,
+                            size: 11,
+                            color: CeladonColors.textMuted,
+                          ),
                           const SizedBox(width: 4),
                           Text(
                             task.endDate ?? task.dueDate ?? 'No deadline',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              color: isIncomplete ? CeladonColors.error : CeladonColors.textSecondary,
+                              color: isIncomplete
+                                  ? CeladonColors.error
+                                  : CeladonColors.textSecondary,
                             ),
                           ),
                         ],
@@ -1983,7 +2327,10 @@ class _TasksViewState extends State<TasksView> {
                       if (task.durationValue != null && task.durationValue! > 0)
                         Text(
                           '${task.durationValue} ${task.durationUnit ?? 'days'}',
-                          style: const TextStyle(fontSize: 9.5, color: CeladonColors.primary),
+                          style: const TextStyle(
+                            fontSize: 9.5,
+                            color: CeladonColors.primary,
+                          ),
                         ),
                     ],
                   ),
@@ -2024,7 +2371,11 @@ class _TasksViewState extends State<TasksView> {
       ),
       child: Text(
         priority.toUpperCase(),
-        style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: pColor),
+        style: TextStyle(
+          fontSize: 9.5,
+          fontWeight: FontWeight.w800,
+          color: pColor,
+        ),
       ),
     );
   }
@@ -2042,13 +2393,19 @@ class _TasksViewState extends State<TasksView> {
       height: 32,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: const LinearGradient(colors: [CeladonColors.primary, Color(0xFF065F46)]),
+        gradient: const LinearGradient(
+          colors: [CeladonColors.primary, Color(0xFF065F46)],
+        ),
         border: Border.all(color: CeladonColors.primary, width: 1.2),
       ),
       alignment: Alignment.center,
       child: Text(
         initial,
-        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.white),
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w800,
+          color: Colors.white,
+        ),
       ),
     );
   }
@@ -2062,7 +2419,8 @@ class _TasksViewState extends State<TasksView> {
     final isDone = task.isCompleted;
     final isIncomplete = task.isIncomplete;
 
-    final voiceNoteMatch = RegExp(r'\[voice_note:([^\]]+)\]').firstMatch(task.description ?? '');
+    final voiceNoteMatch = RegExp(r'\[voice_note:([^\]]+)\]')
+        .firstMatch(task.description ?? '');
     final voiceNoteRef = voiceNoteMatch?.group(1);
 
     showModalBottomSheet(
@@ -2090,7 +2448,11 @@ class _TasksViewState extends State<TasksView> {
                   child: Row(
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.arrow_back_rounded, color: CeladonColors.textPrimary, size: 20),
+                        icon: const Icon(
+                          Icons.arrow_back_rounded,
+                          color: CeladonColors.textPrimary,
+                          size: 20,
+                        ),
                         onPressed: () => Navigator.pop(ctx),
                         constraints: const BoxConstraints(),
                         padding: EdgeInsets.zero,
@@ -2098,12 +2460,20 @@ class _TasksViewState extends State<TasksView> {
                       const SizedBox(width: 8),
                       const Text(
                         'Task Details',
-                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary),
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          color: CeladonColors.textPrimary,
+                        ),
                       ),
                       const Spacer(),
                       if (_canManage)
                         IconButton(
-                          icon: const Icon(Icons.delete_outline_rounded, color: CeladonColors.error, size: 20),
+                          icon: const Icon(
+                            Icons.delete_outline_rounded,
+                            color: CeladonColors.error,
+                            size: 20,
+                          ),
                           onPressed: () {
                             Navigator.pop(ctx);
                             _deleteTask(task);
@@ -2125,20 +2495,29 @@ class _TasksViewState extends State<TasksView> {
                         Row(
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
                               decoration: BoxDecoration(
                                 color: (isDone
-                                        ? CeladonColors.lightGreen
-                                        : isIncomplete
-                                            ? const Color(0xFFFEF2F2)
-                                            : const Color(0xFFEFF6FF)),
+                                    ? CeladonColors.lightGreen
+                                    : isIncomplete
+                                    ? const Color(0xFFFEF2F2)
+                                    : const Color(0xFFEFF6FF)),
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(
                                   color: (isDone
-                                      ? CeladonColors.primary.withValues(alpha: 0.3)
+                                      ? CeladonColors.primary.withValues(
+                                          alpha: 0.3,
+                                        )
                                       : isIncomplete
-                                          ? CeladonColors.error.withValues(alpha: 0.3)
-                                          : CeladonColors.info.withValues(alpha: 0.3)),
+                                      ? CeladonColors.error.withValues(
+                                          alpha: 0.3,
+                                        )
+                                      : CeladonColors.info.withValues(
+                                          alpha: 0.3,
+                                        )),
                                 ),
                               ),
                               child: Text(
@@ -2149,25 +2528,34 @@ class _TasksViewState extends State<TasksView> {
                                   color: (isDone
                                       ? CeladonColors.primary
                                       : isIncomplete
-                                          ? CeladonColors.error
-                                          : CeladonColors.info),
+                                      ? CeladonColors.error
+                                      : CeladonColors.info),
                                 ),
                               ),
                             ),
                             const SizedBox(width: 8),
                             _buildPriorityBadge(task.priority),
-                            if (task.projectName != null && task.projectName!.isNotEmpty) ...[
+                            if (task.projectName != null &&
+                                task.projectName!.isNotEmpty) ...[
                               const Spacer(),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
                                 decoration: BoxDecoration(
                                   color: CeladonColors.searchBackground,
                                   borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: CeladonColors.border),
+                                  border: Border.all(
+                                    color: CeladonColors.border,
+                                  ),
                                 ),
                                 child: Text(
                                   task.projectName!,
-                                  style: const TextStyle(fontSize: 11, color: CeladonColors.textSecondary),
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: CeladonColors.textSecondary,
+                                  ),
                                 ),
                               ),
                             ],
@@ -2178,13 +2566,25 @@ class _TasksViewState extends State<TasksView> {
                         // Title
                         Text(
                           task.title,
-                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary),
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: CeladonColors.textPrimary,
+                          ),
                         ),
                         const SizedBox(height: 10),
 
                         // Full Description
-                        if (task.description != null && task.description!.isNotEmpty) ...[
-                          const Text('DESCRIPTION', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: CeladonColors.textMuted)),
+                        if (task.description != null &&
+                            task.description!.isNotEmpty) ...[
+                          const Text(
+                            'DESCRIPTION',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: CeladonColors.textMuted,
+                            ),
+                          ),
                           const SizedBox(height: 4),
                           Container(
                             width: double.infinity,
@@ -2196,7 +2596,11 @@ class _TasksViewState extends State<TasksView> {
                             ),
                             child: Text(
                               _cleanDescriptionSnippet(task.description!),
-                              style: const TextStyle(fontSize: 13.5, color: CeladonColors.textPrimary, height: 1.4),
+                              style: const TextStyle(
+                                fontSize: 13.5,
+                                color: CeladonColors.textPrimary,
+                                height: 1.4,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 12),
@@ -2207,9 +2611,13 @@ class _TasksViewState extends State<TasksView> {
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF8B5CF6).withValues(alpha: 0.10),
+                              color: const Color(0xFF8B5CF6)
+                                  .withValues(alpha: 0.10),
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.25)),
+                              border: Border.all(
+                                color: const Color(0xFF8B5CF6)
+                                    .withValues(alpha: 0.25),
+                              ),
                             ),
                             child: Row(
                               children: [
@@ -2220,15 +2628,33 @@ class _TasksViewState extends State<TasksView> {
                                     color: Color(0xFF8B5CF6),
                                     shape: BoxShape.circle,
                                   ),
-                                  child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
+                                  child: const Icon(
+                                    Icons.play_arrow_rounded,
+                                    color: Colors.white,
+                                    size: 22,
+                                  ),
                                 ),
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: const [
-                                      Text('Voice Note Recording Attached', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: CeladonColors.textPrimary)),
-                                      Text('Tap to listen to supervisor instructions', style: TextStyle(fontSize: 10.5, color: CeladonColors.textSecondary)),
+                                      Text(
+                                        'Voice Note Recording Attached',
+                                        style: TextStyle(
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: CeladonColors.textPrimary,
+                                        ),
+                                      ),
+                                      Text(
+                                        'Tap to listen to supervisor instructions',
+                                        style: TextStyle(
+                                          fontSize: 10.5,
+                                          color: CeladonColors.textSecondary,
+                                        ),
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -2239,7 +2665,14 @@ class _TasksViewState extends State<TasksView> {
                         ],
 
                         // SECTION 1: ASSIGNED PERSON DETAILS
-                        const Text('ASSIGNED PERSON DETAILS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: CeladonColors.textMuted)),
+                        const Text(
+                          'ASSIGNED PERSON DETAILS',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: CeladonColors.textMuted,
+                          ),
+                        ),
                         const SizedBox(height: 6),
                         Container(
                           padding: const EdgeInsets.all(12),
@@ -2256,14 +2689,32 @@ class _TasksViewState extends State<TasksView> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(assigneeName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary)),
+                                    Text(
+                                      assigneeName,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w800,
+                                        color: CeladonColors.textPrimary,
+                                      ),
+                                    ),
                                     const SizedBox(height: 2),
                                     Text(
                                       'ID: ${emp?.userId ?? task.assignedTo ?? 'EMP-??'} • ${emp?.role ?? 'Staff'}',
-                                      style: const TextStyle(fontSize: 11, color: CeladonColors.primary, fontWeight: FontWeight.w600),
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: CeladonColors.primary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
-                                    if (emp?.email != null && emp!.email!.isNotEmpty)
-                                      Text(emp.email!, style: const TextStyle(fontSize: 11, color: CeladonColors.textSecondary)),
+                                    if (emp?.email != null &&
+                                        emp!.email!.isNotEmpty)
+                                      Text(
+                                        emp.email!,
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: CeladonColors.textSecondary,
+                                        ),
+                                      ),
                                   ],
                                 ),
                               ),
@@ -2273,7 +2724,14 @@ class _TasksViewState extends State<TasksView> {
                         const SizedBox(height: 14),
 
                         // SECTION 2: TIMELINE & PROGRESS DETAILS
-                        const Text('TIMELINE & PROGRESS DETAILS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: CeladonColors.textMuted)),
+                        const Text(
+                          'TIMELINE & PROGRESS DETAILS',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: CeladonColors.textMuted,
+                          ),
+                        ),
                         const SizedBox(height: 6),
                         Container(
                           padding: const EdgeInsets.all(12),
@@ -2285,12 +2743,24 @@ class _TasksViewState extends State<TasksView> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _buildDetailRow('Start Date', task.startDate ?? 'Today'),
-                              _buildDetailRow('End Date / Deadline', task.endDate ?? task.dueDate ?? 'Not set'),
+                              _buildDetailRow(
+                                'Start Date',
+                                task.startDate ?? 'Today',
+                              ),
+                              _buildDetailRow(
+                                'End Date / Deadline',
+                                task.endDate ?? task.dueDate ?? 'Not set',
+                              ),
                               if (task.dueTime != null)
-                                _buildDetailRow('Target End Time', task.dueTime!),
+                                _buildDetailRow(
+                                  'Target End Time',
+                                  task.dueTime!,
+                                ),
                               if (task.durationValue != null)
-                                _buildDetailRow('Duration Allocated', '${task.durationValue} ${task.durationUnit ?? 'days'}'),
+                                _buildDetailRow(
+                                  'Duration Allocated',
+                                  '${task.durationValue} ${task.durationUnit ?? 'days'}',
+                                ),
 
                               const SizedBox(height: 8),
 
@@ -2301,16 +2771,28 @@ class _TasksViewState extends State<TasksView> {
                                   decoration: BoxDecoration(
                                     color: CeladonColors.lightGreen,
                                     borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: CeladonColors.primary.withValues(alpha: 0.35)),
+                                    border: Border.all(
+                                      color: CeladonColors.primary.withValues(
+                                        alpha: 0.35,
+                                      ),
+                                    ),
                                   ),
                                   child: Row(
                                     children: const [
-                                      Icon(Icons.verified_rounded, color: CeladonColors.primary, size: 18),
+                                      Icon(
+                                        Icons.verified_rounded,
+                                        color: CeladonColors.primary,
+                                        size: 18,
+                                      ),
                                       SizedBox(width: 8),
                                       Expanded(
                                         child: Text(
                                           'Task verified and completed on schedule.',
-                                          style: TextStyle(fontSize: 12, color: CeladonColors.primary, fontWeight: FontWeight.w600),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: CeladonColors.primary,
+                                            fontWeight: FontWeight.w600,
+                                          ),
                                         ),
                                       ),
                                     ],
@@ -2322,16 +2804,28 @@ class _TasksViewState extends State<TasksView> {
                                   decoration: BoxDecoration(
                                     color: const Color(0xFFFEF2F2),
                                     borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: CeladonColors.error.withValues(alpha: 0.35)),
+                                    border: Border.all(
+                                      color: CeladonColors.error.withValues(
+                                        alpha: 0.35,
+                                      ),
+                                    ),
                                   ),
                                   child: Row(
                                     children: const [
-                                      Icon(Icons.warning_amber_rounded, color: CeladonColors.error, size: 18),
+                                      Icon(
+                                        Icons.warning_amber_rounded,
+                                        color: CeladonColors.error,
+                                        size: 18,
+                                      ),
                                       SizedBox(width: 8),
                                       Expanded(
                                         child: Text(
                                           'The assigned deadline has passed. Task marked as Not Completed.',
-                                          style: TextStyle(fontSize: 12, color: CeladonColors.error, fontWeight: FontWeight.w600),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: CeladonColors.error,
+                                            fontWeight: FontWeight.w600,
+                                          ),
                                         ),
                                       ),
                                     ],
@@ -2343,11 +2837,16 @@ class _TasksViewState extends State<TasksView> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
                                       children: [
                                         Text(
                                           'Current Progress: ${task.isInProgress ? 'In Progress (50%)' : 'To Do (10%)'}',
-                                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: CeladonColors.info),
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: CeladonColors.info,
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -2373,7 +2872,10 @@ class _TasksViewState extends State<TasksView> {
                         if (_canManage)
                           Container(
                             width: double.infinity,
-                            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                              horizontal: 16,
+                            ),
                             decoration: BoxDecoration(
                               color: CeladonColors.searchBackground,
                               borderRadius: BorderRadius.circular(16),
@@ -2385,8 +2887,12 @@ class _TasksViewState extends State<TasksView> {
                                 Icon(
                                   isDone
                                       ? Icons.check_circle_rounded
-                                      : (task.isInProgress ? Icons.timer_rounded : Icons.lock_outline_rounded),
-                                  color: isDone ? CeladonColors.primary : CeladonColors.textMuted,
+                                      : (task.isInProgress
+                                            ? Icons.timer_rounded
+                                            : Icons.lock_outline_rounded),
+                                  color: isDone
+                                      ? CeladonColors.primary
+                                      : CeladonColors.textMuted,
                                   size: 16,
                                 ),
                                 const SizedBox(width: 8),
@@ -2394,9 +2900,13 @@ class _TasksViewState extends State<TasksView> {
                                   isDone
                                       ? 'Task Completed by Assignee'
                                       : (task.isInProgress
-                                          ? 'Task in progress (running timer)'
-                                          : 'Awaiting Assignee to start task'),
-                                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: CeladonColors.textSecondary),
+                                            ? 'Task in progress (running timer)'
+                                            : 'Awaiting Assignee to start task'),
+                                  style: const TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: CeladonColors.textSecondary,
+                                  ),
                                 ),
                               ],
                             ),
@@ -2417,14 +2927,24 @@ class _TasksViewState extends State<TasksView> {
                                 }
                               },
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: isDone ? const Color(0xFF3186C8) : CeladonColors.primary,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                                backgroundColor: isDone
+                                    ? const Color(0xFF3186C8)
+                                    : CeladonColors.primary,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(24),
+                                ),
                               ),
                               child: Text(
                                 task.isToDo
                                     ? 'Start Task'
-                                    : (isDone ? 'Reopen / Resume Task' : 'Mark as Completed'),
-                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Colors.white),
+                                    : (isDone
+                                          ? 'Reopen / Resume Task'
+                                          : 'Mark as Completed'),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 14,
+                                  color: Colors.white,
+                                ),
                               ),
                             ),
                           ),
@@ -2446,8 +2966,21 @@ class _TasksViewState extends State<TasksView> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontSize: 12, color: CeladonColors.textSecondary)),
-          Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: CeladonColors.textPrimary)),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              color: CeladonColors.textSecondary,
+            ),
+          ),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: CeladonColors.textPrimary,
+            ),
+          ),
         ],
       ),
     );
@@ -2456,7 +2989,10 @@ class _TasksViewState extends State<TasksView> {
   // ===========================================================================
   // ADD TASK (CREATE TASK SHEET WITH MULTI-MODAL VOICE DESCRIPTION)
   // ===========================================================================
-  void _showCreateTaskSheet({String? defaultProjectId, String? defaultProjectName}) {
+  void _showCreateTaskSheet({
+    String? defaultProjectId,
+    String? defaultProjectName,
+  }) {
     final titleCtrl = TextEditingController();
     final descCtrl = TextEditingController();
     String priority = 'medium';
@@ -2470,7 +3006,9 @@ class _TasksViewState extends State<TasksView> {
     String dueTime = endCalc['dueTime']!;
 
     String? selectedAssignee = _assignableEmployees.isNotEmpty
-        ? (_assignableEmployees.first.userId.isNotEmpty ? _assignableEmployees.first.userId : _assignableEmployees.first.id)
+        ? (_assignableEmployees.first.userId.isNotEmpty
+              ? _assignableEmployees.first.userId
+              : _assignableEmployees.first.id)
         : null;
 
     showModalBottomSheet(
@@ -2482,7 +3020,11 @@ class _TasksViewState extends State<TasksView> {
           final media = MediaQuery.of(ctx);
 
           void recalculateEnd() {
-            final res = computeEndDateTime(startDate, durationVal, durationUnit);
+            final res = computeEndDateTime(
+              startDate,
+              durationVal,
+              durationUnit,
+            );
             setModalState(() {
               endDate = res['endDate']!;
               dueTime = res['dueTime']!;
@@ -2494,7 +3036,9 @@ class _TasksViewState extends State<TasksView> {
             padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
             decoration: BoxDecoration(
               color: CeladonColors.cardBackground,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
               border: Border.all(color: CeladonColors.border, width: 1.2),
             ),
             child: SafeArea(
@@ -2511,10 +3055,17 @@ class _TasksViewState extends State<TasksView> {
                       children: [
                         const Text(
                           'Create New Task',
-                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary),
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            color: CeladonColors.textPrimary,
+                          ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.close_rounded, color: CeladonColors.textMuted),
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            color: CeladonColors.textMuted,
+                          ),
                           onPressed: () => Navigator.pop(ctx),
                         ),
                       ],
@@ -2543,19 +3094,40 @@ class _TasksViewState extends State<TasksView> {
                             children: [
                               _buildInputLabel('Description'),
                               GestureDetector(
-                                onTap: () => _openVoiceDescriptionModal(descCtrl, () => setModalState(() {})),
+                                onTap: () => _openVoiceDescriptionModal(
+                                  descCtrl,
+                                  () => setModalState(() {}),
+                                ),
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                                    color: const Color(0xFF8B5CF6)
+                                        .withValues(alpha: 0.15),
                                     borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.35)),
+                                    border: Border.all(
+                                      color: const Color(0xFF8B5CF6)
+                                          .withValues(alpha: 0.35),
+                                    ),
                                   ),
                                   child: Row(
                                     children: const [
-                                      Icon(Icons.mic_rounded, size: 12, color: Color(0xFF8B5CF6)),
+                                      Icon(
+                                        Icons.mic_rounded,
+                                        size: 12,
+                                        color: Color(0xFF8B5CF6),
+                                      ),
                                       SizedBox(width: 4),
-                                      Text('Voice Input', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF8B5CF6))),
+                                      Text(
+                                        'Voice Input',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFF8B5CF6),
+                                        ),
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -2565,7 +3137,8 @@ class _TasksViewState extends State<TasksView> {
                           const SizedBox(height: 6),
                           _buildDarkTextField(
                             controller: descCtrl,
-                            hintText: 'Add details, speak, or record voice note...',
+                            hintText:
+                                'Add details, speak, or record voice note...',
                             maxLines: 3,
                           ),
                           const SizedBox(height: 14),
@@ -2577,23 +3150,39 @@ class _TasksViewState extends State<TasksView> {
                             decoration: BoxDecoration(
                               color: CeladonColors.inputBackground,
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: CeladonColors.inputBorder),
+                              border: Border.all(
+                                color: CeladonColors.inputBorder,
+                              ),
                             ),
                             child: DropdownButtonHideUnderline(
                               child: DropdownButton<String>(
                                 value: selectedAssignee,
                                 dropdownColor: CeladonColors.cardBackground,
-                                icon: const Icon(Icons.keyboard_arrow_down_rounded, color: CeladonColors.textMuted),
+                                icon: const Icon(
+                                  Icons.keyboard_arrow_down_rounded,
+                                  color: CeladonColors.textMuted,
+                                ),
                                 isExpanded: true,
                                 items: _assignableEmployees.map((emp) {
-                                  final uId = emp.userId.isNotEmpty ? emp.userId : emp.id;
-                                  final name = emp.name.isNotEmpty ? emp.name : emp.username;
+                                  final uId = emp.userId.isNotEmpty
+                                      ? emp.userId
+                                      : emp.id;
+                                  final name = emp.name.isNotEmpty
+                                      ? emp.name
+                                      : emp.username;
                                   return DropdownMenuItem<String>(
                                     value: uId,
-                                    child: Text('$name ($uId)', style: const TextStyle(color: CeladonColors.textPrimary, fontSize: 13)),
+                                    child: Text(
+                                      '$name ($uId)',
+                                      style: const TextStyle(
+                                        color: CeladonColors.textPrimary,
+                                        fontSize: 13,
+                                      ),
+                                    ),
                                   );
                                 }).toList(),
-                                onChanged: (val) => setModalState(() => selectedAssignee = val),
+                                onChanged: (val) =>
+                                    setModalState(() => selectedAssignee = val),
                               ),
                             ),
                           ),
@@ -2602,20 +3191,31 @@ class _TasksViewState extends State<TasksView> {
                           // 4. Priority
                           _buildInputLabel('Priority'),
                           Row(
-                            children: ['low', 'medium', 'high', 'urgent'].map((p) {
+                            children: ['low', 'medium', 'high', 'urgent'].map((
+                              p,
+                            ) {
                               final isSel = priority == p;
                               return Expanded(
                                 child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 2,
+                                  ),
                                   child: InkWell(
-                                    onTap: () => setModalState(() => priority = p),
+                                    onTap: () =>
+                                        setModalState(() => priority = p),
                                     child: Container(
-                                      padding: const EdgeInsets.symmetric(vertical: 8),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 8,
+                                      ),
                                       decoration: BoxDecoration(
-                                        color: isSel ? CeladonColors.primary : CeladonColors.inputBackground,
+                                        color: isSel
+                                            ? CeladonColors.primary
+                                            : CeladonColors.inputBackground,
                                         borderRadius: BorderRadius.circular(10),
                                         border: Border.all(
-                                          color: isSel ? CeladonColors.primary : CeladonColors.border,
+                                          color: isSel
+                                              ? CeladonColors.primary
+                                              : CeladonColors.border,
                                         ),
                                       ),
                                       alignment: Alignment.center,
@@ -2623,8 +3223,12 @@ class _TasksViewState extends State<TasksView> {
                                         p[0].toUpperCase() + p.substring(1),
                                         style: TextStyle(
                                           fontSize: 11,
-                                          fontWeight: isSel ? FontWeight.w800 : FontWeight.w600,
-                                          color: isSel ? Colors.white : CeladonColors.textSecondary,
+                                          fontWeight: isSel
+                                              ? FontWeight.w800
+                                              : FontWeight.w600,
+                                          color: isSel
+                                              ? Colors.white
+                                              : CeladonColors.textSecondary,
                                         ),
                                       ),
                                     ),
@@ -2644,20 +3248,33 @@ class _TasksViewState extends State<TasksView> {
                                 child: TextFormField(
                                   initialValue: '$durationVal',
                                   keyboardType: TextInputType.number,
-                                  style: const TextStyle(color: CeladonColors.textPrimary, fontSize: 13),
+                                  style: const TextStyle(
+                                    color: CeladonColors.textPrimary,
+                                    fontSize: 13,
+                                  ),
                                   decoration: InputDecoration(
                                     filled: true,
                                     fillColor: CeladonColors.inputBackground,
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
                                     enabledBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(12),
-                                      borderSide: const BorderSide(color: CeladonColors.inputBorder),
+                                      borderSide: const BorderSide(
+                                        color: CeladonColors.inputBorder,
+                                      ),
                                     ),
                                     focusedBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(12),
-                                      borderSide: const BorderSide(color: CeladonColors.inputFocusBorder, width: 1.5),
+                                      borderSide: const BorderSide(
+                                        color: CeladonColors.inputFocusBorder,
+                                        width: 1.5,
+                                      ),
                                     ),
-                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 12,
+                                    ),
                                   ),
                                   onChanged: (val) {
                                     final numVal = num.tryParse(val) ?? 1;
@@ -2670,22 +3287,57 @@ class _TasksViewState extends State<TasksView> {
                               Expanded(
                                 flex: 3,
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: CeladonColors.inputBackground,
                                     borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: CeladonColors.inputBorder),
+                                    border: Border.all(
+                                      color: CeladonColors.inputBorder,
+                                    ),
                                   ),
                                   child: DropdownButtonHideUnderline(
                                     child: DropdownButton<String>(
                                       value: durationUnit,
-                                      dropdownColor: CeladonColors.cardBackground,
-                                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: CeladonColors.textMuted),
+                                      dropdownColor:
+                                          CeladonColors.cardBackground,
+                                      icon: const Icon(
+                                        Icons.keyboard_arrow_down_rounded,
+                                        color: CeladonColors.textMuted,
+                                      ),
                                       isExpanded: true,
                                       items: const [
-                                        DropdownMenuItem(value: 'hours', child: Text('Hours', style: TextStyle(color: CeladonColors.textPrimary, fontSize: 13))),
-                                        DropdownMenuItem(value: 'days', child: Text('Days', style: TextStyle(color: CeladonColors.textPrimary, fontSize: 13))),
-                                        DropdownMenuItem(value: 'minutes', child: Text('Minutes', style: TextStyle(color: CeladonColors.textPrimary, fontSize: 13))),
+                                        DropdownMenuItem(
+                                          value: 'hours',
+                                          child: Text(
+                                            'Hours',
+                                            style: TextStyle(
+                                              color: CeladonColors.textPrimary,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: 'days',
+                                          child: Text(
+                                            'Days',
+                                            style: TextStyle(
+                                              color: CeladonColors.textPrimary,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: 'minutes',
+                                          child: Text(
+                                            'Minutes',
+                                            style: TextStyle(
+                                              color: CeladonColors.textPrimary,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ),
                                       ],
                                       onChanged: (val) {
                                         if (val != null) {
@@ -2715,26 +3367,50 @@ class _TasksViewState extends State<TasksView> {
                                         final picked = await showDatePicker(
                                           context: context,
                                           initialDate: now,
-                                          firstDate: now.subtract(const Duration(days: 30)),
-                                          lastDate: now.add(const Duration(days: 365)),
+                                          firstDate: now.subtract(
+                                            const Duration(days: 30),
+                                          ),
+                                          lastDate: now.add(
+                                            const Duration(days: 365),
+                                          ),
                                         );
                                         if (picked != null) {
-                                          startDate = picked.toIso8601String().split('T')[0];
+                                          startDate = picked
+                                              .toIso8601String()
+                                              .split('T')[0];
                                           recalculateEnd();
                                         }
                                       },
                                       child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 12,
+                                        ),
                                         decoration: BoxDecoration(
                                           color: CeladonColors.inputBackground,
-                                          borderRadius: BorderRadius.circular(12),
-                                          border: Border.all(color: CeladonColors.inputBorder),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          border: Border.all(
+                                            color: CeladonColors.inputBorder,
+                                          ),
                                         ),
                                         child: Row(
                                           children: [
-                                            const Icon(Icons.calendar_today_rounded, size: 14, color: CeladonColors.primary),
+                                            const Icon(
+                                              Icons.calendar_today_rounded,
+                                              size: 14,
+                                              color: CeladonColors.primary,
+                                            ),
                                             const SizedBox(width: 6),
-                                            Text(startDate, style: const TextStyle(fontSize: 12, color: CeladonColors.textPrimary)),
+                                            Text(
+                                              startDate,
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color:
+                                                    CeladonColors.textPrimary,
+                                              ),
+                                            ),
                                           ],
                                         ),
                                       ),
@@ -2747,24 +3423,40 @@ class _TasksViewState extends State<TasksView> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    _buildInputLabel('Auto Calculated End Date'),
+                                    _buildInputLabel(
+                                      'Auto Calculated End Date',
+                                    ),
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 12,
+                                      ),
                                       decoration: BoxDecoration(
                                         color: CeladonColors.lightGreen,
                                         borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(color: CeladonColors.primary.withValues(alpha: 0.35)),
+                                        border: Border.all(
+                                          color: CeladonColors.primary
+                                              .withValues(alpha: 0.35),
+                                        ),
                                       ),
                                       child: Row(
                                         children: [
-                                          const Icon(Icons.event_available_rounded, size: 14, color: CeladonColors.primary),
+                                          const Icon(
+                                            Icons.event_available_rounded,
+                                            size: 14,
+                                            color: CeladonColors.primary,
+                                          ),
                                           const SizedBox(width: 6),
                                           Expanded(
                                             child: Text(
                                               '$endDate ($dueTime)',
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: CeladonColors.primary),
+                                              style: const TextStyle(
+                                                fontSize: 11.5,
+                                                fontWeight: FontWeight.w700,
+                                                color: CeladonColors.primary,
+                                              ),
                                             ),
                                           ),
                                         ],
@@ -2789,13 +3481,21 @@ class _TasksViewState extends State<TasksView> {
                                 final title = titleCtrl.text.trim();
                                 if (title.isEmpty) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Please enter task title'), backgroundColor: CeladonColors.error),
+                                    const SnackBar(
+                                      content: Text('Please enter task title'),
+                                      backgroundColor: CeladonColors.error,
+                                    ),
                                   );
                                   return;
                                 }
                                 if (selectedAssignee == null) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Please select an assignee'), backgroundColor: CeladonColors.error),
+                                    const SnackBar(
+                                      content: Text(
+                                        'Please select an assignee',
+                                      ),
+                                      backgroundColor: CeladonColors.error,
+                                    ),
                                   );
                                   return;
                                 }
@@ -2820,21 +3520,28 @@ class _TasksViewState extends State<TasksView> {
                                 final messenger = ScaffoldMessenger.of(context);
                                 final nav = Navigator.of(ctx);
                                 try {
-                                  final created = await _taskService.createTask(newTask);
+                                  final created = await _taskService.createTask(
+                                    newTask,
+                                  );
                                   if (mounted) {
                                     setState(() => _tasks.insert(0, created));
                                     nav.pop();
                                     messenger.showSnackBar(
                                       SnackBar(
                                         backgroundColor: CeladonColors.primary,
-                                        content: Text('Task assigned to $selectedAssignee & notification sent!'),
+                                        content: Text(
+                                          'Task assigned to $selectedAssignee & notification sent!',
+                                        ),
                                       ),
                                     );
                                   }
                                 } catch (err) {
                                   if (mounted) {
                                     messenger.showSnackBar(
-                                      SnackBar(backgroundColor: CeladonColors.error, content: Text('Error: $err')),
+                                      SnackBar(
+                                        backgroundColor: CeladonColors.error,
+                                        content: Text('Error: $err'),
+                                      ),
                                     );
                                   }
                                 }
@@ -2842,9 +3549,18 @@ class _TasksViewState extends State<TasksView> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.transparent,
                                 shadowColor: Colors.transparent,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(25),
+                                ),
                               ),
-                              child: const Text('Create & Assign Task', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white)),
+                              child: const Text(
+                                'Create & Assign Task',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                ),
+                              ),
                             ),
                           ),
                         ],
@@ -2861,7 +3577,10 @@ class _TasksViewState extends State<TasksView> {
   }
 
   // Voice Description Modal (Voice-to-Text Dictation & Voice Note Recording)
-  void _openVoiceDescriptionModal(TextEditingController descCtrl, VoidCallback onUpdate) {
+  void _openVoiceDescriptionModal(
+    TextEditingController descCtrl,
+    VoidCallback onUpdate,
+  ) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -2877,7 +3596,9 @@ class _TasksViewState extends State<TasksView> {
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: CeladonColors.cardBackground,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(24),
+                ),
                 border: Border.all(color: CeladonColors.border, width: 1.2),
               ),
               child: Column(
@@ -2889,13 +3610,28 @@ class _TasksViewState extends State<TasksView> {
                     children: [
                       Row(
                         children: const [
-                          Icon(Icons.mic_rounded, color: Color(0xFF8B5CF6), size: 20),
+                          Icon(
+                            Icons.mic_rounded,
+                            color: Color(0xFF8B5CF6),
+                            size: 20,
+                          ),
                           SizedBox(width: 8),
-                          Text('Voice Description Assistant', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary)),
+                          Text(
+                            'Voice Description Assistant',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: CeladonColors.textPrimary,
+                            ),
+                          ),
                         ],
                       ),
                       IconButton(
-                        icon: const Icon(Icons.close_rounded, color: CeladonColors.textMuted, size: 20),
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: CeladonColors.textMuted,
+                          size: 20,
+                        ),
                         onPressed: () => Navigator.pop(ctx),
                       ),
                     ],
@@ -2912,12 +3648,27 @@ class _TasksViewState extends State<TasksView> {
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 8),
                             decoration: BoxDecoration(
-                              color: voiceTab == 0 ? const Color(0xFF8B5CF6) : CeladonColors.inputBackground,
+                              color: voiceTab == 0
+                                  ? const Color(0xFF8B5CF6)
+                                  : CeladonColors.inputBackground,
                               borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: voiceTab == 0 ? const Color(0xFF8B5CF6) : CeladonColors.border),
+                              border: Border.all(
+                                color: voiceTab == 0
+                                    ? const Color(0xFF8B5CF6)
+                                    : CeladonColors.border,
+                              ),
                             ),
                             alignment: Alignment.center,
-                            child: Text('Voice-to-Text', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: voiceTab == 0 ? Colors.white : CeladonColors.textSecondary)),
+                            child: Text(
+                              'Voice-to-Text',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: voiceTab == 0
+                                    ? Colors.white
+                                    : CeladonColors.textSecondary,
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -2928,12 +3679,27 @@ class _TasksViewState extends State<TasksView> {
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 8),
                             decoration: BoxDecoration(
-                              color: voiceTab == 1 ? const Color(0xFF8B5CF6) : CeladonColors.inputBackground,
+                              color: voiceTab == 1
+                                  ? const Color(0xFF8B5CF6)
+                                  : CeladonColors.inputBackground,
                               borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: voiceTab == 1 ? const Color(0xFF8B5CF6) : CeladonColors.border),
+                              border: Border.all(
+                                color: voiceTab == 1
+                                    ? const Color(0xFF8B5CF6)
+                                    : CeladonColors.border,
+                              ),
                             ),
                             alignment: Alignment.center,
-                            child: Text('Record Voice Note', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: voiceTab == 1 ? Colors.white : CeladonColors.textSecondary)),
+                            child: Text(
+                              'Record Voice Note',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: voiceTab == 1
+                                    ? Colors.white
+                                    : CeladonColors.textSecondary,
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -2959,16 +3725,24 @@ class _TasksViewState extends State<TasksView> {
                           height: 64,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: isSimulatingSpeech ? CeladonColors.error : const Color(0xFF8B5CF6),
+                            color: isSimulatingSpeech
+                                ? CeladonColors.error
+                                : const Color(0xFF8B5CF6),
                             boxShadow: [
                               BoxShadow(
-                                color: (isSimulatingSpeech ? CeladonColors.error : const Color(0xFF8B5CF6)).withValues(alpha: 0.35),
+                                color:
+                                    (isSimulatingSpeech
+                                            ? CeladonColors.error
+                                            : const Color(0xFF8B5CF6))
+                                        .withValues(alpha: 0.35),
                                 blurRadius: 16,
                               ),
                             ],
                           ),
                           child: Icon(
-                            isSimulatingSpeech ? Icons.stop_rounded : Icons.mic_rounded,
+                            isSimulatingSpeech
+                                ? Icons.stop_rounded
+                                : Icons.mic_rounded,
                             size: 32,
                             color: Colors.white,
                           ),
@@ -2978,8 +3752,13 @@ class _TasksViewState extends State<TasksView> {
                     const SizedBox(height: 10),
                     Center(
                       child: Text(
-                        isSimulatingSpeech ? 'Listening... Tap to stop' : 'Tap mic to dictate description',
-                        style: const TextStyle(fontSize: 12, color: CeladonColors.textSecondary),
+                        isSimulatingSpeech
+                            ? 'Listening... Tap to stop'
+                            : 'Tap mic to dictate description',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: CeladonColors.textSecondary,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -2991,13 +3770,20 @@ class _TasksViewState extends State<TasksView> {
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: CeladonColors.border),
                         ),
-                        child: Text(recognizedText, style: const TextStyle(color: CeladonColors.textPrimary, fontSize: 13)),
+                        child: Text(
+                          recognizedText,
+                          style: const TextStyle(
+                            color: CeladonColors.textPrimary,
+                            fontSize: 13,
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 12),
                       ElevatedButton(
                         onPressed: () {
                           if (descCtrl.text.isNotEmpty) {
-                            descCtrl.text = '${descCtrl.text.trim()} $recognizedText';
+                            descCtrl.text =
+                                '${descCtrl.text.trim()} $recognizedText';
                           } else {
                             descCtrl.text = recognizedText;
                           }
@@ -3006,9 +3792,17 @@ class _TasksViewState extends State<TasksView> {
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF8B5CF6),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
-                        child: const Text('Insert Spoken Text', style: TextStyle(fontWeight: FontWeight.w700, color: Colors.white)),
+                        child: const Text(
+                          'Insert Spoken Text',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
                       ),
                     ],
                   ] else ...[
@@ -3021,26 +3815,48 @@ class _TasksViewState extends State<TasksView> {
                           shape: BoxShape.circle,
                           color: Color(0xFF8B5CF6),
                         ),
-                        child: const Icon(Icons.radio_button_checked_rounded, color: Colors.white, size: 30),
+                        child: const Icon(
+                          Icons.radio_button_checked_rounded,
+                          color: Colors.white,
+                          size: 30,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
                     const Center(
-                      child: Text('00:15 - Voice Note Ready', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: CeladonColors.textPrimary)),
+                      child: Text(
+                        '00:15 - Voice Note Ready',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: CeladonColors.textPrimary,
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 14),
                     ElevatedButton(
                       onPressed: () {
-                        final tag = '[voice_note:recorded_audio_${DateTime.now().millisecondsSinceEpoch}.m4a]';
-                        descCtrl.text = descCtrl.text.isNotEmpty ? '${descCtrl.text.trim()}\n$tag' : tag;
+                        final tag =
+                            '[voice_note:recorded_audio_${DateTime.now().millisecondsSinceEpoch}.m4a]';
+                        descCtrl.text = descCtrl.text.isNotEmpty
+                            ? '${descCtrl.text.trim()}\n$tag'
+                            : tag;
                         onUpdate();
                         Navigator.pop(ctx);
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF8B5CF6),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
-                      child: const Text('Attach Voice Note Audio', style: TextStyle(fontWeight: FontWeight.w700, color: Colors.white)),
+                      child: const Text(
+                        'Attach Voice Note Audio',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
                   ],
                 ],
@@ -3082,14 +3898,22 @@ class _TasksViewState extends State<TasksView> {
                   },
                   child: const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 4),
-                    child: Icon(Icons.close_rounded, size: 18, color: Color(0xFFBACCC3)),
+                    child: Icon(
+                      Icons.close_rounded,
+                      size: 18,
+                      color: Color(0xFFBACCC3),
+                    ),
                   ),
                 ),
               GestureDetector(
                 onTap: _showProjectFilterSheet,
                 child: const Padding(
                   padding: EdgeInsets.only(left: 4, right: 2),
-                  child: Icon(Icons.filter_list_rounded, size: 20, color: Color(0xFFBACCC3)),
+                  child: Icon(
+                    Icons.filter_list_rounded,
+                    size: 20,
+                    color: Color(0xFFBACCC3),
+                  ),
                 ),
               ),
             ],
@@ -3142,7 +3966,11 @@ class _TasksViewState extends State<TasksView> {
                   color: CeladonColors.lightGreen,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.folder_copy_rounded, color: CeladonColors.primary, size: 20),
+                child: const Icon(
+                  Icons.folder_copy_rounded,
+                  color: CeladonColors.primary,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -3156,7 +3984,11 @@ class _TasksViewState extends State<TasksView> {
                   ),
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded, color: CeladonColors.textMuted, size: 22),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: CeladonColors.textMuted,
+                size: 22,
+              ),
             ],
           ),
         ),
@@ -3166,7 +3998,9 @@ class _TasksViewState extends State<TasksView> {
 
   /// Full Project Details View with Members, Search Box, and Project Tasks
   Widget _buildProjectDetailView(ProjectModel proj) {
-    final allProjectTasks = _tasks.where((t) => t.projectId == proj.id).toList();
+    final allProjectTasks = _tasks
+        .where((t) => t.projectId == proj.id)
+        .toList();
 
     // Filter by query and filter sheet selection
     final query = _projectTaskSearchController.text.trim().toLowerCase();
@@ -3177,8 +4011,11 @@ class _TasksViewState extends State<TasksView> {
 
       if (query.isNotEmpty) {
         final titleMatches = t.title.toLowerCase().contains(query);
-        final descMatches = t.description?.toLowerCase().contains(query) ?? false;
-        final assigneeMatches = _getAssigneeDisplayName(t.assignedTo).toLowerCase().contains(query);
+        final descMatches =
+            t.description?.toLowerCase().contains(query) ?? false;
+        final assigneeMatches = _getAssigneeDisplayName(t.assignedTo)
+            .toLowerCase()
+            .contains(query);
         return titleMatches || descMatches || assigneeMatches;
       }
       return true;
@@ -3201,14 +4038,22 @@ class _TasksViewState extends State<TasksView> {
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: CeladonColors.border),
                 ),
-                child: const Icon(Icons.arrow_back_rounded, color: CeladonColors.textPrimary, size: 20),
+                child: const Icon(
+                  Icons.arrow_back_rounded,
+                  color: CeladonColors.textPrimary,
+                  size: 20,
+                ),
               ),
             ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 proj.name,
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: CeladonColors.textPrimary,
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -3221,7 +4066,11 @@ class _TasksViewState extends State<TasksView> {
               ),
               child: Text(
                 proj.displayStatus,
-                style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: CeladonColors.primary),
+                style: const TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  color: CeladonColors.primary,
+                ),
               ),
             ),
           ],
@@ -3250,17 +4099,30 @@ class _TasksViewState extends State<TasksView> {
               if (proj.description.isNotEmpty) ...[
                 Text(
                   proj.description,
-                  style: const TextStyle(fontSize: 12.5, color: CeladonColors.textSecondary),
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    color: CeladonColors.textSecondary,
+                  ),
                 ),
                 const SizedBox(height: 10),
               ],
               Row(
                 children: [
-                  const Icon(Icons.calendar_today_rounded, size: 13, color: CeladonColors.primary),
+                  const Icon(
+                    Icons.calendar_today_rounded,
+                    size: 13,
+                    color: CeladonColors.primary,
+                  ),
                   const SizedBox(width: 5),
                   Text(
-                    proj.dueDate != null ? 'Due: ${proj.dueDate}' : 'Ongoing project',
-                    style: const TextStyle(fontSize: 11.5, color: CeladonColors.textSecondary, fontWeight: FontWeight.w600),
+                    proj.dueDate != null
+                        ? 'Due: ${proj.dueDate}'
+                        : 'Ongoing project',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: CeladonColors.textSecondary,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   const Spacer(),
                   _buildPriorityBadge(proj.priority),
@@ -3275,27 +4137,51 @@ class _TasksViewState extends State<TasksView> {
         // 3. Team Members Section
         const Text(
           'Project Members',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary),
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+            color: CeladonColors.textPrimary,
+          ),
         ),
         const SizedBox(height: 8),
         if (proj.assignedEmployees.isEmpty)
-          const Text('No members assigned yet.', style: TextStyle(fontSize: 11.5, color: CeladonColors.textSecondary))
+          const Text(
+            'No members assigned yet.',
+            style: TextStyle(
+              fontSize: 11.5,
+              color: CeladonColors.textSecondary,
+            ),
+          )
         else
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: proj.assignedEmployees.map((empMap) {
-                final empId = (empMap['userId'] ?? empMap['id'] ?? empMap['_id'] ?? '').toString();
-                final rawName = (empMap['name'] ?? empMap['username'] ?? '').toString();
-                final emp = _resolveEmployee(empId.isNotEmpty ? empId : rawName);
-                final name = rawName.isNotEmpty ? rawName : _getAssigneeDisplayName(empId);
+                final empId =
+                    (empMap['userId'] ?? empMap['id'] ?? empMap['_id'] ?? '')
+                        .toString();
+                final rawName = (empMap['name'] ?? empMap['username'] ?? '')
+                    .toString();
+                final emp = _resolveEmployee(
+                  empId.isNotEmpty ? empId : rawName,
+                );
+                final name = rawName.isNotEmpty
+                    ? rawName
+                    : _getAssigneeDisplayName(empId);
                 return Padding(
                   padding: const EdgeInsets.only(right: 12),
                   child: Row(
                     children: [
                       _buildEmployeeAvatarMini(emp, name),
                       const SizedBox(width: 6),
-                      Text(name, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: CeladonColors.textPrimary)),
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: CeladonColors.textPrimary,
+                        ),
+                      ),
                     ],
                   ),
                 );
@@ -3322,7 +4208,11 @@ class _TasksViewState extends State<TasksView> {
                   },
                   child: const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 4),
-                    child: Icon(Icons.close_rounded, size: 18, color: Color(0xFFBACCC3)),
+                    child: Icon(
+                      Icons.close_rounded,
+                      size: 18,
+                      color: Color(0xFFBACCC3),
+                    ),
                   ),
                 ),
               GestureDetector(
@@ -3373,12 +4263,20 @@ class _TasksViewState extends State<TasksView> {
             ),
             child: const Column(
               children: [
-                Icon(Icons.task_alt_rounded, size: 36, color: Color(0xFF64748B)),
+                Icon(
+                  Icons.task_alt_rounded,
+                  size: 36,
+                  color: Color(0xFF64748B),
+                ),
                 SizedBox(height: 8),
                 Text(
                   'No tasks in this category for this project.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Color(0xFF475569), fontSize: 13, fontWeight: FontWeight.w500),
+                  style: TextStyle(
+                    color: Color(0xFF475569),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ],
             ),
@@ -3406,71 +4304,77 @@ class _TasksViewState extends State<TasksView> {
         decoration: BoxDecoration(
           color: CeladonColors.inputBackground,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: CeladonColors.inputBorder,
-            width: 1.0,
-          ),
+          border: Border.all(color: CeladonColors.inputBorder, width: 1.0),
         ),
-          child: Row(
-            children: [
-              Icon(prefixIcon, color: CeladonColors.textMuted, size: 20),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Theme(
-                  data: Theme.of(context).copyWith(
-                    inputDecorationTheme: const InputDecorationTheme(
-                      filled: false,
-                      fillColor: Colors.transparent,
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      disabledBorder: InputBorder.none,
-                      errorBorder: InputBorder.none,
-                      focusedErrorBorder: InputBorder.none,
-                    ),
+        child: Row(
+          children: [
+            Icon(prefixIcon, color: CeladonColors.textMuted, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Theme(
+                data: Theme.of(context).copyWith(
+                  inputDecorationTheme: const InputDecorationTheme(
+                    filled: false,
+                    fillColor: Colors.transparent,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    errorBorder: InputBorder.none,
+                    focusedErrorBorder: InputBorder.none,
                   ),
-                  child: TextField(
-                    controller: controller,
-                    cursorColor: CeladonColors.primary,
-                    style: const TextStyle(color: CeladonColors.textPrimary, fontSize: 13.5, fontWeight: FontWeight.w600),
-                    decoration: InputDecoration(
-                      isDense: true,
-                      filled: false,
-                      fillColor: Colors.transparent,
-                      hintText: hintText,
-                      hintStyle: const TextStyle(
-                        color: CeladonColors.textPlaceholder,
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      disabledBorder: InputBorder.none,
-                      errorBorder: InputBorder.none,
-                      focusedErrorBorder: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    onChanged: onChanged,
+                ),
+                child: TextField(
+                  controller: controller,
+                  cursorColor: CeladonColors.primary,
+                  style: const TextStyle(
+                    color: CeladonColors.textPrimary,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
                   ),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    filled: false,
+                    fillColor: Colors.transparent,
+                    hintText: hintText,
+                    hintStyle: const TextStyle(
+                      color: CeladonColors.textPlaceholder,
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    errorBorder: InputBorder.none,
+                    focusedErrorBorder: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  onChanged: onChanged,
                 ),
               ),
-              if (suffixWidget != null)
-                suffixWidget
-              else if (controller.text.isNotEmpty)
-                GestureDetector(
-                  onTap: onClear ??
-                      () {
-                        controller.clear();
-                        onChanged('');
-                      },
-                  child: const Icon(Icons.close_rounded, size: 18, color: CeladonColors.textMuted),
+            ),
+            if (suffixWidget != null)
+              suffixWidget
+            else if (controller.text.isNotEmpty)
+              GestureDetector(
+                onTap:
+                    onClear ??
+                    () {
+                      controller.clear();
+                      onChanged('');
+                    },
+                child: const Icon(
+                  Icons.close_rounded,
+                  size: 18,
+                  color: CeladonColors.textMuted,
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
-      );
-    }
+      ),
+    );
+  }
 
   void _showProjectFilterSheet() {
     showModalBottomSheet(
@@ -3479,12 +4383,31 @@ class _TasksViewState extends State<TasksView> {
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         final totalCount = _projects.length;
-        final activeCount = _projects.where((p) => p.status.toLowerCase() != 'completed').length;
-        final completedCount = _projects.where((p) => p.status.toLowerCase() == 'completed').length;
+        final activeCount = _projects
+            .where((p) => p.status.toLowerCase() != 'completed')
+            .length;
+        final completedCount = _projects
+            .where((p) => p.status.toLowerCase() == 'completed')
+            .length;
         final options = [
-          {'label': 'All Projects', 'count': totalCount, 'color': CeladonColors.primary, 'icon': Icons.folder_rounded},
-          {'label': 'Active Projects', 'count': activeCount, 'color': CeladonColors.info, 'icon': Icons.pending_actions_rounded},
-          {'label': 'Completed Projects', 'count': completedCount, 'color': CeladonColors.primary, 'icon': Icons.check_circle_outline_rounded},
+          {
+            'label': 'All Projects',
+            'count': totalCount,
+            'color': CeladonColors.primary,
+            'icon': Icons.folder_rounded,
+          },
+          {
+            'label': 'Active Projects',
+            'count': activeCount,
+            'color': CeladonColors.info,
+            'icon': Icons.pending_actions_rounded,
+          },
+          {
+            'label': 'Completed Projects',
+            'count': completedCount,
+            'color': CeladonColors.primary,
+            'icon': Icons.check_circle_outline_rounded,
+          },
         ];
 
         final media = MediaQuery.of(ctx);
@@ -3495,7 +4418,9 @@ class _TasksViewState extends State<TasksView> {
           child: Container(
             decoration: BoxDecoration(
               color: CeladonColors.cardBackground,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(22),
+              ),
               border: Border.all(color: CeladonColors.border, width: 1.0),
             ),
             child: SafeArea(
@@ -3514,10 +4439,18 @@ class _TasksViewState extends State<TasksView> {
                         children: [
                           const Text(
                             'Filter Projects',
-                            style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary),
+                            style: TextStyle(
+                              fontSize: 16.5,
+                              fontWeight: FontWeight.w800,
+                              color: CeladonColors.textPrimary,
+                            ),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.close_rounded, color: CeladonColors.textMuted, size: 20),
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              color: CeladonColors.textMuted,
+                              size: 20,
+                            ),
                             onPressed: () => Navigator.pop(ctx),
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(),
@@ -3540,32 +4473,59 @@ class _TasksViewState extends State<TasksView> {
                             },
                             borderRadius: BorderRadius.circular(12),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 10,
+                              ),
                               decoration: BoxDecoration(
                                 color: CeladonColors.searchBackground,
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: CeladonColors.border, width: 0.8),
+                                border: Border.all(
+                                  color: CeladonColors.border,
+                                  width: 0.8,
+                                ),
                               ),
                               child: Row(
                                 children: [
                                   Container(
                                     padding: const EdgeInsets.all(7),
-                                    decoration: BoxDecoration(color: optColor.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
-                                    child: Icon(icon, color: optColor, size: 18),
+                                    decoration: BoxDecoration(
+                                      color: optColor.withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Icon(
+                                      icon,
+                                      color: optColor,
+                                      size: 18,
+                                    ),
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Text(
                                       opt['label'] as String,
-                                      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: CeladonColors.textPrimary),
+                                      style: const TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: CeladonColors.textPrimary,
+                                      ),
                                     ),
                                   ),
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                    decoration: BoxDecoration(color: optColor.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: optColor.withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
                                     child: Text(
                                       '$count',
-                                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: optColor),
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: optColor,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -3592,10 +4552,30 @@ class _TasksViewState extends State<TasksView> {
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         final options = [
-          {'label': 'All Tasks', 'idx': 0, 'color': CeladonColors.primary, 'icon': Icons.assignment_rounded},
-          {'label': 'Pending', 'idx': 1, 'color': CeladonColors.info, 'icon': Icons.schedule_rounded},
-          {'label': 'Completed', 'idx': 2, 'color': CeladonColors.primary, 'icon': Icons.check_circle_outline_rounded},
-          {'label': 'Incomplete', 'idx': 3, 'color': CeladonColors.error, 'icon': Icons.cancel_outlined},
+          {
+            'label': 'All Tasks',
+            'idx': 0,
+            'color': CeladonColors.primary,
+            'icon': Icons.assignment_rounded,
+          },
+          {
+            'label': 'Pending',
+            'idx': 1,
+            'color': CeladonColors.info,
+            'icon': Icons.schedule_rounded,
+          },
+          {
+            'label': 'Completed',
+            'idx': 2,
+            'color': CeladonColors.primary,
+            'icon': Icons.check_circle_outline_rounded,
+          },
+          {
+            'label': 'Incomplete',
+            'idx': 3,
+            'color': CeladonColors.error,
+            'icon': Icons.cancel_outlined,
+          },
         ];
 
         final media = MediaQuery.of(ctx);
@@ -3606,7 +4586,9 @@ class _TasksViewState extends State<TasksView> {
           child: Container(
             decoration: BoxDecoration(
               color: CeladonColors.cardBackground,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(22),
+              ),
               border: Border.all(color: CeladonColors.border, width: 1.0),
             ),
             child: SafeArea(
@@ -3618,80 +4600,110 @@ class _TasksViewState extends State<TasksView> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Filter Project Tasks',
-                        style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close_rounded, color: CeladonColors.textMuted, size: 20),
-                        onPressed: () => Navigator.pop(ctx),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  const Divider(color: CeladonColors.divider, height: 1),
-                  const SizedBox(height: 8),
-                  ...options.map((opt) {
-                    final idx = opt['idx'] as int;
-                    final isSelected = _selectedProjectTaskFilter == idx;
-                    final optColor = opt['color'] as Color;
-                    final icon = opt['icon'] as IconData;
-
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: InkWell(
-                        onTap: () {
-                          setState(() => _selectedProjectTaskFilter = idx);
-                          Navigator.pop(ctx);
-                        },
-                        borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: isSelected ? optColor.withValues(alpha: 0.12) : CeladonColors.searchBackground,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: isSelected ? optColor : CeladonColors.border, width: isSelected ? 1.5 : 0.8),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(7),
-                                decoration: BoxDecoration(color: optColor.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
-                                child: Icon(icon, color: optColor, size: 18),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  opt['label'] as String,
-                                  style: TextStyle(
-                                    fontSize: 13.5,
-                                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                                    color: isSelected ? CeladonColors.textPrimary : CeladonColors.textSecondary,
-                                  ),
-                                ),
-                              ),
-                              if (isSelected) Icon(Icons.check_circle_rounded, color: optColor, size: 20),
-                            ],
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Filter Project Tasks',
+                          style: TextStyle(
+                            fontSize: 16.5,
+                            fontWeight: FontWeight.w800,
+                            color: CeladonColors.textPrimary,
                           ),
                         ),
-                      ),
-                    );
-                  }),
-                ],
+                        IconButton(
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            color: CeladonColors.textMuted,
+                            size: 20,
+                          ),
+                          onPressed: () => Navigator.pop(ctx),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    const Divider(color: CeladonColors.divider, height: 1),
+                    const SizedBox(height: 8),
+                    ...options.map((opt) {
+                      final idx = opt['idx'] as int;
+                      final isSelected = _selectedProjectTaskFilter == idx;
+                      final optColor = opt['color'] as Color;
+                      final icon = opt['icon'] as IconData;
+
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: InkWell(
+                          onTap: () {
+                            setState(() => _selectedProjectTaskFilter = idx);
+                            Navigator.pop(ctx);
+                          },
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? optColor.withValues(alpha: 0.12)
+                                  : CeladonColors.searchBackground,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isSelected
+                                    ? optColor
+                                    : CeladonColors.border,
+                                width: isSelected ? 1.5 : 0.8,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(7),
+                                  decoration: BoxDecoration(
+                                    color: optColor.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Icon(icon, color: optColor, size: 18),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    opt['label'] as String,
+                                    style: TextStyle(
+                                      fontSize: 13.5,
+                                      fontWeight: isSelected
+                                          ? FontWeight.w800
+                                          : FontWeight.w600,
+                                      color: isSelected
+                                          ? CeladonColors.textPrimary
+                                          : CeladonColors.textSecondary,
+                                    ),
+                                  ),
+                                ),
+                                if (isSelected)
+                                  Icon(
+                                    Icons.check_circle_rounded,
+                                    color: optColor,
+                                    size: 20,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-      );
-    },
-  );
-}
+        );
+      },
+    );
+  }
 
   // Create Project Sheet
   void _showCreateProjectSheet() {
@@ -3700,7 +4712,10 @@ class _TasksViewState extends State<TasksView> {
     String priority = 'medium';
     String status = 'active';
     String startDate = DateTime.now().toIso8601String().split('T')[0];
-    String dueDate = DateTime.now().add(const Duration(days: 14)).toIso8601String().split('T')[0];
+    String dueDate = DateTime.now()
+        .add(const Duration(days: 14))
+        .toIso8601String()
+        .split('T')[0];
     final Set<String> selectedEmployeeIds = {};
 
     showModalBottomSheet(
@@ -3716,7 +4731,9 @@ class _TasksViewState extends State<TasksView> {
             padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
             decoration: BoxDecoration(
               color: CeladonColors.cardBackground,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
               border: Border.all(color: CeladonColors.border, width: 1.2),
             ),
             child: SafeArea(
@@ -3730,8 +4747,21 @@ class _TasksViewState extends State<TasksView> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Create Enterprise Project', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary)),
-                        IconButton(icon: const Icon(Icons.close_rounded, color: CeladonColors.textMuted), onPressed: () => Navigator.pop(ctx)),
+                        const Text(
+                          'Create Enterprise Project',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            color: CeladonColors.textPrimary,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            color: CeladonColors.textMuted,
+                          ),
+                          onPressed: () => Navigator.pop(ctx),
+                        ),
                       ],
                     ),
                   ),
@@ -3743,31 +4773,62 @@ class _TasksViewState extends State<TasksView> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           _buildInputLabel('Project Name *'),
-                          _buildDarkTextField(controller: nameCtrl, hintText: 'e.g. NextGen Web Portal'),
+                          _buildDarkTextField(
+                            controller: nameCtrl,
+                            hintText: 'e.g. NextGen Web Portal',
+                          ),
                           const SizedBox(height: 14),
 
                           _buildInputLabel('Description'),
-                          _buildDarkTextField(controller: descCtrl, hintText: 'Project goals and deliverables...', maxLines: 2),
+                          _buildDarkTextField(
+                            controller: descCtrl,
+                            hintText: 'Project goals and deliverables...',
+                            maxLines: 2,
+                          ),
                           const SizedBox(height: 14),
 
                           _buildInputLabel('Priority'),
                           Row(
-                            children: ['low', 'medium', 'high', 'urgent'].map((p) {
+                            children: ['low', 'medium', 'high', 'urgent'].map((
+                              p,
+                            ) {
                               final isSel = priority == p;
                               return Expanded(
                                 child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 2,
+                                  ),
                                   child: InkWell(
-                                    onTap: () => setProjState(() => priority = p),
+                                    onTap: () =>
+                                        setProjState(() => priority = p),
                                     child: Container(
-                                      padding: const EdgeInsets.symmetric(vertical: 8),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 8,
+                                      ),
                                       decoration: BoxDecoration(
-                                        color: isSel ? CeladonColors.primary : CeladonColors.inputBackground,
+                                        color: isSel
+                                            ? CeladonColors.primary
+                                            : CeladonColors.inputBackground,
                                         borderRadius: BorderRadius.circular(10),
-                                        border: Border.all(color: isSel ? CeladonColors.primary : CeladonColors.border),
+                                        border: Border.all(
+                                          color: isSel
+                                              ? CeladonColors.primary
+                                              : CeladonColors.border,
+                                        ),
                                       ),
                                       alignment: Alignment.center,
-                                      child: Text(p[0].toUpperCase() + p.substring(1), style: TextStyle(fontSize: 11, fontWeight: isSel ? FontWeight.w800 : FontWeight.w600, color: isSel ? Colors.white : CeladonColors.textSecondary)),
+                                      child: Text(
+                                        p[0].toUpperCase() + p.substring(1),
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: isSel
+                                              ? FontWeight.w800
+                                              : FontWeight.w600,
+                                          color: isSel
+                                              ? Colors.white
+                                              : CeladonColors.textSecondary,
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -3780,20 +4841,36 @@ class _TasksViewState extends State<TasksView> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              _buildInputLabel('Team Members (${selectedEmployeeIds.length} selected)'),
+                              _buildInputLabel(
+                                'Team Members (${selectedEmployeeIds.length} selected)',
+                              ),
                               GestureDetector(
                                 onTap: () {
                                   setProjState(() {
-                                    if (selectedEmployeeIds.length == _assignableEmployees.length) {
+                                    if (selectedEmployeeIds.length ==
+                                        _assignableEmployees.length) {
                                       selectedEmployeeIds.clear();
                                     } else {
-                                      selectedEmployeeIds.addAll(_assignableEmployees.map((e) => e.userId.isNotEmpty ? e.userId : e.id));
+                                      selectedEmployeeIds.addAll(
+                                        _assignableEmployees.map(
+                                          (e) => e.userId.isNotEmpty
+                                              ? e.userId
+                                              : e.id,
+                                        ),
+                                      );
                                     }
                                   });
                                 },
                                 child: Text(
-                                  selectedEmployeeIds.length == _assignableEmployees.length ? 'Deselect All' : 'Select All',
-                                  style: const TextStyle(fontSize: 11, color: CeladonColors.primary, fontWeight: FontWeight.w700),
+                                  selectedEmployeeIds.length ==
+                                          _assignableEmployees.length
+                                      ? 'Deselect All'
+                                      : 'Select All',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: CeladonColors.primary,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
                             ],
@@ -3805,19 +4882,39 @@ class _TasksViewState extends State<TasksView> {
                             decoration: BoxDecoration(
                               color: CeladonColors.inputBackground,
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: CeladonColors.inputBorder),
+                              border: Border.all(
+                                color: CeladonColors.inputBorder,
+                              ),
                             ),
                             child: ListView(
                               children: _assignableEmployees.map((emp) {
-                                final uid = emp.userId.isNotEmpty ? emp.userId : emp.id;
-                                final isSelected = selectedEmployeeIds.contains(uid);
+                                final uid = emp.userId.isNotEmpty
+                                    ? emp.userId
+                                    : emp.id;
+                                final isSelected = selectedEmployeeIds.contains(
+                                  uid,
+                                );
                                 return CheckboxListTile(
                                   dense: true,
                                   value: isSelected,
                                   activeColor: CeladonColors.primary,
                                   checkColor: Colors.white,
-                                  title: Text(emp.name.isNotEmpty ? emp.name : emp.username, style: const TextStyle(fontSize: 12.5, color: CeladonColors.textPrimary)),
-                                  subtitle: Text(emp.role, style: const TextStyle(fontSize: 10.5, color: CeladonColors.textMuted)),
+                                  title: Text(
+                                    emp.name.isNotEmpty
+                                        ? emp.name
+                                        : emp.username,
+                                    style: const TextStyle(
+                                      fontSize: 12.5,
+                                      color: CeladonColors.textPrimary,
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    emp.role,
+                                    style: const TextStyle(
+                                      fontSize: 10.5,
+                                      color: CeladonColors.textMuted,
+                                    ),
+                                  ),
                                   onChanged: (val) {
                                     setProjState(() {
                                       if (val == true) {
@@ -3844,18 +4941,32 @@ class _TasksViewState extends State<TasksView> {
                               onPressed: () async {
                                 final name = nameCtrl.text.trim();
                                 if (name.isEmpty) {
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Project name is required')));
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Project name is required'),
+                                    ),
+                                  );
                                   return;
                                 }
 
                                 final assigned = _assignableEmployees
-                                    .where((e) => selectedEmployeeIds.contains(e.userId.isNotEmpty ? e.userId : e.id))
-                                    .map((e) => {
-                                          'userId': e.userId.isNotEmpty ? e.userId : e.id,
-                                          'name': e.name.isNotEmpty ? e.name : e.username,
-                                          'email': e.email,
-                                          'department': e.department,
-                                        })
+                                    .where(
+                                      (e) => selectedEmployeeIds.contains(
+                                        e.userId.isNotEmpty ? e.userId : e.id,
+                                      ),
+                                    )
+                                    .map(
+                                      (e) => {
+                                        'userId': e.userId.isNotEmpty
+                                            ? e.userId
+                                            : e.id,
+                                        'name': e.name.isNotEmpty
+                                            ? e.name
+                                            : e.username,
+                                        'email': e.email,
+                                        'department': e.department,
+                                      },
+                                    )
                                     .toList();
 
                                 final newProj = ProjectModel(
@@ -3872,26 +4983,45 @@ class _TasksViewState extends State<TasksView> {
                                 final messenger = ScaffoldMessenger.of(context);
                                 final nav = Navigator.of(ctx);
                                 try {
-                                  final created = await _taskService.createProject(newProj);
+                                  final created = await _taskService
+                                      .createProject(newProj);
                                   if (mounted) {
-                                    setState(() => _projects.insert(0, created));
+                                    setState(
+                                      () => _projects.insert(0, created),
+                                    );
                                     nav.pop();
                                     messenger.showSnackBar(
-                                      SnackBar(backgroundColor: CeladonColors.primary, content: Text('Project "${created.name}" created successfully')),
+                                      SnackBar(
+                                        backgroundColor: CeladonColors.primary,
+                                        content: Text(
+                                          'Project "${created.name}" created successfully',
+                                        ),
+                                      ),
                                     );
                                   }
                                 } catch (e) {
                                   if (mounted) {
-                                    messenger.showSnackBar(SnackBar(content: Text('Error: $e')));
+                                    messenger.showSnackBar(
+                                      SnackBar(content: Text('Error: $e')),
+                                    );
                                   }
                                 }
                               },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.transparent,
                                 shadowColor: Colors.transparent,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(25),
+                                ),
                               ),
-                              child: const Text('Create Project', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Colors.white)),
+                              child: const Text(
+                                'Create Project',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 14,
+                                  color: Colors.white,
+                                ),
+                              ),
                             ),
                           ),
                         ],
@@ -3915,7 +5045,11 @@ class _TasksViewState extends State<TasksView> {
       padding: const EdgeInsets.only(bottom: 5),
       child: Text(
         text,
-        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: CeladonColors.textSecondary),
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: CeladonColors.textSecondary,
+        ),
       ),
     );
   }
@@ -3929,12 +5063,19 @@ class _TasksViewState extends State<TasksView> {
       controller: controller,
       maxLines: maxLines,
       cursorColor: CeladonColors.primary,
-      style: const TextStyle(color: CeladonColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
+      style: const TextStyle(
+        color: CeladonColors.textPrimary,
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+      ),
       decoration: InputDecoration(
         filled: true,
         fillColor: CeladonColors.inputBackground,
         hintText: hintText,
-        hintStyle: const TextStyle(color: CeladonColors.textPlaceholder, fontSize: 12.5),
+        hintStyle: const TextStyle(
+          color: CeladonColors.textPlaceholder,
+          fontSize: 12.5,
+        ),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -3942,9 +5083,15 @@ class _TasksViewState extends State<TasksView> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: CeladonColors.inputFocusBorder, width: 1.5),
+          borderSide: const BorderSide(
+            color: CeladonColors.inputFocusBorder,
+            width: 1.5,
+          ),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
+        ),
       ),
     );
   }
@@ -3960,9 +5107,20 @@ class _TasksViewState extends State<TasksView> {
       ),
       child: Column(
         children: const [
-          Icon(Icons.assignment_turned_in_rounded, size: 44, color: CeladonColors.textMuted),
+          Icon(
+            Icons.assignment_turned_in_rounded,
+            size: 44,
+            color: CeladonColors.textMuted,
+          ),
           SizedBox(height: 10),
-          Text('No Tasks Found', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary)),
+          Text(
+            'No Tasks Found',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: CeladonColors.textPrimary,
+            ),
+          ),
           SizedBox(height: 4),
           Text(
             'Try adjusting your filter or search criteria, or click Add Task to create a new assignment.',
@@ -3985,9 +5143,20 @@ class _TasksViewState extends State<TasksView> {
       ),
       child: Column(
         children: const [
-          Icon(Icons.folder_open_rounded, size: 44, color: CeladonColors.textMuted),
+          Icon(
+            Icons.folder_open_rounded,
+            size: 44,
+            color: CeladonColors.textMuted,
+          ),
           SizedBox(height: 10),
-          Text('No Projects Found', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary)),
+          Text(
+            'No Projects Found',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: CeladonColors.textPrimary,
+            ),
+          ),
           SizedBox(height: 4),
           Text(
             'Create enterprise projects to organize multi-member teams and project tasks.',
@@ -4006,16 +5175,42 @@ class _TasksViewState extends State<TasksView> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline_rounded, size: 40, color: CeladonColors.error),
+            const Icon(
+              Icons.error_outline_rounded,
+              size: 40,
+              color: CeladonColors.error,
+            ),
             const SizedBox(height: 10),
-            Text('Error Loading Schedules', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary)),
+            Text(
+              'Error Loading Schedules',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: CeladonColors.textPrimary,
+              ),
+            ),
             const SizedBox(height: 4),
-            Text('$_errorMessage', textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: CeladonColors.textSecondary)),
+            Text(
+              '$_errorMessage',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 12,
+                color: CeladonColors.textSecondary,
+              ),
+            ),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _loadInitialData,
-              style: ElevatedButton.styleFrom(backgroundColor: CeladonColors.primary),
-              child: const Text('Try Again', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: CeladonColors.primary,
+              ),
+              child: const Text(
+                'Try Again',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
           ],
         ),

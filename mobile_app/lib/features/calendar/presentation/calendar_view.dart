@@ -530,8 +530,11 @@ class _CalendarViewState extends State<CalendarView> {
 
   Widget _buildHeaderBar() {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         IconButton(
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
           icon: const Icon(
             Icons.arrow_back_rounded,
             color: CeladonColors.textPrimary,
@@ -547,9 +550,11 @@ class _CalendarViewState extends State<CalendarView> {
                 }
               },
         ),
+        const SizedBox(width: 8),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: const [
               Text(
                 'Calendar',
@@ -562,13 +567,13 @@ class _CalendarViewState extends State<CalendarView> {
               ),
               SizedBox(height: 2),
               Text(
-                'View company holidays, work shifts & schedule timelines',
+                'View schedule, holidays and company events.',
                 style: TextStyle(
                   fontSize: 11.5,
                   color: CeladonColors.textMuted,
-                  height: 1.3,
+                  height: 1.25,
                 ),
-                maxLines: 2,
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
             ],

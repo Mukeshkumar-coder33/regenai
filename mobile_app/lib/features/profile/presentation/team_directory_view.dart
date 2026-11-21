@@ -102,7 +102,10 @@ class _TeamDirectoryViewState extends State<TeamDirectoryView> {
                 children: [
                   IconButton(
                     padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                    constraints: const BoxConstraints(
+                      minWidth: 40,
+                      minHeight: 40,
+                    ),
                     icon: const Icon(
                       Icons.arrow_back_rounded,
                       size: 22,

@@ -2497,8 +2497,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                 icon: const Icon(
                   Icons.arrow_back_rounded,
                   color: CeladonColors.textPrimary,
@@ -2507,9 +2510,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 tooltip: 'Back to Home',
                 onPressed: () => _navigateToCompanyPage('home'),
               ),
+              const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: const [
                     Text(
                       'Payroll',
@@ -2522,13 +2527,13 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     ),
                     SizedBox(height: 2),
                     Text(
-                      'Process salary disbursements, deductions & pay history',
+                      'Process salary disbursements and pay history.',
                       style: TextStyle(
                         fontSize: 11.5,
                         color: CeladonColors.textMuted,
-                        height: 1.3,
+                        height: 1.25,
                       ),
-                      maxLines: 2,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],
@@ -5278,8 +5283,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           const SizedBox(height: 14),
           // Header with + Add Employee Button
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                 icon: const Icon(
                   Icons.arrow_back_rounded,
                   color: CeladonColors.textPrimary,
@@ -5288,9 +5296,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 tooltip: 'Back to Home',
                 onPressed: () => _navigateToCompanyPage('home'),
               ),
+              const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: const [
                     Text(
                       'Employees',
@@ -5303,13 +5313,13 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     ),
                     SizedBox(height: 2),
                     Text(
-                      'Manage workforce members, assignments & directory details',
+                      'Manage team members and employee directory.',
                       style: TextStyle(
                         fontSize: 11.5,
                         color: CeladonColors.textMuted,
-                        height: 1.3,
+                        height: 1.25,
                       ),
-                      maxLines: 2,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],
@@ -6751,8 +6761,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                     icon: const Icon(
                       Icons.arrow_back_rounded,
                       color: CeladonColors.textPrimary,
@@ -6761,9 +6774,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     tooltip: 'Back to Home',
                     onPressed: () => _navigateToCompanyPage('home'),
                   ),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: const [
                         Text(
                           'Calendar',
@@ -6776,13 +6791,13 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                         ),
                         SizedBox(height: 2),
                         Text(
-                          'View company holidays, work shifts & schedule timelines',
+                          'View schedule, holidays and company events.',
                           style: TextStyle(
                             fontSize: 11.5,
                             color: CeladonColors.textMuted,
-                            height: 1.3,
+                            height: 1.25,
                           ),
-                          maxLines: 2,
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],
@@ -9361,8 +9376,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
           const SizedBox(height: 14),
           // Header
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                 icon: const Icon(
                   Icons.arrow_back_rounded,
                   color: CeladonColors.textPrimary,
@@ -9371,9 +9389,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 tooltip: 'Back to Home',
                 onPressed: () => _navigateToCompanyPage('home'),
               ),
+              const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: const [
                     Text(
                       'Leaves',
@@ -9386,13 +9406,13 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     ),
                     SizedBox(height: 2),
                     Text(
-                      'Review employee time-off requests, balances & approvals',
+                      'Review leave requests, balances and approvals.',
                       style: TextStyle(
                         fontSize: 11.5,
                         color: CeladonColors.textMuted,
-                        height: 1.3,
+                        height: 1.25,
                       ),
-                      maxLines: 2,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],
@@ -10308,8 +10328,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             IconButton(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
               icon: const Icon(
                 Icons.arrow_back_rounded,
                 color: CeladonColors.textPrimary,
@@ -10318,9 +10341,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               tooltip: 'Back to Home',
               onPressed: () => _navigateToCompanyPage('home'),
             ),
+            const SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: const [
                   Text(
                     'Company',
@@ -10333,13 +10358,13 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   ),
                   SizedBox(height: 2),
                   Text(
-                    'Manage company information & organizational policies',
+                    'Manage company information and policies.',
                     style: TextStyle(
                       fontSize: 11.5,
                       color: CeladonColors.textMuted,
-                      height: 1.3,
+                      height: 1.25,
                     ),
-                    maxLines: 2,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
@@ -10666,8 +10691,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             IconButton(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
               icon: const Icon(
                 Icons.arrow_back_rounded,
                 color: CeladonColors.textPrimary,
@@ -10676,9 +10704,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               tooltip: 'Back to Home',
               onPressed: () => _navigateToCompanyPage('home'),
             ),
+            const SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: const [
                   Text(
                     'Profile',
@@ -10691,13 +10721,13 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   ),
                   SizedBox(height: 2),
                   Text(
-                    'Update personal credentials, contact info & account security',
+                    'Manage personal credentials and account.',
                     style: TextStyle(
                       fontSize: 11.5,
                       color: CeladonColors.textMuted,
-                      height: 1.3,
+                      height: 1.25,
                     ),
-                    maxLines: 2,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
@@ -10902,8 +10932,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             IconButton(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
               icon: const Icon(
                 Icons.arrow_back_rounded,
                 color: CeladonColors.textPrimary,
@@ -10912,9 +10945,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               tooltip: 'Back to Home',
               onPressed: () => _navigateToCompanyPage('home'),
             ),
+            const SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: const [
                   Text(
                     'Settings',
@@ -10927,13 +10962,13 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   ),
                   SizedBox(height: 2),
                   Text(
-                    'Configure system preferences, navigation docks & notifications',
+                    'Configure system preferences and notifications.',
                     style: TextStyle(
                       fontSize: 11.5,
                       color: CeladonColors.textMuted,
-                      height: 1.3,
+                      height: 1.25,
                     ),
-                    maxLines: 2,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],

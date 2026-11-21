@@ -111,14 +111,17 @@ class _SettingsViewState extends State<SettingsView> {
       backgroundColor: CeladonColors.background,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // 1. Top Bar (Messenger Style)
               Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                     icon: const Icon(
                       Icons.arrow_back_rounded,
                       size: 22,
@@ -133,9 +136,11 @@ class _SettingsViewState extends State<SettingsView> {
                       }
                     },
                   ),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: const [
                         Text(
                           'Settings',
@@ -148,13 +153,13 @@ class _SettingsViewState extends State<SettingsView> {
                         ),
                         SizedBox(height: 2),
                         Text(
-                          'Manage account preferences, notifications & system configurations',
+                          'Manage account preferences and system settings.',
                           style: TextStyle(
                             fontSize: 11.5,
                             color: CeladonColors.textMuted,
-                            height: 1.3,
+                            height: 1.25,
                           ),
-                          maxLines: 2,
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],

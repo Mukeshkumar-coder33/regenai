@@ -18,14 +18,17 @@ class HelpSupportView extends StatelessWidget {
       backgroundColor: CeladonColors.background,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // 1. Top Bar
               Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                     icon: const Icon(
                       Icons.arrow_back_rounded,
                       size: 22,
@@ -40,9 +43,11 @@ class HelpSupportView extends StatelessWidget {
                       }
                     },
                   ),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: const [
                         Text(
                           'Support',
@@ -55,13 +60,13 @@ class HelpSupportView extends StatelessWidget {
                         ),
                         SizedBox(height: 2),
                         Text(
-                          'Get assistance, submit queries & review knowledge base articles',
+                          'Get help and contact the support team.',
                           style: TextStyle(
                             fontSize: 11.5,
                             color: CeladonColors.textMuted,
-                            height: 1.3,
+                            height: 1.25,
                           ),
-                          maxLines: 2,
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],

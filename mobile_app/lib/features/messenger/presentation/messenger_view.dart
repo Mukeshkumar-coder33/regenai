@@ -2911,13 +2911,13 @@ class _MessengerViewState extends State<MessengerView> {
                         ),
                         const SizedBox(height: 2),
                         const Text(
-                          'Direct & group encrypted communications',
+                          'Direct and group communications.',
                           style: TextStyle(
                             fontSize: 11,
                             color: CeladonColors.textMuted,
                             height: 1.25,
                           ),
-                          maxLines: 2,
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],

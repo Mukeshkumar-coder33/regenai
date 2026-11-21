@@ -209,10 +209,13 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // 1. Top Bar with Messenger-style Left Arrow + Heading + 2-line subtitle
+                // 1. Top Bar with Messenger-style Left Arrow + Heading + Subtitle
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     IconButton(
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                       icon: const Icon(
                         Icons.arrow_back_rounded,
                         size: 22,
@@ -227,9 +230,11 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
                         }
                       },
                     ),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
                         children: const [
                           Text(
                             'Leaves',
@@ -242,13 +247,13 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
                           ),
                           SizedBox(height: 2),
                           Text(
-                            'Submit leave applications, track approvals & view balance',
+                            'Submit leave requests and view balances.',
                             style: TextStyle(
                               fontSize: 11.5,
                               color: CeladonColors.textMuted,
-                              height: 1.3,
+                              height: 1.25,
                             ),
-                            maxLines: 2,
+                            maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ],
@@ -441,17 +446,18 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
           ),
           const SizedBox(height: 12),
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
               color: CeladonColors.background,
               borderRadius: BorderRadius.circular(10),
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildMiniStat('Entitled', '${entitlement.toStringAsFixed(1)}/mo'),
-                _buildMiniStat('Carried', carriedForward.toStringAsFixed(1)),
-                _buildMiniStat('Used', used.toStringAsFixed(1)),
+                Expanded(child: _buildMiniStat('Entitled', '${entitlement.toStringAsFixed(1)}/mo')),
+                const SizedBox(width: 4),
+                Expanded(child: _buildMiniStat('Carried', carriedForward.toStringAsFixed(1))),
+                const SizedBox(width: 4),
+                Expanded(child: _buildMiniStat('Used', used.toStringAsFixed(1))),
               ],
             ),
           ),
@@ -528,17 +534,18 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
           ),
           const SizedBox(height: 12),
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
               color: CeladonColors.background,
               borderRadius: BorderRadius.circular(10),
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildMiniStat('Entitlement', 'Unlimited'),
-                _buildMiniStat('Deduction', '${_balance.unpaid.approvedDeductionRate.toInt()}%'),
-                _buildMiniStat('Approval', 'Required'),
+                Expanded(child: _buildMiniStat('Entitlement', 'Unlimited')),
+                const SizedBox(width: 4),
+                Expanded(child: _buildMiniStat('Deduction', '${_balance.unpaid.approvedDeductionRate.toInt()}%')),
+                const SizedBox(width: 4),
+                Expanded(child: _buildMiniStat('Approval', 'Required')),
               ],
             ),
           ),
@@ -550,10 +557,21 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
   Widget _buildMiniStat(String label, String val) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(label, style: const TextStyle(fontSize: 10, color: CeladonColors.textMuted, fontWeight: FontWeight.w600)),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 10, color: CeladonColors.textMuted, fontWeight: FontWeight.w600),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         const SizedBox(height: 2),
-        Text(val, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary)),
+        Text(
+          val,
+          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: CeladonColors.textPrimary),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
       ],
     );
   }

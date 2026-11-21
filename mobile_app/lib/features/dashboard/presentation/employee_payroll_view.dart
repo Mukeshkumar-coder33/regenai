@@ -217,25 +217,35 @@ class _EmployeePayrollViewState extends State<EmployeePayrollView> {
       onRefresh: () => _loadPayroll(),
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                if (widget.onBack != null)
-                  IconButton(
-                    icon: const Icon(
-                      Icons.arrow_back_rounded,
-                      color: CeladonColors.textPrimary,
-                      size: 22,
-                    ),
-                    tooltip: 'Back',
-                    onPressed: widget.onBack,
+                IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                  icon: const Icon(
+                    Icons.arrow_back_rounded,
+                    color: CeladonColors.textPrimary,
+                    size: 22,
                   ),
+                  tooltip: 'Back',
+                  onPressed: () {
+                    if (widget.onBack != null) {
+                      widget.onBack!();
+                    } else if (Navigator.of(context).canPop()) {
+                      Navigator.of(context).pop();
+                    }
+                  },
+                ),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: const [
                       Text(
                         'Payroll',
@@ -248,13 +258,13 @@ class _EmployeePayrollViewState extends State<EmployeePayrollView> {
                       ),
                       SizedBox(height: 2),
                       Text(
-                        'View monthly salary slips, deductions & compensation history',
+                        'View monthly salary slips and deductions.',
                         style: TextStyle(
                           fontSize: 11.5,
                           color: CeladonColors.textMuted,
-                          height: 1.3,
+                          height: 1.25,
                         ),
-                        maxLines: 2,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],

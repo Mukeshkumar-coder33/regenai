@@ -512,8 +512,11 @@ class _AttendanceViewState extends State<AttendanceView> {
                     children: [
                       // 1. Top Navigation Bar (Messenger Style)
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           IconButton(
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                             icon: const Icon(
                               Icons.arrow_back_rounded,
                               color: CeladonColors.textPrimary,
@@ -529,9 +532,11 @@ class _AttendanceViewState extends State<AttendanceView> {
                                   }
                                 },
                           ),
+                          const SizedBox(width: 8),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
                               children: const [
                                 Text(
                                   'Attendance',
@@ -544,13 +549,13 @@ class _AttendanceViewState extends State<AttendanceView> {
                                 ),
                                 SizedBox(height: 2),
                                 Text(
-                                  'Log daily work hours, check-ins & geo-verified presence',
+                                  'Track daily check-ins, hours and breaks.',
                                   style: TextStyle(
                                     fontSize: 11.5,
                                     color: CeladonColors.textMuted,
-                                    height: 1.3,
+                                    height: 1.25,
                                   ),
-                                  maxLines: 2,
+                                  maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ],

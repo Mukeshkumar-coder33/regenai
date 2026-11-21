@@ -6,10 +6,14 @@ class AttendanceModel {
   final String? mongoId;
   final String? companyId;
   final String userId;
+  final String? userName;
+  final String? employeeName;
   final String date;
   final String status;
   final String? checkIn;
   final String? checkOut;
+  final double totalWorkingHours;
+  final double workingHours;
   final String? workMode;
   final String? location;
 
@@ -42,10 +46,14 @@ class AttendanceModel {
     this.mongoId,
     this.companyId,
     required this.userId,
+    this.userName,
+    this.employeeName,
     required this.date,
     required this.status,
     this.checkIn,
     this.checkOut,
+    this.totalWorkingHours = 0.0,
+    this.workingHours = 0.0,
     this.workMode,
     this.location,
     this.breakStart,
@@ -77,10 +85,14 @@ class AttendanceModel {
       mongoId: json['_id']?.toString(),
       companyId: json['companyId']?.toString(),
       userId: (json['userId'] ?? '').toString(),
+      userName: (json['userName'] ?? json['employeeName'])?.toString(),
+      employeeName: (json['employeeName'] ?? json['userName'])?.toString(),
       date: (json['date'] ?? '').toString(),
       status: (json['status'] ?? 'present').toString(),
       checkIn: json['checkIn']?.toString(),
       checkOut: json['checkOut']?.toString(),
+      totalWorkingHours: _parseDouble(json['totalWorkingHours'] ?? json['workingHours']),
+      workingHours: _parseDouble(json['workingHours'] ?? json['totalWorkingHours']),
       workMode: json['workMode']?.toString() ?? 'office',
       location: json['location']?.toString(),
       breakStart: json['breakStart']?.toString(),

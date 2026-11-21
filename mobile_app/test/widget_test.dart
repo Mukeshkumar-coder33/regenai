@@ -512,7 +512,7 @@ void main() {
       expect(report.records.first.userId, 'Ram');
     });
 
-    testWidgets('AttendanceView renders header, segment pills, and calendar structure',
+    testWidgets('AttendanceView renders header, shift policy, working hours, and check-in structure',
         (WidgetTester tester) async {
       await tester.pumpWidget(
         const MaterialApp(
@@ -523,9 +523,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Attendance'), findsOneWidget);
-      expect(find.text('Month'), findsOneWidget);
-      expect(find.text('Week'), findsOneWidget);
-      expect(find.text('List'), findsOneWidget);
+      expect(find.text('Working Hours'), findsOneWidget);
+      expect(find.text('Check-In'), findsOneWidget);
+      expect(find.text('Breaks'), findsOneWidget);
+      expect(find.text('Check-Out'), findsOneWidget);
       expect(find.text('Check In'), findsWidgets);
     });
 

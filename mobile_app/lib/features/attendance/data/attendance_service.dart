@@ -147,8 +147,11 @@ class AttendanceService {
       determinedStatus = 'late';
     }
 
+    final empName = user?.name.isNotEmpty == true ? user!.name : (user?.username ?? '');
     final body = jsonEncode({
       'userId': userId,
+      'userName': empName,
+      'employeeName': empName,
       'date': todayStr,
       'status': determinedStatus,
       'checkIn': now.toIso8601String(),

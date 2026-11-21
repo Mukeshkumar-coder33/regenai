@@ -109,6 +109,19 @@ export const recordAttendance = async (req, res) => {
     }
     body.companyId = await resolveCompanyId(req, body);
 
+    // Resolve employee name for direct persistence
+    if (!body.employeeName && !body.userName && body.userId) {
+      try {
+        const u = await User.findOne({
+          $or: [{ userId: body.userId }, { StaffId: body.userId }, { username: body.userId }]
+        }).select('name username').lean();
+        if (u) {
+          body.employeeName = u.name || u.username;
+          body.userName = u.name || u.username;
+        }
+      } catch (_) {}
+    }
+
     // Evaluate Late status against company's work schedule
     try {
       const settings = await PayrollSetting.findOne({ companyId: body.companyId }).lean();
@@ -273,6 +286,34 @@ export const updateAttendance = async (req, res) => {
       updateData.breakDeduction = await calculateBreakDelayDeduction(companyId, userId, totalDelay);
     } else {
       updateData.breakDeduction = 0;
+    }
+
+    // Compute total net working hours if checkOut is set
+    const finalCheckIn = updateData.checkIn || existing.checkIn;
+    const finalCheckOut = updateData.checkOut || existing.checkOut;
+    if (finalCheckIn && finalCheckOut) {
+      const inTime = new Date(finalCheckIn).getTime();
+      const outTime = new Date(finalCheckOut).getTime();
+      if (outTime >= inTime) {
+        const totalBreakMinutes = (updateData.breakMinutes !== undefined ? updateData.breakMinutes : (existing.breakMinutes || 0)) +
+                                  (updateData.casualBreakMinutes !== undefined ? updateData.casualBreakMinutes : (existing.casualBreakMinutes || 0));
+        const netDurationMs = Math.max(0, (outTime - inTime) - (totalBreakMinutes * 60000));
+        const netWorkingHours = Math.round((netDurationMs / 3600000) * 100) / 100;
+        updateData.totalWorkingHours = netWorkingHours;
+        updateData.workingHours = netWorkingHours;
+      }
+    }
+
+    if (!existing.employeeName && !existing.userName && userId) {
+      try {
+        const u = await User.findOne({
+          $or: [{ userId }, { StaffId: userId }, { username: userId }]
+        }).select('name username').lean();
+        if (u) {
+          updateData.employeeName = u.name || u.username;
+          updateData.userName = u.name || u.username;
+        }
+      } catch (_) {}
     }
 
     const attendance = await Attendance.findOneAndUpdate(filter, updateData, { new: true });

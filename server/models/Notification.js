@@ -21,7 +21,8 @@ const notificationSchema = new mongoose.Schema({
       'deduction',
       'attendance',
       'policy',
-      'project_task'
+      'project_task',
+      'leave'
     ],
     default: 'general'
   },

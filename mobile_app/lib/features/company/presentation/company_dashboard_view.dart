@@ -387,10 +387,18 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     }
   }
 
-  Future<void> _handleUpdateLeaveStatus(String id, String status) async {
+  Future<void> _handleUpdateLeaveStatus(
+    String id,
+    String status, {
+    String? remarks,
+  }) async {
     try {
       final leaveService = LeaveService();
-      await leaveService.updateLeaveStatus(id: id, status: status);
+      await leaveService.updateLeaveStatus(
+        id: id,
+        status: status,
+        remarks: remarks,
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -409,6 +417,92 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         );
       }
     }
+  }
+
+  void _promptRejectRemarks(String id) {
+    final remarksController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (dCtx) => AlertDialog(
+        backgroundColor: CeladonColors.cardBackground,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: CeladonColors.border),
+        ),
+        title: const Text(
+          'Decline Leave Request',
+          style: TextStyle(
+            color: CeladonColors.textPrimary,
+            fontWeight: FontWeight.w700,
+            fontSize: 16,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter optional remarks or reason for declining this request:',
+              style: TextStyle(
+                color: CeladonColors.textSecondary,
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: remarksController,
+              maxLines: 3,
+              style: const TextStyle(
+                color: CeladonColors.textPrimary,
+                fontSize: 13,
+              ),
+              decoration: InputDecoration(
+                hintText: 'e.g. Critical project deadline, please reschedule...',
+                hintStyle: const TextStyle(
+                  color: CeladonColors.textMuted,
+                  fontSize: 12,
+                ),
+                filled: true,
+                fillColor: CeladonColors.background,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: CeladonColors.border),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dCtx),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: CeladonColors.textMuted),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: CeladonColors.error,
+            ),
+            onPressed: () {
+              Navigator.pop(dCtx);
+              _handleUpdateLeaveStatus(
+                id,
+                'rejected',
+                remarks: remarksController.text.trim(),
+              );
+            },
+            child: const Text(
+              'Decline',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _confirmLogout() {
@@ -2277,14 +2371,31 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                       ),
                       if (_unreadNotificationCount > 0)
                         Positioned(
-                          top: 0,
-                          right: 0,
+                          right: -4,
+                          top: -4,
                           child: Container(
-                            width: 8,
-                            height: 8,
-                            decoration: const BoxDecoration(
-                              color: CeladonColors.primary,
-                              shape: BoxShape.circle,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 5,
+                              vertical: 1.5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: CeladonColors.error,
+                              borderRadius: BorderRadius.circular(99),
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 16,
+                              minHeight: 16,
+                            ),
+                            child: Text(
+                              _unreadNotificationCount > 99
+                                  ? '99+'
+                                  : '$_unreadNotificationCount',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                           ),
                         ),
@@ -8537,6 +8648,623 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   // ---------------------------------------------------------
   // TAB 3: LEAVE MANAGEMENT (Searchable by Employee across All Statuses)
   // ---------------------------------------------------------
+  int _selectedLeaveStatusFilter = 0; // 0=All, 1=Pending, 2=Approved, 3=Rejected
+
+  void _showLeavePolicySheet() async {
+    final leaveService = LeaveService();
+    LeavePolicyModel currentPolicy;
+    try {
+      currentPolicy = await leaveService.getLeavePolicy();
+    } catch (_) {
+      currentPolicy = LeavePolicyModel.defaultPolicy();
+    }
+
+    if (!mounted) return;
+
+    bool casualEnabled = currentPolicy.casualLeave.enabled;
+    double casualMonthly = currentPolicy.casualLeave.monthlyEntitlement;
+    bool casualCarry = currentPolicy.casualLeave.carryForward;
+    double casualMaxCarry = currentPolicy.casualLeave.maxCarryForward;
+    bool casualRequiresApproval = currentPolicy.casualLeave.requiresApproval;
+    double casualUnapprovedDeduction = currentPolicy.casualLeave.unapprovedDeductionRate;
+
+    bool sickEnabled = currentPolicy.sickLeave.enabled;
+    double sickMonthly = currentPolicy.sickLeave.monthlyEntitlement;
+    bool sickCarry = currentPolicy.sickLeave.carryForward;
+    double sickMaxCarry = currentPolicy.sickLeave.maxCarryForward;
+    bool sickRequiresApproval = currentPolicy.sickLeave.requiresApproval;
+    double sickUnapprovedDeduction = currentPolicy.sickLeave.unapprovedDeductionRate;
+
+    bool unpaidEnabled = currentPolicy.unpaidLeave.enabled;
+    double unpaidApprovedDeduction = currentPolicy.unpaidLeave.approvedDeductionRate;
+    double unpaidUnapprovedDeduction = currentPolicy.unpaidLeave.unapprovedDeductionRate;
+    bool unpaidSameDeduction = currentPolicy.unpaidLeave.sameDeductionRate;
+
+    int activeTab = 0; // 0=Casual, 1=Sick, 2=Unpaid, 3=Summary
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: CeladonColors.cardBackground,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          return SizedBox(
+            height: MediaQuery.of(context).size.height * 0.90,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: CeladonColors.border,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.tune_rounded,
+                        color: CeladonColors.primary,
+                        size: 22,
+                      ),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Company Leave Policy',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: CeladonColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: CeladonColors.textPrimary,
+                        ),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                  const Text(
+                    'Configure paid entitlements, carry-forward rules & salary deductions',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: CeladonColors.textMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Policy section tabs
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        _buildSegmentChip('Casual Leave', 0, activeTab, (i) => setSheetState(() => activeTab = i)),
+                        const SizedBox(width: 8),
+                        _buildSegmentChip('Sick Leave', 1, activeTab, (i) => setSheetState(() => activeTab = i)),
+                        const SizedBox(width: 8),
+                        _buildSegmentChip('Unpaid & Deductions', 2, activeTab, (i) => setSheetState(() => activeTab = i)),
+                        const SizedBox(width: 8),
+                        _buildSegmentChip('Live Summary', 3, activeTab, (i) => setSheetState(() => activeTab = i)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Tab content
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: activeTab == 0
+                          ? _buildLeaveTypePolicyEditor(
+                              typeName: 'Casual Leave',
+                              tag: 'Paid Leave',
+                              enabled: casualEnabled,
+                              monthly: casualMonthly,
+                              carry: casualCarry,
+                              maxCarry: casualMaxCarry,
+                              requiresApproval: casualRequiresApproval,
+                              unapprovedDeduction: casualUnapprovedDeduction,
+                              onChanged: ({enabled, monthly, carry, maxCarry, requiresApproval, unapprovedDeduction}) {
+                                setSheetState(() {
+                                  if (enabled != null) casualEnabled = enabled;
+                                  if (monthly != null) casualMonthly = monthly;
+                                  if (carry != null) casualCarry = carry;
+                                  if (maxCarry != null) casualMaxCarry = maxCarry;
+                                  if (requiresApproval != null) casualRequiresApproval = requiresApproval;
+                                  if (unapprovedDeduction != null) casualUnapprovedDeduction = unapprovedDeduction;
+                                });
+                              },
+                            )
+                          : activeTab == 1
+                              ? _buildLeaveTypePolicyEditor(
+                                  typeName: 'Sick Leave',
+                                  tag: 'Paid Leave',
+                                  enabled: sickEnabled,
+                                  monthly: sickMonthly,
+                                  carry: sickCarry,
+                                  maxCarry: sickMaxCarry,
+                                  requiresApproval: sickRequiresApproval,
+                                  unapprovedDeduction: sickUnapprovedDeduction,
+                                  onChanged: ({enabled, monthly, carry, maxCarry, requiresApproval, unapprovedDeduction}) {
+                                    setSheetState(() {
+                                      if (enabled != null) sickEnabled = enabled;
+                                      if (monthly != null) sickMonthly = monthly;
+                                      if (carry != null) sickCarry = carry;
+                                      if (maxCarry != null) sickMaxCarry = maxCarry;
+                                      if (requiresApproval != null) sickRequiresApproval = requiresApproval;
+                                      if (unapprovedDeduction != null) sickUnapprovedDeduction = unapprovedDeduction;
+                                    });
+                                  },
+                                )
+                              : activeTab == 2
+                                  ? _buildUnpaidPolicyEditor(
+                                      enabled: unpaidEnabled,
+                                      approvedDeduction: unpaidApprovedDeduction,
+                                      unapprovedDeduction: unpaidUnapprovedDeduction,
+                                      sameDeduction: unpaidSameDeduction,
+                                      onChanged: ({enabled, approvedDeduction, unapprovedDeduction, sameDeduction}) {
+                                        setSheetState(() {
+                                          if (enabled != null) unpaidEnabled = enabled;
+                                          if (approvedDeduction != null) unpaidApprovedDeduction = approvedDeduction;
+                                          if (unapprovedDeduction != null) unpaidUnapprovedDeduction = unapprovedDeduction;
+                                          if (sameDeduction != null) unpaidSameDeduction = sameDeduction;
+                                        });
+                                      },
+                                    )
+                                  : _buildLeavePolicySummaryView(
+                                      casualEnabled: casualEnabled,
+                                      casualMonthly: casualMonthly,
+                                      casualCarry: casualCarry,
+                                      casualMaxCarry: casualMaxCarry,
+                                      sickEnabled: sickEnabled,
+                                      sickMonthly: sickMonthly,
+                                      sickCarry: sickCarry,
+                                      sickMaxCarry: sickMaxCarry,
+                                      unpaidEnabled: unpaidEnabled,
+                                      unpaidApprovedRate: unpaidApprovedDeduction,
+                                      unpaidUnapprovedRate: unpaidSameDeduction ? unpaidApprovedDeduction : unpaidUnapprovedDeduction,
+                                    ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+                  // Action buttons: Save & Cancel
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: const Text(
+                            'Cancel',
+                            style: TextStyle(
+                              color: CeladonColors.textSecondary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            final newPolicy = {
+                              'casualLeave': {
+                                'enabled': casualEnabled,
+                                'monthlyEntitlement': casualMonthly,
+                                'carryForward': casualCarry,
+                                'maxCarryForward': casualMaxCarry,
+                                'requiresApproval': casualRequiresApproval,
+                                'unapprovedDeductionRate': casualUnapprovedDeduction,
+                              },
+                              'sickLeave': {
+                                'enabled': sickEnabled,
+                                'monthlyEntitlement': sickMonthly,
+                                'carryForward': sickCarry,
+                                'maxCarryForward': sickMaxCarry,
+                                'requiresApproval': sickRequiresApproval,
+                                'unapprovedDeductionRate': sickUnapprovedDeduction,
+                              },
+                              'unpaidLeave': {
+                                'enabled': unpaidEnabled,
+                                'approvedDeductionRate': unpaidApprovedDeduction,
+                                'unapprovedDeductionRate': unpaidSameDeduction ? unpaidApprovedDeduction : unpaidUnapprovedDeduction,
+                                'sameDeductionRate': unpaidSameDeduction,
+                              },
+                            };
+                            final messenger = ScaffoldMessenger.of(context);
+                            final nav = Navigator.of(ctx);
+                            try {
+                              await leaveService.updateLeavePolicy(newPolicy);
+                              if (mounted) {
+                                nav.pop();
+                                messenger.showSnackBar(
+                                  const SnackBar(
+                                    backgroundColor: CeladonColors.primary,
+                                    content: Text('Company Leave Policy saved and activated successfully!'),
+                                  ),
+                                );
+                                _loadCompanyData();
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                messenger.showSnackBar(
+                                  SnackBar(backgroundColor: Colors.red, content: Text('Error: $e')),
+                                );
+                              }
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: CeladonColors.primary,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            elevation: 0,
+                          ),
+                          child: const Text('Save Policy', style: TextStyle(fontWeight: FontWeight.w800)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildLeaveTypePolicyEditor({
+    required String typeName,
+    required String tag,
+    required bool enabled,
+    required double monthly,
+    required bool carry,
+    required double maxCarry,
+    required bool requiresApproval,
+    required double unapprovedDeduction,
+    required Function({
+      bool? enabled,
+      double? monthly,
+      bool? carry,
+      double? maxCarry,
+      bool? requiresApproval,
+      double? unapprovedDeduction,
+    }) onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Enable switch tile
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(
+            'Enable $typeName',
+            style: const TextStyle(fontWeight: FontWeight.w800, color: CeladonColors.textPrimary, fontSize: 14.5),
+          ),
+          subtitle: Text(
+            'Allow employees to request $typeName and view balance cards',
+            style: const TextStyle(fontSize: 11.5, color: CeladonColors.textMuted),
+          ),
+          activeThumbColor: CeladonColors.primary,
+          value: enabled,
+          onChanged: (val) => onChanged(enabled: val),
+        ),
+        const Divider(height: 20, color: CeladonColors.border),
+
+        if (enabled) ...[
+          // Monthly entitlement
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Monthly Entitlement', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: CeladonColors.textPrimary)),
+                    const SizedBox(height: 2),
+                    const Text('Days employees receive per month', style: TextStyle(fontSize: 11, color: CeladonColors.textMuted)),
+                  ],
+                ),
+              ),
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.remove_circle_outline_rounded, color: CeladonColors.primary, size: 22),
+                    onPressed: monthly > 0.5 ? () => onChanged(monthly: monthly - 0.5) : null,
+                  ),
+                  Text('${monthly.toStringAsFixed(1)} days', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: CeladonColors.textPrimary)),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline_rounded, color: CeladonColors.primary, size: 22),
+                    onPressed: () => onChanged(monthly: monthly + 0.5),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Carry forward toggle
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Carry Forward Unused Leave', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: CeladonColors.textPrimary)),
+            subtitle: const Text('Add unused leave to subsequent months in the year', style: TextStyle(fontSize: 11, color: CeladonColors.textMuted)),
+            activeThumbColor: CeladonColors.primary,
+            value: carry,
+            onChanged: (val) => onChanged(carry: val),
+          ),
+
+          if (carry) ...[
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Maximum Carry Forward', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: CeladonColors.textPrimary)),
+                      const SizedBox(height: 2),
+                      const Text('Upper cap on accumulated days', style: TextStyle(fontSize: 11, color: CeladonColors.textMuted)),
+                    ],
+                  ),
+                ),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.remove_circle_outline_rounded, color: CeladonColors.primary, size: 22),
+                      onPressed: maxCarry > 1 ? () => onChanged(maxCarry: maxCarry - 1) : null,
+                    ),
+                    Text('${maxCarry.toInt()} days', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: CeladonColors.textPrimary)),
+                    IconButton(
+                      icon: const Icon(Icons.add_circle_outline_rounded, color: CeladonColors.primary, size: 22),
+                      onPressed: () => onChanged(maxCarry: maxCarry + 1),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+          const Divider(height: 20, color: CeladonColors.border),
+
+          // Requires approval
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Require Company Approval', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: CeladonColors.textPrimary)),
+            subtitle: const Text('Leave is only considered paid upon owner approval', style: TextStyle(fontSize: 11, color: CeladonColors.textMuted)),
+            activeThumbColor: CeladonColors.primary,
+            value: requiresApproval,
+            onChanged: (val) => onChanged(requiresApproval: val),
+          ),
+          const SizedBox(height: 8),
+
+          // Unapproved deduction rate
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Unapproved Absence Deduction', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: CeladonColors.textPrimary)),
+                    const SizedBox(height: 2),
+                    const Text('Deduction rate if taken without approval', style: TextStyle(fontSize: 11, color: CeladonColors.textMuted)),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: CeladonColors.background,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: CeladonColors.border),
+                ),
+                child: Text('${unapprovedDeduction.toInt()}%', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: CeladonColors.error)),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildUnpaidPolicyEditor({
+    required bool enabled,
+    required double approvedDeduction,
+    required double unapprovedDeduction,
+    required bool sameDeduction,
+    required Function({
+      bool? enabled,
+      double? approvedDeduction,
+      double? unapprovedDeduction,
+      bool? sameDeduction,
+    }) onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Enable Unpaid Leave', style: TextStyle(fontWeight: FontWeight.w800, color: CeladonColors.textPrimary, fontSize: 14.5)),
+          subtitle: const Text('Allow employees to request Unpaid Leave without monthly quota limits', style: TextStyle(fontSize: 11.5, color: CeladonColors.textMuted)),
+          activeThumbColor: CeladonColors.primary,
+          value: enabled,
+          onChanged: (val) => onChanged(enabled: val),
+        ),
+        const Divider(height: 20, color: CeladonColors.border),
+
+        if (enabled) ...[
+          // Approved Unpaid Leave deduction %
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Approved Unpaid Deduction %', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: CeladonColors.textPrimary)),
+                    const SizedBox(height: 2),
+                    const Text('Percentage of daily salary deducted per approved day', style: TextStyle(fontSize: 11, color: CeladonColors.textMuted)),
+                  ],
+                ),
+              ),
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.remove_circle_outline_rounded, color: CeladonColors.primary, size: 22),
+                    onPressed: approvedDeduction > 25 ? () => onChanged(approvedDeduction: approvedDeduction - 25) : null,
+                  ),
+                  Text('${approvedDeduction.toInt()}%', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: CeladonColors.textPrimary)),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline_rounded, color: CeladonColors.primary, size: 22),
+                    onPressed: approvedDeduction < 100 ? () => onChanged(approvedDeduction: approvedDeduction + 25) : null,
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Same deduction rate toggle
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Use Same Rate for Unapproved Absence', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: CeladonColors.textPrimary)),
+            subtitle: const Text('Match approved unpaid deduction rate with unapproved absence deduction rate', style: TextStyle(fontSize: 11, color: CeladonColors.textMuted)),
+            activeThumbColor: CeladonColors.primary,
+            value: sameDeduction,
+            onChanged: (val) => onChanged(sameDeduction: val),
+          ),
+
+          if (!sameDeduction) ...[
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Unapproved Absence Deduction %', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: CeladonColors.textPrimary)),
+                      const SizedBox(height: 2),
+                      const Text('Deduction rate for unapproved absences', style: TextStyle(fontSize: 11, color: CeladonColors.textMuted)),
+                    ],
+                  ),
+                ),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.remove_circle_outline_rounded, color: CeladonColors.primary, size: 22),
+                      onPressed: unapprovedDeduction > 25 ? () => onChanged(unapprovedDeduction: unapprovedDeduction - 25) : null,
+                    ),
+                    Text('${unapprovedDeduction.toInt()}%', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: CeladonColors.error)),
+                    IconButton(
+                      icon: const Icon(Icons.add_circle_outline_rounded, color: CeladonColors.primary, size: 22),
+                      onPressed: unapprovedDeduction < 100 ? () => onChanged(unapprovedDeduction: unapprovedDeduction + 25) : null,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 14),
+
+          // Working-day formula explanation card
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: CeladonColors.background,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: CeladonColors.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Row(
+                  children: [
+                    Icon(Icons.calculate_rounded, color: CeladonColors.primary, size: 16),
+                    SizedBox(width: 6),
+                    Text('Working-Day Deduction Engine', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: CeladonColors.textPrimary)),
+                  ],
+                ),
+                SizedBox(height: 6),
+                Text(
+                  '• Daily Salary = Monthly Salary ÷ Applicable Working Days in Month\n'
+                  '• Leave Deduction = Daily Salary × Leave Days × Deduction %\n'
+                  '• Divisor excludes company holidays & weekly offs.',
+                  style: TextStyle(fontSize: 11, color: CeladonColors.textSecondary, height: 1.4),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildLeavePolicySummaryView({
+    required bool casualEnabled,
+    required double casualMonthly,
+    required bool casualCarry,
+    required double casualMaxCarry,
+    required bool sickEnabled,
+    required double sickMonthly,
+    required bool sickCarry,
+    required double sickMaxCarry,
+    required bool unpaidEnabled,
+    required double unpaidApprovedRate,
+    required double unpaidUnapprovedRate,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: CeladonColors.background,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: CeladonColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Configured Policy Summary', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: CeladonColors.textPrimary)),
+          const SizedBox(height: 10),
+          _buildSummaryRow('Casual Leave (Paid):', casualEnabled ? '${casualMonthly.toStringAsFixed(1)} days/mo${casualCarry ? ' (Carry up to ${casualMaxCarry.toInt()} days)' : ''}' : 'Disabled'),
+          const SizedBox(height: 6),
+          _buildSummaryRow('Sick Leave (Paid):', sickEnabled ? '${sickMonthly.toStringAsFixed(1)} days/mo${sickCarry ? ' (Carry up to ${sickMaxCarry.toInt()} days)' : ''}' : 'Disabled'),
+          const SizedBox(height: 6),
+          _buildSummaryRow('Unpaid Leave:', unpaidEnabled ? 'Enabled (${unpaidApprovedRate.toInt()}% deduction)' : 'Disabled'),
+          const SizedBox(height: 6),
+          _buildSummaryRow('Unapproved Absence:', '${unpaidUnapprovedRate.toInt()}% daily salary deduction'),
+          const SizedBox(height: 6),
+          _buildSummaryRow('Calculation Basis:', 'Working Days (excluding weekends & holidays)'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryRow(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 11.5, color: CeladonColors.textMuted, fontWeight: FontWeight.w600)),
+        Text(value, style: const TextStyle(fontSize: 11.5, color: CeladonColors.textPrimary, fontWeight: FontWeight.w800)),
+      ],
+    );
+  }
+
   String _formatLeaveAppliedDateTime(String dateStr) {
     if (dateStr.isEmpty) return '';
     final dt = DateTime.tryParse(dateStr);
@@ -8550,8 +9278,16 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     return '$day $month $year, $hour:$minute $ampm';
   }
 
-  Widget _buildLeaveTab() {
+    Widget _buildLeaveTab() {
     List<LeaveModel> filtered = _leaves;
+    if (_selectedLeaveStatusFilter == 1) {
+      filtered = filtered.where((l) => l.isPending).toList();
+    } else if (_selectedLeaveStatusFilter == 2) {
+      filtered = filtered.where((l) => l.isApproved).toList();
+    } else if (_selectedLeaveStatusFilter == 3) {
+      filtered = filtered.where((l) => l.isNotApproved).toList();
+    }
+
     if (_leaveSearchQuery.isNotEmpty) {
       final q = _leaveSearchQuery.toLowerCase();
       filtered = filtered.where((l) {
@@ -8627,11 +9363,28 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   ],
                 ),
               ),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: CeladonColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 0,
+                ),
+                icon: const Icon(Icons.tune_rounded, size: 16),
+                label: const Text(
+                  'Leave Policy',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                ),
+                onPressed: _showLeavePolicySheet,
+              ),
             ],
           ),
           const SizedBox(height: 14),
 
-          // Search Bar: Unified Company Typing Box (Filters removed per user specification)
+          // Search Bar: Unified Company Typing Box
           _buildCompanyTypingBox(
             controller: _leaveSearchController,
             hintText: 'Search employee name, ID or leave...',
@@ -8653,6 +9406,23 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     ),
                   )
                 : null,
+          ),
+          const SizedBox(height: 12),
+
+          // Filter Chips (All, Pending, Approved, Rejected)
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildSegmentChip('All', 0, _selectedLeaveStatusFilter, (idx) => setState(() => _selectedLeaveStatusFilter = idx)),
+                const SizedBox(width: 8),
+                _buildSegmentChip('Pending', 1, _selectedLeaveStatusFilter, (idx) => setState(() => _selectedLeaveStatusFilter = idx)),
+                const SizedBox(width: 8),
+                _buildSegmentChip('Approved', 2, _selectedLeaveStatusFilter, (idx) => setState(() => _selectedLeaveStatusFilter = idx)),
+                const SizedBox(width: 8),
+                _buildSegmentChip('Rejected', 3, _selectedLeaveStatusFilter, (idx) => setState(() => _selectedLeaveStatusFilter = idx)),
+              ],
+            ),
           ),
           const SizedBox(height: 14),
 
@@ -8940,7 +9710,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      '$startStr  →  $endStr',
+                      '$startStr  →  $endStr (${leave.workingDays} working days)',
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -8966,6 +9736,19 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 style: const TextStyle(
                   fontSize: 11.5,
                   color: CeladonColors.textSecondary,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+            if (leave.remarks?.isNotEmpty == true) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Remarks: ${leave.remarks!}',
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: CeladonColors.error,
+                  fontWeight: FontWeight.w600,
                 ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -9002,8 +9785,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: () =>
-                          _handleUpdateLeaveStatus(leave.id, 'rejected'),
+                      onPressed: () => _promptRejectRemarks(leave.id),
                       style: OutlinedButton.styleFrom(
                         side: const BorderSide(color: CeladonColors.error),
                         shape: RoundedRectangleBorder(
@@ -9366,7 +10148,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                             child: OutlinedButton.icon(
                               onPressed: () {
                                 Navigator.pop(ctx);
-                                _handleUpdateLeaveStatus(leave.id, 'rejected');
+                                _promptRejectRemarks(leave.id);
                               },
                               icon: const Icon(
                                 Icons.cancel_rounded,
@@ -10523,16 +11305,64 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                         iconColor = CeladonColors.primary;
                                       }
 
-                                      return _buildNotificationCard(
-                                        icon: iconData,
-                                        iconColor: iconColor,
-                                        title: notif.title,
-                                        body: notif.message,
-                                        time: _formatNotifRelativeTime(
-                                          notif.createdAt,
+                                      return Dismissible(
+                                        key: Key(notif.id),
+                                        direction: DismissDirection.horizontal,
+                                        background: Container(
+                                          margin: const EdgeInsets.only(bottom: 10),
+                                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                                          decoration: BoxDecoration(
+                                            color: CeladonColors.error,
+                                            borderRadius: BorderRadius.circular(18),
+                                          ),
+                                          alignment: Alignment.centerLeft,
+                                          child: const Row(
+                                            children: [
+                                              Icon(Icons.delete_outline_rounded, color: Colors.white, size: 20),
+                                              SizedBox(width: 8),
+                                              Text('Dismiss', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                                            ],
+                                          ),
                                         ),
-                                        isUnread: !notif.read,
-                                        onTap: () async {
+                                        secondaryBackground: Container(
+                                          margin: const EdgeInsets.only(bottom: 10),
+                                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                                          decoration: BoxDecoration(
+                                            color: CeladonColors.error,
+                                            borderRadius: BorderRadius.circular(18),
+                                          ),
+                                          alignment: Alignment.centerRight,
+                                          child: const Row(
+                                            mainAxisAlignment: MainAxisAlignment.end,
+                                            children: [
+                                              Text('Dismiss', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                                              SizedBox(width: 8),
+                                              Icon(Icons.delete_outline_rounded, color: Colors.white, size: 20),
+                                            ],
+                                          ),
+                                        ),
+                                        onDismissed: (_) {
+                                          _notifications.removeWhere((n) => n.id == notif.id);
+                                          _notificationService.deleteNotification(notif.id);
+                                          if (mounted) setState(() {});
+                                          setSheetState(() {});
+                                        },
+                                        child: _buildNotificationCard(
+                                          icon: iconData,
+                                          iconColor: iconColor,
+                                          title: notif.title,
+                                          body: notif.message,
+                                          time: _formatNotifRelativeTime(
+                                            notif.createdAt,
+                                          ),
+                                          isUnread: !notif.read,
+                                          onDismiss: () {
+                                            _notifications.removeWhere((n) => n.id == notif.id);
+                                            _notificationService.deleteNotification(notif.id);
+                                            if (mounted) setState(() {});
+                                            setSheetState(() {});
+                                          },
+                                          onTap: () async {
                                           final sheetNav = Navigator.of(ctx);
                                           if (!notif.read) {
                                             notif.read = true;
@@ -10588,7 +11418,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                             _navigateToCompanyPage('employees');
                                           }
                                         },
-                                      );
+                                      ),
+                                    );
                                     },
                                   ))
                           : Center(
@@ -10671,6 +11502,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     required String time,
     required bool isUnread,
     VoidCallback? onTap,
+    VoidCallback? onDismiss,
   }) {
     final accentColor = iconColor ?? CeladonColors.primary;
     return _buildGlassCard(
@@ -10740,6 +11572,16 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
               ],
             ),
           ),
+          if (onDismiss != null) ...[
+            const SizedBox(width: 4),
+            IconButton(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+              icon: const Icon(Icons.close_rounded, size: 16, color: CeladonColors.textMuted),
+              tooltip: 'Dismiss',
+              onPressed: onDismiss,
+            ),
+          ],
         ],
       ),
     );

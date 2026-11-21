@@ -767,7 +767,10 @@ class _CalendarViewState extends State<CalendarView> {
 
               // Special Day Color
               Color? specialDayColor;
-              if (hasBirthday) {
+              final hasApprovedUpcomingLeave = leaves.any((l) => l.isApproved && !dayDate.isBefore(DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day)));
+              if (hasApprovedUpcomingLeave) {
+                specialDayColor = const Color(0xFF2563EB); // Golden Blue for approved upcoming leaves
+              } else if (hasBirthday) {
                 specialDayColor = const Color(0xFFF59E0B); // Gold
               } else if (isEvent) {
                 specialDayColor = const Color(0xFF7C3AED); // Violet
@@ -1197,19 +1200,23 @@ class _CalendarViewState extends State<CalendarView> {
             const SizedBox(height: 12),
           ],
 
-          // 5. Leave Request Card (both approved and unapproved are considered absent)
+          // 5. Leave Request Card (Approved shown in Golden Blue, unapproved/pending in appropriate tag)
           if (leaves.isNotEmpty) ...[
-            ...leaves.map((l) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _buildDetailCard(
-                    icon: Icons.flight_takeoff_rounded,
-                    header: 'Leave / Absence (${l.status.toUpperCase()})',
-                    headerColor: const Color(0xFFEF4444),
-                    title: '${l.type.toUpperCase()} LEAVE',
-                    subtitle: l.reason?.isNotEmpty == true ? l.reason! : 'Leave request recorded as absent',
-                    tag: '${l.startDate} to ${l.endDate}',
-                  ),
-                )),
+            ...leaves.map((l) {
+              final isApproved = l.isApproved;
+              final cardColor = isApproved ? const Color(0xFF2563EB) : const Color(0xFFEF4444);
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _buildDetailCard(
+                  icon: isApproved ? Icons.event_available_rounded : Icons.flight_takeoff_rounded,
+                  header: isApproved ? 'Upcoming Approved Leave (${l.displayType})' : 'Leave / Absence (${l.status.toUpperCase()})',
+                  headerColor: cardColor,
+                  title: '${l.type.toUpperCase()} LEAVE - ${l.workingDays} working day(s)',
+                  subtitle: l.reason?.isNotEmpty == true ? l.reason! : (isApproved ? 'Approved time off recorded on calendar' : 'Leave request recorded as absent'),
+                  tag: '${l.startDate} to ${l.endDate}',
+                ),
+              );
+            }),
           ],
 
           // 6. Assigned Tasks Card

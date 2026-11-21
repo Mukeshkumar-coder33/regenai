@@ -8,8 +8,19 @@ const leaveSchema = new mongoose.Schema({
   type: { type: String, enum: ['casual', 'sick', 'earned', 'unpaid'], default: 'casual' },
   startDate: { type: String, required: true },
   endDate: { type: String, required: true },
+  workingDays: { type: Number, default: 1 },
   reason: { type: String },
   status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+  appliedAt: { type: String, default: () => new Date().toISOString() },
+  approvedBy: { type: String },
+  approvedByName: { type: String },
+  approvalDate: { type: String },
+  rejectionReason: { type: String },
+  remarks: { type: String },
+  employeeName: { type: String },
+  department: { type: String },
+  balanceAtRequest: { type: Number },
+  documentUrl: { type: String },
   createdAt: { type: String, default: () => new Date().toISOString() }
 }, { timestamps: true });
 

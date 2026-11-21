@@ -304,8 +304,12 @@ export const calculateEmployeeMonthlyPayroll = ({
       if (leave && leave.status === 'approved') {
         item.isApprovedLeave = true;
         totalApprovedLeaveDays++;
-        item.leaveDeduction = round2(dailySalaryBasis * (approvedLeaveDeductionPct / 100));
-        item.notes = `Approved Leave (${leave.type || 'leave'})`;
+        // Casual and Sick leave are paid leave categories (0% salary deduction)
+        // Unpaid leave uses configured approved unpaid leave deduction percentage
+        const isPaidCategory = leave.type === 'casual' || leave.type === 'sick';
+        const deductionRate = isPaidCategory ? 0 : (Number(settings.unpaidLeaveApprovedPct ?? approvedLeaveDeductionPct) || 100);
+        item.leaveDeduction = round2(dailySalaryBasis * (deductionRate / 100));
+        item.notes = `Approved Leave (${leave.type || 'leave'}${isPaidCategory ? ' - Paid' : ''})`;
       } else if (!isFuture) {
         // Date is in the past with no attendance and no approved leave
         item.isUnapprovedLeave = true;

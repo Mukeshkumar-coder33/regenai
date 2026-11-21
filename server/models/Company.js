@@ -23,6 +23,30 @@ const companySchema = new mongoose.Schema({
   ownerId: { type: String, required: true }, // Links to the user who created it (Owner)
   ownerName: { type: String, trim: true }, // Full personal name of company owner
   status: { type: String, enum: ['active', 'blocked'], default: 'active' },
+  leavePolicy: {
+    casualLeave: {
+      enabled: { type: Boolean, default: true },
+      monthlyEntitlement: { type: Number, default: 1 },
+      carryForward: { type: Boolean, default: true },
+      maxCarryForward: { type: Number, default: 12 },
+      requiresApproval: { type: Boolean, default: true },
+      unapprovedDeductionRate: { type: Number, default: 100 }
+    },
+    sickLeave: {
+      enabled: { type: Boolean, default: true },
+      monthlyEntitlement: { type: Number, default: 1 },
+      carryForward: { type: Boolean, default: false },
+      maxCarryForward: { type: Number, default: 6 },
+      requiresApproval: { type: Boolean, default: true },
+      unapprovedDeductionRate: { type: Number, default: 100 }
+    },
+    unpaidLeave: {
+      enabled: { type: Boolean, default: true },
+      approvedDeductionRate: { type: Number, default: 100 },
+      unapprovedDeductionRate: { type: Number, default: 100 },
+      sameDeductionRate: { type: Boolean, default: true }
+    }
+  },
   officeLocation: {
     latitude: { type: Number },
     longitude: { type: Number },

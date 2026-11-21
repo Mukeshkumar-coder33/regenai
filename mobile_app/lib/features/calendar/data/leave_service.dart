@@ -12,6 +12,9 @@ import '../../dashboard/data/leave_model.dart';
 /// - `GET/POST /api/leaves`
 /// - `GET /api/leaves/user/:userId`
 /// - `PUT /api/leaves/:id` (Approve/Reject)
+/// - `GET /api/leaves/policy`
+/// - `PUT /api/leaves/policy`
+/// - `GET /api/leaves/balance`
 class LeaveService {
   final http.Client _client;
 
@@ -29,33 +32,100 @@ class LeaveService {
     return headers;
   }
 
-  /// 1. Fetch All Leaves (Company / Super Admin view)
-  Future<List<LeaveModel>> getAllLeaves() async {
+  /// 1. Fetch Company Leave Policy
+  Future<LeavePolicyModel> getLeavePolicy() async {
     final headers = await _getHeaders();
-    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/leaves');
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/leaves/policy');
 
     try {
       final res = await _client.get(url, headers: headers).timeout(const Duration(seconds: 10));
       if (res.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(res.body) as List<dynamic>;
-        return data.map((json) => LeaveModel.fromJson(json as Map<String, dynamic>)).toList();
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        return LeavePolicyModel.fromJson(data);
       }
-      throw AuthException(message: 'Failed to load leaves (${res.statusCode})', statusCode: res.statusCode);
+      return LeavePolicyModel.defaultPolicy();
+    } catch (_) {
+      return LeavePolicyModel.defaultPolicy();
+    }
+  }
+
+  /// 2. Update Company Leave Policy
+  Future<LeavePolicyModel> updateLeavePolicy(Map<String, dynamic> policyData) async {
+    final headers = await _getHeaders();
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/leaves/policy');
+
+    try {
+      final res = await _client.put(
+        url,
+        headers: headers,
+        body: jsonEncode(policyData),
+      ).timeout(const Duration(seconds: 10));
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        return LeavePolicyModel.fromJson(data);
+      }
+      throw AuthException(
+        message: 'Failed to update leave policy (${res.statusCode})',
+        statusCode: res.statusCode,
+      );
     } on SocketException {
       throw const AuthException(message: 'Server connection unreachable', statusCode: 0);
     }
   }
 
-  /// 2. Fetch User Leaves (Employee view)
-  Future<List<LeaveModel>> getUserLeaves(String userId) async {
+  /// 3. Fetch Leave Balance for Current or Specified User
+  Future<LeaveBalanceModel> getLeaveBalance({String? userId}) async {
     final headers = await _getHeaders();
-    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/leaves/user/$userId');
+    final endpoint = userId != null && userId.isNotEmpty
+        ? '${AppConfig.activeBaseUrl}/api/leaves/balance/$userId'
+        : '${AppConfig.activeBaseUrl}/api/leaves/balance';
+    final url = Uri.parse(endpoint);
 
     try {
       final res = await _client.get(url, headers: headers).timeout(const Duration(seconds: 10));
       if (res.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(res.body) as List<dynamic>;
-        return data.map((json) => LeaveModel.fromJson(json as Map<String, dynamic>)).toList();
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        return LeaveBalanceModel.fromJson(data);
+      }
+      return LeaveBalanceModel.initial();
+    } catch (_) {
+      return LeaveBalanceModel.initial();
+    }
+  }
+
+  /// 4. Fetch All Leaves (Company / Super Admin view)
+  Future<List<LeaveModel>> getAllLeaves({
+    String? status,
+    String? type,
+    int? page,
+    int? limit,
+  }) async {
+    final headers = await _getHeaders();
+    final queryParams = <String, String>{};
+    if (status != null && status.isNotEmpty && status.toLowerCase() != 'all') {
+      queryParams['status'] = status.toLowerCase();
+    }
+    if (type != null && type.isNotEmpty && type.toLowerCase() != 'all') {
+      queryParams['type'] = type.toLowerCase();
+    }
+    if (page != null) queryParams['page'] = page.toString();
+    if (limit != null) queryParams['limit'] = limit.toString();
+
+    final uri = Uri.parse('${AppConfig.activeBaseUrl}/api/leaves').replace(
+      queryParameters: queryParams.isNotEmpty ? queryParams : null,
+    );
+
+    try {
+      final res = await _client.get(uri, headers: headers).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        final decoded = jsonDecode(res.body);
+        if (decoded is List) {
+          return decoded.map((json) => LeaveModel.fromJson(json as Map<String, dynamic>)).toList();
+        } else if (decoded is Map<String, dynamic> && decoded['leaves'] is List) {
+          final list = decoded['leaves'] as List<dynamic>;
+          return list.map((json) => LeaveModel.fromJson(json as Map<String, dynamic>)).toList();
+        }
       }
       return [];
     } catch (_) {
@@ -63,13 +133,50 @@ class LeaveService {
     }
   }
 
-  /// 3. Apply for Leave
+  /// 5. Fetch User Leaves (Employee view)
+  Future<List<LeaveModel>> getUserLeaves(
+    String userId, {
+    String? status,
+    int? page,
+    int? limit,
+  }) async {
+    final headers = await _getHeaders();
+    final queryParams = <String, String>{};
+    if (status != null && status.isNotEmpty && status.toLowerCase() != 'all') {
+      queryParams['status'] = status.toLowerCase();
+    }
+    if (page != null) queryParams['page'] = page.toString();
+    if (limit != null) queryParams['limit'] = limit.toString();
+
+    final uri = Uri.parse('${AppConfig.activeBaseUrl}/api/leaves/user/$userId').replace(
+      queryParameters: queryParams.isNotEmpty ? queryParams : null,
+    );
+
+    try {
+      final res = await _client.get(uri, headers: headers).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        final decoded = jsonDecode(res.body);
+        if (decoded is List) {
+          return decoded.map((json) => LeaveModel.fromJson(json as Map<String, dynamic>)).toList();
+        } else if (decoded is Map<String, dynamic> && decoded['leaves'] is List) {
+          final list = decoded['leaves'] as List<dynamic>;
+          return list.map((json) => LeaveModel.fromJson(json as Map<String, dynamic>)).toList();
+        }
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// 6. Apply for Leave
   Future<LeaveModel> applyLeave({
     required String type,
     required String startDate,
     required String endDate,
     String? reason,
     String? userId,
+    int? workingDays,
   }) async {
     final headers = await _getHeaders();
     final url = Uri.parse('${AppConfig.activeBaseUrl}/api/leaves');
@@ -83,6 +190,9 @@ class LeaveService {
     if (userId != null) {
       payload['userId'] = userId;
     }
+    if (workingDays != null) {
+      payload['workingDays'] = workingDays;
+    }
 
     try {
       final res = await _client.post(
@@ -95,25 +205,36 @@ class LeaveService {
         final Map<String, dynamic> data = jsonDecode(res.body) as Map<String, dynamic>;
         return LeaveModel.fromJson(data);
       }
-      throw AuthException(message: 'Failed to submit leave request (${res.statusCode})', statusCode: res.statusCode);
+      final errorBody = jsonDecode(res.body);
+      final errMsg = errorBody is Map && errorBody['message'] != null
+          ? errorBody['message'].toString()
+          : 'Failed to submit leave request (${res.statusCode})';
+      throw AuthException(message: errMsg, statusCode: res.statusCode);
     } on SocketException {
       throw const AuthException(message: 'Server connection unreachable', statusCode: 0);
     }
   }
 
-  /// 4. Approve or Reject Leave (Manager / Admin action)
+  /// 7. Approve or Reject Leave (Manager / Admin action)
   Future<LeaveModel> updateLeaveStatus({
     required String id,
     required String status, // 'approved' or 'rejected'
+    String? remarks,
   }) async {
     final headers = await _getHeaders();
     final url = Uri.parse('${AppConfig.activeBaseUrl}/api/leaves/$id');
+
+    final payload = <String, dynamic>{'status': status};
+    if (remarks != null && remarks.isNotEmpty) {
+      payload['remarks'] = remarks;
+      payload['rejectionReason'] = remarks;
+    }
 
     try {
       final res = await _client.put(
         url,
         headers: headers,
-        body: jsonEncode({'status': status}),
+        body: jsonEncode(payload),
       ).timeout(const Duration(seconds: 10));
 
       if (res.statusCode == 200) {
@@ -126,7 +247,7 @@ class LeaveService {
     }
   }
 
-  /// 5. Delete Leave Application
+  /// 8. Delete Leave Application
   Future<bool> deleteLeave(String id) async {
     final headers = await _getHeaders();
     final url = Uri.parse('${AppConfig.activeBaseUrl}/api/leaves/$id');
@@ -139,4 +260,3 @@ class LeaveService {
     }
   }
 }
-

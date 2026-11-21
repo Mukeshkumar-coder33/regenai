@@ -759,6 +759,23 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                           }
                         },
                       ),
+                      TextButton.icon(
+                        style: TextButton.styleFrom(
+                          backgroundColor: CeladonColors.errorLight,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: const Icon(Icons.delete_sweep_rounded, color: CeladonColors.error, size: 16),
+                        label: const Text('Clear all', style: TextStyle(color: CeladonColors.error, fontSize: 11.5, fontWeight: FontWeight.w700)),
+                        onPressed: () async {
+                          if (myId.isNotEmpty) {
+                            _notifications.clear();
+                            if (mounted) setState(() {});
+                            setSheetState(() {});
+                            await _notificationService.clearAll(myId);
+                          }
+                        },
+                      ),
                       IconButton(
                         icon: const Icon(Icons.close_rounded),
                         onPressed: () => Navigator.pop(ctx),
@@ -819,47 +836,98 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                                 icon = Icons.event_available_rounded;
                               }
 
-                              return Material(
-                                color: notif.read ? Colors.white : CeladonColors.softMint,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  side: const BorderSide(color: CeladonColors.border),
+                              return Dismissible(
+                                key: Key(notif.id),
+                                direction: DismissDirection.horizontal,
+                                background: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                                  decoration: BoxDecoration(
+                                    color: CeladonColors.error,
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  alignment: Alignment.centerLeft,
+                                  child: const Row(
+                                    children: [
+                                      Icon(Icons.delete_outline_rounded, color: Colors.white, size: 20),
+                                      SizedBox(width: 8),
+                                      Text('Dismiss', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                                    ],
+                                  ),
                                 ),
-                                child: ListTile(
-                                  leading: CircleAvatar(
-                                    backgroundColor: CeladonColors.primary.withValues(alpha: 0.12),
-                                    child: Icon(icon, color: CeladonColors.primary, size: 19),
+                                secondaryBackground: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                                  decoration: BoxDecoration(
+                                    color: CeladonColors.error,
+                                    borderRadius: BorderRadius.circular(14),
                                   ),
-                                  title: Text(
-                                    notif.title,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 13.5,
+                                  alignment: Alignment.centerRight,
+                                  child: const Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      Text('Dismiss', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                                      SizedBox(width: 8),
+                                      Icon(Icons.delete_outline_rounded, color: Colors.white, size: 20),
+                                    ],
+                                  ),
+                                ),
+                                onDismissed: (_) {
+                                  _notifications.removeWhere((n) => n.id == notif.id);
+                                  _notificationService.deleteNotification(notif.id);
+                                  if (mounted) setState(() {});
+                                  setSheetState(() {});
+                                },
+                                child: Material(
+                                  color: notif.read ? Colors.white : CeladonColors.softMint,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                    side: const BorderSide(color: CeladonColors.border),
+                                  ),
+                                  child: ListTile(
+                                    leading: CircleAvatar(
+                                      backgroundColor: CeladonColors.primary.withValues(alpha: 0.12),
+                                      child: Icon(icon, color: CeladonColors.primary, size: 19),
                                     ),
+                                    title: Text(
+                                      notif.title,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13.5,
+                                      ),
+                                    ),
+                                    subtitle: Text(
+                                      notif.message,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                    trailing: IconButton(
+                                      icon: const Icon(Icons.close_rounded, size: 16, color: CeladonColors.textMuted),
+                                      tooltip: 'Dismiss',
+                                      onPressed: () {
+                                        _notifications.removeWhere((n) => n.id == notif.id);
+                                        _notificationService.deleteNotification(notif.id);
+                                        if (mounted) setState(() {});
+                                        setSheetState(() {});
+                                      },
+                                    ),
+                                    onTap: () {
+                                      notif.read = true;
+                                      if (mounted) setState(() {});
+                                      _notificationService
+                                          .markAsRead(notif.id, mongoId: notif.mongoId)
+                                          .catchError((_) => false);
+                                      Navigator.pop(ctx);
+                                      if (notif.isMessenger) {
+                                        _navigateToPage('messenger');
+                                      } else if (notif.isTask) {
+                                        _navigateToPage('tasks', fallbackTab: 1);
+                                      } else if (notif.type.contains('leave')) {
+                                        _navigateToPage('leave');
+                                      } else if (notif.isAttendance) {
+                                        _navigateToPage('calendar', fallbackTab: 2);
+                                      }
+                                    },
                                   ),
-                                  subtitle: Text(
-                                    notif.message,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontSize: 12),
-                                  ),
-                                  onTap: () {
-                                    notif.read = true;
-                                    if (mounted) setState(() {});
-                                    _notificationService
-                                        .markAsRead(notif.id, mongoId: notif.mongoId)
-                                        .catchError((_) => false);
-                                    Navigator.pop(ctx);
-                                    if (notif.isMessenger) {
-                                      _navigateToPage('messenger');
-                                    } else if (notif.isTask) {
-                                      _navigateToPage('tasks', fallbackTab: 1);
-                                    } else if (notif.type.contains('leave')) {
-                                      _navigateToPage('leave');
-                                    } else if (notif.isAttendance) {
-                                      _navigateToPage('calendar', fallbackTab: 2);
-                                    }
-                                  },
                                 ),
                               );
                             },

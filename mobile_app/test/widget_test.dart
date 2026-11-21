@@ -2770,6 +2770,82 @@ void main() {
       expect(find.text('Alice Newly Added'), findsOneWidget);
       expect(find.text('Bob Developer'), findsAtLeast(1));
     });
+
+    test('LeavePolicyModel and LeaveBalanceModel serialization & default policy validation', () {
+      final defaultPolicy = LeavePolicyModel.defaultPolicy();
+      expect(defaultPolicy.casualLeave.enabled, isTrue);
+      expect(defaultPolicy.casualLeave.monthlyEntitlement, 1.0);
+      expect(defaultPolicy.casualLeave.carryForward, isTrue);
+      expect(defaultPolicy.casualLeave.maxCarryForward, 12.0);
+      expect(defaultPolicy.sickLeave.enabled, isTrue);
+      expect(defaultPolicy.sickLeave.monthlyEntitlement, 1.0);
+      expect(defaultPolicy.unpaidLeave.enabled, isTrue);
+      expect(defaultPolicy.unpaidLeave.approvedDeductionRate, 100.0);
+
+      final json = defaultPolicy.toJson();
+      final parsed = LeavePolicyModel.fromJson(json);
+      expect(parsed.casualLeave.monthlyEntitlement, 1.0);
+      expect(parsed.casualLeave.carryForward, isTrue);
+
+      final balance = LeaveBalanceModel.initial();
+      expect(balance.casual.remaining, 1.0);
+      expect(balance.sick.remaining, 1.0);
+      expect(balance.unpaid.approvedDeductionRate, 100.0);
+    });
+
+    testWidgets('CompanyDashboardView Leave tab has Leave Policy button and opens Leave Policy sheet', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final testUser = const UserModel(
+        id: 'owner1',
+        userId: 'OWNER-1',
+        username: 'owner',
+        name: 'Company Owner',
+        role: 'owner',
+        companyId: 'comp1',
+        token: 'test_token',
+      );
+
+      final mockDashboard = MockDashboardService();
+      final mockAuth = MockAuthService();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanyDashboardView(
+            user: testUser,
+            dashboardService: mockDashboard,
+            authService: mockAuth,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Navigate to Leave tab via bottom nav icon
+      await tester.tap(find.byIcon(Icons.beach_access_outlined));
+      await tester.pumpAndSettle();
+
+      // Verify Leave Policy button is present
+      expect(find.text('Leave Policy'), findsOneWidget);
+      expect(find.byIcon(Icons.tune_rounded), findsOneWidget);
+
+      // Verify status filter chips (All, Pending, Approved, Rejected)
+      expect(find.text('Pending'), findsOneWidget);
+      expect(find.text('Approved'), findsOneWidget);
+      expect(find.text('Rejected'), findsOneWidget);
+
+      // Tap Leave Policy button
+      await tester.tap(find.text('Leave Policy'));
+      await tester.pumpAndSettle();
+
+      // Verify Leave Policy sheet opened
+      expect(find.text('Company Leave Policy'), findsOneWidget);
+      expect(find.text('Casual Leave'), findsAtLeast(1));
+      expect(find.text('Sick Leave'), findsAtLeast(1));
+      expect(find.text('Unpaid & Deductions'), findsOneWidget);
+      expect(find.text('Live Summary'), findsOneWidget);
+      expect(find.text('Save Policy'), findsOneWidget);
+    });
   });
 }
 

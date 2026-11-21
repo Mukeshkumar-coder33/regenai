@@ -5,6 +5,8 @@ import '../../auth/data/auth_service.dart';
 import '../../auth/data/user_model.dart';
 import '../../company/data/company_model.dart';
 import '../../dashboard/data/dashboard_service.dart';
+import '../../notifications/data/notification_model.dart';
+import '../../notifications/data/notification_service.dart';
 
 /// Situation D: Global Super Admin Dashboard
 ///
@@ -55,6 +57,10 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
 
   List<CompanyModel> _companies = [];
   List<UserModel> _users = [];
+  final NotificationService _notificationService = NotificationService();
+  List<NotificationModel> _notifications = [];
+  int _selectedNotificationFilter = 0;
+  int get _unreadNotificationCount => _notifications.where((n) => !n.read).length;
 
   @override
   void initState() {
@@ -88,6 +94,13 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
           _users = results[1] as List<UserModel>;
           _isLoading = false;
         });
+      }
+
+      final myId = widget.user.userId.isNotEmpty ? widget.user.userId : widget.user.id;
+      if (myId.isNotEmpty) {
+        _notificationService.getUserNotifications(myId).then((notifs) {
+          if (mounted) setState(() => _notifications = notifs);
+        }).catchError((_) {});
       }
     } catch (e) {
       if (mounted) {
@@ -315,9 +328,52 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
                           ),
                         ),
 
-                        // Right actions: Refresh & Logout
+                        // Right actions: Notifications, Refresh & Logout
                         Row(
                           children: [
+                            // Live Notification Bell with consistent red badge
+                            Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                Container(
+                                  width: 38,
+                                  height: 38,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.16),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: IconButton(
+                                    padding: EdgeInsets.zero,
+                                    icon: const Icon(Icons.notifications_none_rounded, color: Colors.white, size: 20),
+                                    tooltip: 'Notifications',
+                                    onPressed: _showNotificationsSheet,
+                                  ),
+                                ),
+                                if (_unreadNotificationCount > 0)
+                                  Positioned(
+                                    right: -3,
+                                    top: -3,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                      decoration: BoxDecoration(
+                                        color: CeladonColors.error,
+                                        borderRadius: BorderRadius.circular(99),
+                                      ),
+                                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                                      child: Text(
+                                        _unreadNotificationCount > 99 ? '99+' : '$_unreadNotificationCount',
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(width: 8),
                             Container(
                               width: 38,
                               height: 38,
@@ -1044,6 +1100,249 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  void _showNotificationsSheet() {
+    final myId = widget.user.userId.isNotEmpty ? widget.user.userId : widget.user.id;
+    if (myId.isNotEmpty) {
+      _notificationService.getUserNotifications(myId).then((notifs) {
+        if (mounted) setState(() => _notifications = notifs);
+      }).catchError((_) {});
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: CeladonColors.cardBackground,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final filtered = _notifications.where((n) {
+            if (_selectedNotificationFilter == 1 && n.read) return false;
+            if (_selectedNotificationFilter == 2 && !n.isTask) return false;
+            if (_selectedNotificationFilter == 3 && !n.type.contains('leave')) return false;
+            return true;
+          }).toList();
+
+          final tabs = ['All', 'Unread', 'Tasks', 'Leave'];
+
+          return SizedBox(
+            height: MediaQuery.of(context).size.height * 0.85,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: CeladonColors.border,
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      const Text(
+                        'Notifications',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: CeladonColors.textPrimary,
+                        ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        tooltip: 'Mark all as read',
+                        icon: const Icon(Icons.done_all_rounded, color: CeladonColors.primary),
+                        onPressed: () async {
+                          if (myId.isNotEmpty) {
+                            await _notificationService.markAllAsRead(myId);
+                            for (final n in _notifications) {
+                              n.read = true;
+                            }
+                            if (mounted) setState(() {});
+                            setSheetState(() {});
+                          }
+                        },
+                      ),
+                      TextButton.icon(
+                        style: TextButton.styleFrom(
+                          backgroundColor: CeladonColors.errorLight,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: const Icon(Icons.delete_sweep_rounded, color: CeladonColors.error, size: 16),
+                        label: const Text('Clear all', style: TextStyle(color: CeladonColors.error, fontSize: 11.5, fontWeight: FontWeight.w700)),
+                        onPressed: () async {
+                          if (myId.isNotEmpty) {
+                            _notifications.clear();
+                            if (mounted) setState(() {});
+                            setSheetState(() {});
+                            await _notificationService.clearAll(myId);
+                          }
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: List.generate(tabs.length, (i) {
+                        final active = _selectedNotificationFilter == i;
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ChoiceChip(
+                            label: Text(tabs[i]),
+                            selected: active,
+                            selectedColor: CeladonColors.primary,
+                            labelStyle: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: active ? Colors.white : CeladonColors.textPrimary,
+                            ),
+                            onSelected: (_) => setSheetState(() => _selectedNotificationFilter = i),
+                          ),
+                        );
+                      }),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: filtered.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'No notifications in this category.',
+                              style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                            ),
+                          )
+                        : ListView.separated(
+                            itemCount: filtered.length,
+                            separatorBuilder: (_, _) => const SizedBox(height: 8),
+                            itemBuilder: (_, i) {
+                              final notif = filtered[i];
+                              IconData icon = Icons.notifications_active_outlined;
+                              if (notif.isCall) {
+                                icon = notif.type == 'video_call'
+                                    ? Icons.videocam_rounded
+                                    : Icons.phone_in_talk_rounded;
+                              } else if (notif.isMeeting) {
+                                icon = Icons.groups_rounded;
+                              } else if (notif.type == 'voice_message') {
+                                icon = Icons.mic_rounded;
+                              } else if (notif.isMessenger) {
+                                icon = Icons.chat_bubble_rounded;
+                              } else if (notif.isTask) {
+                                icon = Icons.assignment_rounded;
+                              } else if (notif.isAttendance) {
+                                icon = Icons.event_available_rounded;
+                              }
+
+                              return Dismissible(
+                                key: Key(notif.id),
+                                direction: DismissDirection.horizontal,
+                                background: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                                  decoration: BoxDecoration(
+                                    color: CeladonColors.error,
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  alignment: Alignment.centerLeft,
+                                  child: const Row(
+                                    children: [
+                                      Icon(Icons.delete_outline_rounded, color: Colors.white, size: 20),
+                                      SizedBox(width: 8),
+                                      Text('Dismiss', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                                    ],
+                                  ),
+                                ),
+                                secondaryBackground: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                                  decoration: BoxDecoration(
+                                    color: CeladonColors.error,
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  alignment: Alignment.centerRight,
+                                  child: const Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      Text('Dismiss', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                                      SizedBox(width: 8),
+                                      Icon(Icons.delete_outline_rounded, color: Colors.white, size: 20),
+                                    ],
+                                  ),
+                                ),
+                                onDismissed: (_) {
+                                  _notifications.removeWhere((n) => n.id == notif.id);
+                                  _notificationService.deleteNotification(notif.id);
+                                  if (mounted) setState(() {});
+                                  setSheetState(() {});
+                                },
+                                child: Material(
+                                  color: notif.read ? Colors.white : CeladonColors.softMint,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                    side: const BorderSide(color: CeladonColors.border),
+                                  ),
+                                  child: ListTile(
+                                    leading: CircleAvatar(
+                                      backgroundColor: CeladonColors.primary.withValues(alpha: 0.12),
+                                      child: Icon(icon, color: CeladonColors.primary, size: 19),
+                                    ),
+                                    title: Text(
+                                      notif.title,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13.5,
+                                      ),
+                                    ),
+                                    subtitle: Text(
+                                      notif.message,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                    trailing: IconButton(
+                                      icon: const Icon(Icons.close_rounded, size: 16, color: CeladonColors.textMuted),
+                                      tooltip: 'Dismiss',
+                                      onPressed: () {
+                                        _notifications.removeWhere((n) => n.id == notif.id);
+                                        _notificationService.deleteNotification(notif.id);
+                                        if (mounted) setState(() {});
+                                        setSheetState(() {});
+                                      },
+                                    ),
+                                    onTap: () {
+                                      notif.read = true;
+                                      if (mounted) setState(() {});
+                                      _notificationService
+                                          .markAsRead(notif.id, mongoId: notif.mongoId)
+                                          .catchError((_) => false);
+                                      Navigator.pop(ctx);
+                                    },
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }

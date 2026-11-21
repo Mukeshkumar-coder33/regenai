@@ -45,7 +45,7 @@ class HelpSupportView extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: const [
                         Text(
-                          'Help & Support',
+                          'Support',
                           style: TextStyle(
                             fontSize: 19,
                             fontWeight: FontWeight.w800,

@@ -112,7 +112,7 @@ class _TeamDirectoryViewState extends State<TeamDirectoryView> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: const [
                         Text(
-                          'Team Directory',
+                          'Directory',
                           style: TextStyle(
                             fontSize: 19,
                             fontWeight: FontWeight.w800,

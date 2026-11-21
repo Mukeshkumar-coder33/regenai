@@ -238,7 +238,7 @@ class _EmployeePayrollViewState extends State<EmployeePayrollView> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: const [
                       Text(
-                        'My Payroll',
+                        'Payroll',
                         style: TextStyle(
                           fontSize: 19,
                           fontWeight: FontWeight.w800,

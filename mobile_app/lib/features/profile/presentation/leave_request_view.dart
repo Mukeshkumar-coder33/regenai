@@ -140,7 +140,7 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: const [
                           Text(
-                            'Leave Requests',
+                            'Leaves',
                             style: TextStyle(
                               fontSize: 19,
                               fontWeight: FontWeight.w800,

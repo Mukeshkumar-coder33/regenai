@@ -32,6 +32,17 @@ const activeMeetings = new Map(); // meetingId -> { meetingId, title, hostId, ho
 // In-memory online user tracking (userId -> Set<socket.id>)
 const onlineUserSockets = new Map();
 
+// In-memory active conversation tracking (userId -> conversationId)
+const userActiveConversations = new Map();
+
+/**
+ * Return whether a user is currently actively viewing a specific conversation.
+ */
+export function isUserActiveInConversation(userId, conversationId) {
+  if (!userId || !conversationId) return false;
+  return userActiveConversations.get(String(userId)) === String(conversationId);
+}
+
 /**
  * Return the set of currently connected userIds.
  */
@@ -172,6 +183,21 @@ export function initSocketIO(httpServer) {
         io.to('global').emit('presence:update', presencePayload);
       }
     }
+
+    // ── Active Conversation Tracking (WhatsApp-like presence & notification suppression) ──
+    socket.on('dm:join-conversation', (data) => {
+      const convId = data?.conversationId ? String(data.conversationId) : null;
+      if (convId) {
+        userActiveConversations.set(String(userId), convId);
+      }
+    });
+
+    socket.on('dm:leave-conversation', (data) => {
+      const convId = data?.conversationId ? String(data.conversationId) : null;
+      if (!convId || userActiveConversations.get(String(userId)) === convId) {
+        userActiveConversations.delete(String(userId));
+      }
+    });
 
     // ── 1-to-1 WebRTC Call Signaling (with server-side role & company validation) ──
     socket.on('call:initiate', async (data) => {
@@ -369,6 +395,10 @@ export function initSocketIO(httpServer) {
           broadcastToRooms(targetRooms, 'call:ended', {
             callId,
             endedBy: userId,
+          });
+          broadcastToRooms(targetRooms, 'call:cancelled', {
+            callId,
+            callerId: userId,
           });
         }
       } catch (err) {
@@ -615,6 +645,9 @@ export function initSocketIO(httpServer) {
     });
 
     socket.on('disconnect', () => {
+      // Clean up active conversation tracking
+      userActiveConversations.delete(String(userId));
+
       // Clean up pending unanswered calls initiated by this user
       for (const [cId, cInfo] of activeCalls.entries()) {
         if (cInfo.callerId === userId && cInfo.actionStatus !== 'accepted') {

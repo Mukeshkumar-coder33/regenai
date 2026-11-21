@@ -1,6 +1,6 @@
 import Conversation from '../models/Conversation.js';
 import DirectMessage from '../models/DirectMessage.js';
-import { emitToUser, getOnlineUserIds } from '../socket.js';
+import { emitToUser, getOnlineUserIds, isUserActiveInConversation } from '../socket.js';
 import { createAndSendNotification } from './notificationController.js';
 import {
   resolveMessengerActor,
@@ -483,7 +483,25 @@ export const sendDirectMessage = async (req, res) => {
     body.companyId = convo.companyId || undefined;
     body.senderId = myId;
     body.senderName = actor.name || actor.username || myId;
-    body.readBy = [myId];
+
+    // Detect if peer/recipients are actively viewing this conversation right now
+    const recipients = (convo.participants || []).filter((p) => normalizeId(p) !== myId);
+    const activeRecipients = [];
+    const inactiveRecipients = [];
+    for (const rId of recipients) {
+      if (isUserActiveInConversation(rId, convo._id.toString())) {
+        activeRecipients.push(rId);
+      } else {
+        inactiveRecipients.push(rId);
+      }
+    }
+
+    // If recipient is already inside the conversation, automatically mark as read!
+    if (activeRecipients.length > 0) {
+      body.readBy = Array.from(new Set([myId, ...activeRecipients]));
+    } else {
+      body.readBy = [myId];
+    }
 
     // Handle attachments (voice notes, images, videos, files)
     if (Array.isArray(body.attachments)) {
@@ -525,9 +543,20 @@ export const sendDirectMessage = async (req, res) => {
       publicKeys: activeKeys,
     });
 
-    // Notify all other participants
-    const recipients = (convo.participants || []).filter((p) => normalizeId(p) !== myId);
-    for (const recipientId of recipients) {
+    // If recipient was already in the chat, send immediate read receipt so sender gets 2 blue ticks without delay!
+    if (activeRecipients.length > 0) {
+      for (const rId of activeRecipients) {
+        await emitToParticipants(convo.participants, 'dm:change', {
+          action: 'read',
+          conversationId: convo._id.toString(),
+          userId: rId,
+          readBy: msg.readBy,
+        });
+      }
+    }
+
+    // Notify ONLY inactive participants (suppresses redundant sound/vibration/notification when actively in conversation)
+    for (const recipientId of inactiveRecipients) {
       await createAndSendNotification({
         companyId: convo.companyId || null,
         userId: recipientId,
@@ -602,7 +631,13 @@ export const storePublicKey = async (req, res) => {
       return res.status(convo ? 403 : 404).json({ message: access.reason });
     }
 
-    convo.publicKeys.set(actor.userId, typeof publicKey === 'string' ? publicKey : JSON.stringify(publicKey));
+    if (!convo.publicKeys) convo.publicKeys = new Map();
+    const pubVal = typeof publicKey === 'string' ? publicKey : JSON.stringify(publicKey);
+    if (convo.publicKeys instanceof Map) {
+      convo.publicKeys.set(actor.userId, pubVal);
+    } else {
+      convo.publicKeys[actor.userId] = pubVal;
+    }
     await convo.save();
 
     const activeKeys = convo.publicKeys

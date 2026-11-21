@@ -284,16 +284,43 @@ class _MessengerViewState extends State<MessengerView> {
           }
           await _setupE2eForConversation(_activeConversation!);
 
-          // If a new message arrived in real-time, decrypt and append immediately for zero latency
-          if (payload['message'] is Map<String, dynamic> && payload['action'] == 'create') {
-            final incomingMsg = DirectMessageModel.fromJson(payload['message'] as Map<String, dynamic>);
+          // Real-time WhatsApp-like in-place read receipt updates (grey ticks -> blue ticks)
+          if (payload['action'] == 'read') {
+            final readUserId = (payload['userId'] ?? '').toString();
+            if (readUserId.isNotEmpty && mounted) {
+              setState(() {
+                _directMessages = _directMessages.map<DirectMessageModel>((m) {
+                  if (!m.readBy.contains(readUserId)) {
+                    return m.copyWith(readBy: [...m.readBy, readUserId]);
+                  }
+                  return m;
+                }).toList();
+              });
+            }
+          }
+
+          // Real-time instant decryption & append for zero latency
+          final rawMsg = payload['message'];
+          if (rawMsg is Map && payload['action'] == 'create') {
+            final incomingMsg = DirectMessageModel.fromJson(Map<String, dynamic>.from(rawMsg));
             if (!_directMessages.any((m) => m.id == incomingMsg.id)) {
               DirectMessageModel decryptedMsg = incomingMsg;
-              if (incomingMsg.encrypted && incomingMsg.iv.isNotEmpty && _activeSharedKey != null) {
-                final plain = await E2eCryptoService.decryptMessage(_activeSharedKey!, incomingMsg.content, incomingMsg.iv);
-                decryptedMsg = incomingMsg.copyWith(
-                  decryptedContent: plain == '🔒 Unable to decrypt' ? '🔒 Encrypted message' : plain,
-                );
+              if (incomingMsg.encrypted && incomingMsg.iv.isNotEmpty) {
+                SecretKey? keyToUse = _activeSharedKey;
+                if (keyToUse == null) {
+                  await _setupE2eForConversation(_activeConversation!);
+                  keyToUse = _activeSharedKey;
+                }
+                if (keyToUse != null) {
+                  final plain = await E2eCryptoService.decryptMessage(keyToUse, incomingMsg.content, incomingMsg.iv);
+                  if (plain != '🔒 Unable to decrypt') {
+                    decryptedMsg = incomingMsg.copyWith(decryptedContent: plain);
+                  } else {
+                    decryptedMsg = incomingMsg.copyWith(decryptedContent: '🔒 Encrypted message');
+                  }
+                } else {
+                  decryptedMsg = incomingMsg.copyWith(decryptedContent: '🔒 Encrypted message');
+                }
               }
               if (mounted) {
                 setState(() => _directMessages.add(decryptedMsg));
@@ -732,6 +759,20 @@ class _MessengerViewState extends State<MessengerView> {
     return out;
   }
 
+  void _closeActiveConversation() {
+    if (_activeConversation != null) {
+      MessengerSocketService.instance.emit('dm:leave-conversation', {
+        'conversationId': _activeConversation!.conversationId,
+      });
+    }
+    setState(() {
+      _activeConversation = null;
+      _activeSharedKey = null;
+      _e2eActive = false;
+    });
+    _notifyChatState();
+  }
+
   Future<void> _openConversation(DmConversationModel conv) async {
     final cached = _messengerService.getCachedKeys(conv.conversationId);
     if (cached != null && cached.isNotEmpty) {
@@ -745,6 +786,7 @@ class _MessengerViewState extends State<MessengerView> {
       _activeSharedKey = null;
       _e2eActive = false;
     });
+    MessengerSocketService.instance.emit('dm:join-conversation', {'conversationId': conv.conversationId});
     _notifyChatState();
 
     await _setupE2eForConversation(conv);
@@ -2318,10 +2360,7 @@ class _MessengerViewState extends State<MessengerView> {
                     size: 22,
                     color: CeladonColors.textPrimary,
                   ),
-                  onPressed: () {
-                    setState(() => _activeConversation = null);
-                    _notifyChatState();
-                  },
+                  onPressed: _closeActiveConversation,
                 ),
                 _buildAvatar(
                   name: displayName,
@@ -2487,6 +2526,7 @@ class _MessengerViewState extends State<MessengerView> {
                           final msg = _directMessages[i];
                           final isMine = msg.senderId == _myUserId;
                           final isRead = msg.readBy.any((uid) => uid != _myUserId);
+                          final isDelivered = isRead || isOnline || !msg.id.startsWith('local');
                           final senderName = _resolveSenderName(msg.senderId, msg.senderName);
                           return GestureDetector(
                             onLongPress: () => _showMessageOptions(
@@ -2503,6 +2543,7 @@ class _MessengerViewState extends State<MessengerView> {
                               isMine: isMine,
                               edited: msg.editedAt != null,
                               isRead: isRead,
+                              isDelivered: isDelivered,
                               showReadReceipt: isMine,
                               attachments: msg.attachments,
                             ),
@@ -2547,6 +2588,7 @@ class _MessengerViewState extends State<MessengerView> {
     required bool isMine,
     bool edited = false,
     bool isRead = false,
+    bool isDelivered = false,
     bool showReadReceipt = false,
     List<MessageAttachmentModel> attachments = const [],
   }) {
@@ -2662,11 +2704,11 @@ class _MessengerViewState extends State<MessengerView> {
                 if (showReadReceipt) ...[
                   const SizedBox(width: 4),
                   Icon(
-                    isRead ? Icons.done_all_rounded : Icons.done_rounded,
+                    (isRead || isDelivered) ? Icons.done_all_rounded : Icons.done_rounded,
                     size: 14,
                     color: isRead
-                        ? const Color(0xFF86EFAC)
-                        : Colors.white.withValues(alpha: 0.75),
+                        ? const Color(0xFF38BDF8)
+                        : Colors.white.withValues(alpha: 0.70),
                   ),
                 ],
               ],

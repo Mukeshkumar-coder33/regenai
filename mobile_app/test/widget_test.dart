@@ -600,7 +600,7 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      expect(find.text('Tasks & Schedules'), findsOneWidget);
+      expect(find.text('Tasks'), findsWidgets);
       expect(find.textContaining('General Task'), findsOneWidget);
       expect(find.textContaining('Overview'), findsOneWidget);
       expect(find.textContaining('Projects'), findsOneWidget);
@@ -725,7 +725,7 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      expect(find.text('Tasks & Schedules'), findsOneWidget);
+      expect(find.text('Tasks'), findsWidgets);
       expect(find.byType(FloatingActionButton), findsNothing);
 
       // 2. Verify EmployeeDashboardView displays personal metrics & no company totals
@@ -1055,8 +1055,8 @@ void main() {
       await tester.scrollUntilVisible(find.text('Employee Attendance Details'), 300);
       await tester.pumpAndSettle();
 
-      // Select Monday (past day) in the 7-day trend selector
-      await tester.tap(find.text('Mon').first);
+      // Select Monday (past day) in the 7-day trend selector button
+      await tester.tap(find.text('Mon').last);
       await tester.pumpAndSettle();
 
       // Tap on the Absent tab in the trend section where staff Eswaran M is located
@@ -1441,7 +1441,7 @@ void main() {
       // Verify search box exists and filter segment chips are removed
       expect(find.text('Search employee name, ID or leave...'), findsOneWidget);
       expect(find.text('Manage leave requests'), findsNothing);
-      expect(find.text('Leave Management'), findsWidgets);
+      expect(find.text('Leaves'), findsWidgets);
 
       // Verify a leave card exists and tap opens leave details sheet
       final leaveCard = find.text('PENDING');
@@ -1478,7 +1478,7 @@ void main() {
 
       expect(find.byIcon(Icons.arrow_back_rounded), findsOneWidget);
       expect(find.text('ReGen'), findsNothing);
-      expect(find.text('Tasks & Schedules'), findsOneWidget);
+      expect(find.text('Tasks'), findsWidgets);
       expect(find.text('Search by title, description, or assigned person...'), findsOneWidget);
 
       await tester.tap(find.byIcon(Icons.arrow_back_rounded));
@@ -2222,7 +2222,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('My Payroll'), findsOneWidget);
+      expect(find.text('Payroll'), findsWidgets);
       expect(find.textContaining('Earned Payment'), findsOneWidget);
     });
 

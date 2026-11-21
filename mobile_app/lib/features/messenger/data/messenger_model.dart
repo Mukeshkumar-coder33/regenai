@@ -439,7 +439,10 @@ class DirectMessageModel {
 
   bool get hasAudioAttachment => attachments.any((a) => a.isAudio);
 
-  DirectMessageModel copyWith({String? decryptedContent}) {
+  DirectMessageModel copyWith({
+    String? decryptedContent,
+    List<String>? readBy,
+  }) {
     return DirectMessageModel(
       id: id,
       conversationId: conversationId,
@@ -451,7 +454,7 @@ class DirectMessageModel {
       encrypted: encrypted,
       timestamp: timestamp,
       editedAt: editedAt,
-      readBy: readBy,
+      readBy: readBy ?? this.readBy,
       attachments: attachments,
     );
   }

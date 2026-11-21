@@ -2401,7 +2401,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: const [
                     Text(
-                      'Payroll & Compensation',
+                      'Payroll',
                       style: TextStyle(
                         fontSize: 19,
                         fontWeight: FontWeight.w800,
@@ -2556,7 +2556,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: const [
                     Text(
-                      'Workforce Reports',
+                      'Reports',
                       style: TextStyle(
                         fontSize: 19,
                         fontWeight: FontWeight.w800,
@@ -8605,7 +8605,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: const [
                     Text(
-                      'Leave Management',
+                      'Leaves',
                       style: TextStyle(
                         fontSize: 19,
                         fontWeight: FontWeight.w800,
@@ -9864,7 +9864,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: const [
                   Text(
-                    'My Profile',
+                    'Profile',
                     style: TextStyle(
                       fontSize: 19,
                       fontWeight: FontWeight.w800,

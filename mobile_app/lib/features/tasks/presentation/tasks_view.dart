@@ -580,7 +580,7 @@ class _TasksViewState extends State<TasksView> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: const [
                 Text(
-                  'Tasks & Schedules',
+                  'Tasks',
                   style: TextStyle(
                     fontSize: 19,
                     fontWeight: FontWeight.w800,

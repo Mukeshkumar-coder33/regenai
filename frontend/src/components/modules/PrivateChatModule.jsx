@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { getSocket } from '../../hooks/useSocket';
 import {
   useGetAllUsers,
   useGetMyConversations,
@@ -521,9 +522,28 @@ export default function PrivateChatModule({ userProfile }) {
 
         // 2. Check if peer has published their key
         const peerId = getConvoPeerId(activeConvo, myId);
-        const peerKeyStr = activeConvo.publicKeys?.[peerId];
+        let peerKeyStr = activeConvo.publicKeys?.[peerId];
+        if (!peerKeyStr) {
+          try {
+            const token = localStorage.getItem('auth_token') || localStorage.getItem('sa_auth_token') || localStorage.getItem('token');
+            const res = await fetch(`/api/dm/conversations/${activeConvoId}/keys`, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) {
+              const freshKeys = await res.json();
+              peerKeyStr = freshKeys?.[peerId];
+            }
+          } catch (_) {}
+        }
+
         if (peerKeyStr) {
-          const peerPubJwk = JSON.parse(peerKeyStr);
+          let peerPubJwk = peerKeyStr;
+          if (typeof peerPubJwk === 'string') {
+            try { peerPubJwk = JSON.parse(peerPubJwk); } catch {}
+            if (typeof peerPubJwk === 'string') {
+              try { peerPubJwk = JSON.parse(peerPubJwk); } catch {}
+            }
+          }
           const derived = await deriveSharedKey(activeConvoId, peerPubJwk);
           setSharedKey(derived);
           setE2eReady(true);
@@ -540,6 +560,20 @@ export default function PrivateChatModule({ userProfile }) {
     };
     setupE2E();
   }, [activeConvoId, activeConvo?.publicKeys]);
+
+  // Active conversation tracking for real-time presence, read receipts, and notification suppression
+  useEffect(() => {
+    if (!activeConvoId) return;
+    const socket = getSocket();
+    if (socket) {
+      socket.emit('dm:join-conversation', { conversationId: activeConvoId });
+    }
+    return () => {
+      if (socket) {
+        socket.emit('dm:leave-conversation', { conversationId: activeConvoId });
+      }
+    };
+  }, [activeConvoId]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -1272,7 +1306,7 @@ export default function PrivateChatModule({ userProfile }) {
                         </div>
                       ) : (
                         <p className="text-sm break-words whitespace-pre-wrap leading-relaxed">
-                          {highlightText(msg._decrypted || msg.content || '', msgIdx)}
+                          {highlightText(msg._decrypted ? msg._decrypted : (msg.encrypted ? '🔒 Encrypted message' : (msg.content || '')), msgIdx)}
                         </p>
                       )}
 

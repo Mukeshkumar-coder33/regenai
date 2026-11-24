@@ -39,6 +39,9 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
+    AppConfig.initCustomUrl().then((_) {
+      if (mounted) setState(() {});
+    });
     _authController = widget.controller ?? AuthController();
     _authController.addListener(_onAuthStateChanged);
   }
@@ -179,24 +182,68 @@ class _LoginScreenState extends State<LoginScreen> {
                                   width: 1.0,
                                 ),
                               ),
-                              child: Row(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  const Icon(
-                                    Icons.error_outline_rounded,
-                                    size: 18,
-                                    color: Color(0xFFDC4C4C),
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Padding(
+                                        padding: EdgeInsets.only(top: 2),
+                                        child: Icon(
+                                          Icons.error_outline_rounded,
+                                          size: 18,
+                                          color: Color(0xFFDC4C4C),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          _authController.errorMessage!,
+                                          style: const TextStyle(
+                                            fontSize: 12.5,
+                                            color: Color(0xFFDC4C4C),
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      _authController.errorMessage!,
-                                      style: const TextStyle(
-                                        fontSize: 12.5,
-                                        color: Color(0xFFDC4C4C),
-                                        fontWeight: FontWeight.w600,
+                                  if (_authController.errorMessage!.contains('Cannot reach ReGen server') ||
+                                      _authController.errorMessage!.contains('SocketException') ||
+                                      _authController.errorMessage!.contains('192.168.')) ...[
+                                    const SizedBox(height: 8),
+                                    Align(
+                                      alignment: Alignment.centerRight,
+                                      child: InkWell(
+                                        onTap: _showServerUrlDialog,
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                          decoration: BoxDecoration(
+                                            color: CeladonColors.primaryLight,
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(color: CeladonColors.primary.withValues(alpha: 0.3)),
+                                          ),
+                                          child: const Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(Icons.settings_ethernet_rounded, size: 15, color: CeladonColors.primary),
+                                              SizedBox(width: 6),
+                                              Text(
+                                                'Configure Server IP',
+                                                style: TextStyle(
+                                                  fontSize: 11.5,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: CeladonColors.primary,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
                                       ),
                                     ),
-                                  ),
+                                  ],
                                 ],
                               ),
                             ),
@@ -524,6 +571,7 @@ class _LoginScreenState extends State<LoginScreen> {
               spacing: 6,
               runSpacing: 6,
               children: [
+                _buildPresetUrlChip('Wi-Fi PC (192.168.1.37)', 'http://192.168.1.37:5006', ctrl),
                 _buildPresetUrlChip('Wi-Fi PC (192.168.1.50)', 'http://192.168.1.50:5006', ctrl),
                 _buildPresetUrlChip('Emulator (10.0.2.2)', 'http://10.0.2.2:5006', ctrl),
                 _buildPresetUrlChip('Localhost', 'http://127.0.0.1:5006', ctrl),
@@ -537,18 +585,21 @@ class _LoginScreenState extends State<LoginScreen> {
             child: const Text('Cancel', style: TextStyle(color: CeladonColors.textMuted)),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               final newUrl = ctrl.text.trim();
               if (newUrl.isNotEmpty) {
-                setState(() => AppConfig.activeBaseUrl = newUrl);
+                await AppConfig.setCustomUrl(newUrl);
+                if (mounted) setState(() {});
               }
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Server connected to ${AppConfig.activeBaseUrl}'),
-                  backgroundColor: CeladonColors.primary,
-                ),
-              );
+              if (ctx.mounted) Navigator.pop(ctx);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Server connected to ${AppConfig.activeBaseUrl}'),
+                    backgroundColor: CeladonColors.primary,
+                  ),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: CeladonColors.primary,

@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Central API Configuration for ReGen Mobile
 ///
@@ -19,7 +20,7 @@ abstract final class AppConfig {
   /// - Web / Chrome: `http://localhost:5006` or `http://127.0.0.1:5006`
   /// - Android Emulator: `http://10.0.2.2:5006` (Android's alias to host PC loopback)
   /// - iOS Simulator: `http://localhost:5006`
-  /// - Physical Phone: Configure with your machine's LAN IP (e.g. `http://192.168.1.x:5006`)
+  /// - Physical Phone: Configure with your machine's LAN IP (e.g. `http://192.168.1.37:5006`)
   static String get defaultBaseUrl {
     const customUrl = String.fromEnvironment('BACKEND_URL');
     if (customUrl.isNotEmpty) {
@@ -30,8 +31,8 @@ abstract final class AppConfig {
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
-        // Physical phone on local Wi-Fi: host PC LAN IP 192.168.1.50
-        return 'http://192.168.1.50:$backendPort';
+        // Physical phone on local Wi-Fi: host PC LAN IP 192.168.1.37
+        return 'http://192.168.1.37:$backendPort';
       case TargetPlatform.iOS:
       case TargetPlatform.macOS:
       case TargetPlatform.windows:
@@ -43,6 +44,26 @@ abstract final class AppConfig {
 
   /// Active base URL (can be customized at runtime during development if testing on LAN)
   static String activeBaseUrl = defaultBaseUrl;
+
+  /// Load persisted custom URL from preferences if set
+  static Future<void> initCustomUrl() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString('regen_custom_backend_url');
+      if (saved != null && saved.trim().isNotEmpty) {
+        activeBaseUrl = saved.trim();
+      }
+    } catch (_) {}
+  }
+
+  /// Save and update active backend URL
+  static Future<void> setCustomUrl(String url) async {
+    activeBaseUrl = url.trim();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('regen_custom_backend_url', activeBaseUrl);
+    } catch (_) {}
+  }
 
   // Endpoint routes
   static String get loginUrl => '$activeBaseUrl/api/auth/login';

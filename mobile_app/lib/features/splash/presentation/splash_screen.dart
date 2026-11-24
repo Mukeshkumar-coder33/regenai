@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../app/app_config.dart';
 import '../../../core/storage/session_storage.dart';
 import '../../../core/theme/celadon_colors.dart';
 import '../../../core/widgets/botanical_background.dart';
@@ -61,6 +62,7 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _checkInitialRoute() async {
+    await AppConfig.initCustomUrl();
     // Fast responsive session check without artificial delay that blocks engine frames
     final savedUser = await SessionStorage.getUserSession();
 

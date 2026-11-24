@@ -73,6 +73,7 @@ class _LoginScreenState extends State<LoginScreen> {
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (_) => DashboardScreen(
+            key: ValueKey('dashboard_${user.userId}_${user.role}'),
             user: user,
             onLogout: () async {
               await _authController.logout();

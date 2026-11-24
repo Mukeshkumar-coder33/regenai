@@ -206,6 +206,7 @@ class MessengerSocketService {
     }
     _activeToken = null;
     _activeUserId = null;
+    _activeConversationId = null;
     _isConnected = false;
     _connectionController.add(false);
   }

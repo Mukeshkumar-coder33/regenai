@@ -11,6 +11,7 @@ import '../../calendar/presentation/calendar_view.dart';
 import '../../company/presentation/company_dashboard_view.dart';
 import '../../messenger/data/call_notification_service.dart';
 import '../../messenger/data/messenger_socket_service.dart';
+import '../../messenger/data/messenger_store.dart';
 import '../../messenger/data/webrtc_call_manager.dart';
 import '../../messenger/presentation/messenger_view.dart';
 import '../../policies/data/policy_service.dart';
@@ -319,6 +320,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   Future<void> _handleLogout() async {
     await WebRtcCallManager.instance.resetOnLogout();
     MessengerSocketService.instance.disconnect();
+    MessengerStore.instance.reset();
     await SessionStorage.clearSession();
     try {
       widget.onLogout();
@@ -336,6 +338,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     // Dedicated high-end Company Workspace Experience matching ReGen Design Specification
     if (_currentUser.isCompanyAdmin) {
       return CompanyDashboardView(
+        key: ValueKey('company_dashboard_${_currentUser.userId}'),
         user: _currentUser,
         onOpenDrawer: _openDrawer,
         onLogout: _handleLogout,

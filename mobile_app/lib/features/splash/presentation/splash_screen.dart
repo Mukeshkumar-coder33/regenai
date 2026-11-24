@@ -82,6 +82,7 @@ class _SplashScreenState extends State<SplashScreen>
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
             builder: (_) => DashboardScreen(
+              key: ValueKey('dashboard_${savedUser.userId}_${savedUser.role}'),
               user: savedUser,
               onLogout: () async {
                 await SessionStorage.clearSession();

@@ -1047,6 +1047,11 @@ class WebRtcCallManager extends ChangeNotifier {
   Future<void> resetOnLogout() async {
     await _cleanupCall();
     await leaveGroupMeeting();
+    for (final s in _subs) {
+      s.cancel();
+    }
+    _subs.clear();
+    _listenersAttached = false;
     _currentUser = null;
   }
 

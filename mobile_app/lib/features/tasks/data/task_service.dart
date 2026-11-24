@@ -102,6 +102,94 @@ class TaskService {
     });
   }
 
+  /// Start Task (Records working time start)
+  Future<TaskModel> startTask(String id, {String? startedAt}) async {
+    final start = startedAt ?? DateTime.now().toIso8601String();
+    return updateTask(id, {
+      'status': 'in_progress',
+      'startedAt': start,
+    });
+  }
+
+  /// Submit Daily Progress Update (Sets percentage and log)
+  Future<TaskModel> submitProgressUpdate({
+    required TaskModel task,
+    required String updateText,
+    required int percentage,
+    String? employeeName,
+    String? employeeId,
+  }) async {
+    final newUpdate = TaskProgressUpdateModel(
+      date: DateTime.now().toIso8601String(),
+      updateText: updateText,
+      percentage: percentage,
+      employeeName: employeeName,
+      employeeId: employeeId,
+    );
+    final updatedList = List<TaskProgressUpdateModel>.from(task.progressUpdates)..add(newUpdate);
+    return updateTask(task.id, {
+      'progressPercentage': percentage,
+      'progressUpdates': updatedList.map((u) => u.toJson()).toList(),
+    });
+  }
+
+  /// Submit Completion Report (Final report with timestamps and employee details)
+  Future<TaskModel> submitCompletionReport({
+    required String id,
+    required TaskCompletionReportModel report,
+  }) async {
+    final now = DateTime.now().toIso8601String();
+    return updateTask(id, {
+      'status': 'done',
+      'completedAt': now,
+      'completionTime': report.workingTime ?? '',
+      'progressPercentage': 100,
+      'completionReport': report.toJson(),
+    });
+  }
+
+  /// Request Deadline Extension (Extra time request by employee)
+  Future<TaskModel> requestDeadlineExtension({
+    required String id,
+    required TaskExtensionRequestModel request,
+  }) async {
+    return updateTask(id, {
+      'extensionRequest': request.toJson(),
+    });
+  }
+
+  /// Review Deadline Extension (Company accept/reject)
+  Future<TaskModel> reviewDeadlineExtension({
+    required TaskModel task,
+    required bool accept,
+    String? companyResponse,
+  }) async {
+    final ext = task.extensionRequest;
+    final updatedReq = TaskExtensionRequestModel(
+      requestedDueDate: ext?.requestedDueDate,
+      requestedDueTime: ext?.requestedDueTime,
+      reason: ext?.reason,
+      status: accept ? 'accepted' : 'rejected',
+      requestedAt: ext?.requestedAt,
+      reviewedAt: DateTime.now().toIso8601String(),
+      companyResponse: companyResponse ?? (accept ? 'Approved' : 'Rejected'),
+    );
+
+    final updates = <String, dynamic>{
+      'extensionRequest': updatedReq.toJson(),
+    };
+    if (accept && ext?.requestedDueDate != null) {
+      updates['dueDate'] = ext!.requestedDueDate;
+      if (ext.requestedDueTime != null) {
+        updates['dueTime'] = ext.requestedDueTime;
+      }
+      if (task.status == 'not_completed') {
+        updates['status'] = 'in_progress';
+      }
+    }
+    return updateTask(task.id, updates);
+  }
+
   /// 5. Delete Task
   Future<bool> deleteTask(String id) async {
     final headers = await _getHeaders();

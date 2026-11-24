@@ -1,6 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../../../core/storage/session_storage.dart';
 import '../../auth/data/user_model.dart';
@@ -166,37 +173,7 @@ class _TasksViewState extends State<TasksView> {
   }
 
   Future<void> _handleCompleteTask(TaskModel task) async {
-    final now = DateTime.now();
-    final nowIso = now.toIso8601String();
-    final hour = now.hour > 12
-        ? now.hour - 12
-        : (now.hour == 0 ? 12 : now.hour);
-    final ampm = now.hour >= 12 ? 'PM' : 'AM';
-    final formattedTime =
-        '${hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} $ampm';
-
-    final optimistic = task.copyWith(
-      status: 'done',
-      completedAt: nowIso,
-      completionTime: formattedTime,
-    );
-    setState(() {
-      final idx = _tasks.indexWhere((t) => t.id == task.id);
-      if (idx != -1) _tasks[idx] = optimistic;
-    });
-    try {
-      final updated = await _taskService.updateTask(task.id, {
-        'status': 'done',
-        'completedAt': nowIso,
-        'completionTime': formattedTime,
-      });
-      if (mounted) {
-        setState(() {
-          final idx = _tasks.indexWhere((t) => t.id == task.id);
-          if (idx != -1) _tasks[idx] = updated;
-        });
-      }
-    } catch (_) {}
+    _showCompletionReportSheet(task);
   }
 
   Future<void> _handleIncompleteTask(TaskModel task) async {
@@ -216,6 +193,1066 @@ class _TasksViewState extends State<TasksView> {
         });
       }
     } catch (_) {}
+  }
+
+  static String _formatDisplayDate(DateTime dt) {
+    const days = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday'
+    ];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
+    final dayName = days[dt.weekday - 1];
+    final monthName = months[dt.month - 1];
+    return '$dayName, $monthName ${dt.day}, ${dt.year}';
+  }
+
+  static String _formatDisplayTime(DateTime dt) {
+    final hour = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
+    final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+    return '${hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')} $ampm';
+  }
+
+  Future<void> _downloadAttachment(
+    TaskModel task,
+    TaskAttachmentModel doc,
+  ) async {
+    try {
+      if (!kIsWeb &&
+          (defaultTargetPlatform == TargetPlatform.android ||
+              defaultTargetPlatform == TargetPlatform.iOS)) {
+        await [Permission.storage].request();
+      }
+
+      Uint8List bytes;
+      if (doc.data != null && doc.data!.isNotEmpty) {
+        bytes = base64Decode(doc.data!);
+      } else if (doc.url != null && doc.url!.isNotEmpty) {
+        final uri = Uri.parse(doc.url!);
+        final request = await HttpClient().getUrl(uri);
+        final response = await request.close();
+        final chunks = <int>[];
+        await for (var chunk in response) {
+          chunks.addAll(chunk);
+        }
+        bytes = Uint8List.fromList(chunks);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No document data available to download'),
+              backgroundColor: CeladonColors.error,
+            ),
+          );
+        }
+        return;
+      }
+
+      String targetDir;
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        final downloadDir = Directory('/storage/emulated/0/Download');
+        if (await downloadDir.exists()) {
+          targetDir = downloadDir.path;
+        } else {
+          final extDir = await getExternalStorageDirectory();
+          targetDir =
+              extDir?.path ?? (await getApplicationDocumentsDirectory()).path;
+        }
+      } else {
+        final appDir = await getApplicationDocumentsDirectory();
+        targetDir = appDir.path;
+      }
+
+      final safeName = doc.name.replaceAll(RegExp(r'[^\w\.\-]'), '_');
+      final targetFile = File('$targetDir/$safeName');
+      await targetFile.writeAsBytes(bytes);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: CeladonColors.primary,
+            content: Text('Saved to device storage: ${targetFile.path}'),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: CeladonColors.error,
+            content: Text('Error downloading file: $e'),
+          ),
+        );
+      }
+    }
+  }
+
+  void _showDailyProgressSheet(TaskModel task) {
+    int percentage = task.progressPercentage > 0
+        ? task.progressPercentage
+        : (task.isInProgress ? 50 : 10);
+    final notesCtrl = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final media = MediaQuery.of(ctx);
+          return Container(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 18,
+              bottom: media.viewInsets.bottom + 20,
+            ),
+            decoration: BoxDecoration(
+              color: CeladonColors.cardBackground,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
+              border: Border.all(color: CeladonColors.border, width: 1.2),
+            ),
+            child: SafeArea(
+              top: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Daily Progress Update',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          color: CeladonColors.textPrimary,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: CeladonColors.textMuted,
+                        ),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                  const Divider(color: CeladonColors.divider, height: 1),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Completion Percentage',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: CeladonColors.textSecondary,
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: CeladonColors.primary.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: CeladonColors.primary.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Text(
+                          '$percentage%',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: CeladonColors.primary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Slider(
+                    value: percentage.toDouble(),
+                    min: 0,
+                    max: 100,
+                    divisions: 20,
+                    label: '$percentage%',
+                    activeColor: CeladonColors.primary,
+                    inactiveColor: CeladonColors.divider,
+                    onChanged: (val) {
+                      setSheetState(() => percentage = val.toInt());
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _buildInputLabel('Daily Progress Notes / Summary'),
+                  _buildDarkTextField(
+                    controller: notesCtrl,
+                    hintText:
+                        'Describe today\'s work and milestones reached...',
+                    maxLines: 3,
+                  ),
+                  const SizedBox(height: 20),
+                  ElevatedButton(
+                    onPressed: () async {
+                      final notes = notesCtrl.text.trim();
+                      final user = widget.user ?? _loggedInUser;
+                      final nav = Navigator.of(ctx);
+                      final messenger = ScaffoldMessenger.of(context);
+
+                      try {
+                        final updated = await _taskService.submitProgressUpdate(
+                          task: task,
+                          updateText: notes.isNotEmpty
+                              ? notes
+                              : 'Updated progress to $percentage%',
+                          percentage: percentage,
+                          employeeName: user?.name ?? user?.username,
+                          employeeId: user?.userId ?? user?.id,
+                        );
+                        if (mounted) {
+                          setState(() {
+                            final idx = _tasks.indexWhere(
+                              (t) => t.id == task.id,
+                            );
+                            if (idx != -1) _tasks[idx] = updated;
+                          });
+                          nav.pop();
+                          messenger.showSnackBar(
+                            const SnackBar(
+                              backgroundColor: CeladonColors.primary,
+                              content: Text(
+                                'Daily progress updated & company notified!',
+                              ),
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        messenger.showSnackBar(
+                          SnackBar(
+                            backgroundColor: CeladonColors.error,
+                            content: Text('Failed to update progress: $e'),
+                          ),
+                        );
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: CeladonColors.primary,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: const Text(
+                      'Submit Daily Update',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showCompletionReportSheet(TaskModel task) {
+    final now = DateTime.now();
+    DateTime startDt = now;
+    if (task.startedAt != null && task.startedAt!.isNotEmpty) {
+      startDt = DateTime.tryParse(task.startedAt!) ?? now;
+    } else if (task.startDate != null && task.startDate!.isNotEmpty) {
+      startDt = DateTime.tryParse(task.startDate!) ?? now;
+    }
+
+    final startDay = _formatDisplayDate(startDt);
+    final startTime = _formatDisplayTime(startDt);
+    final endDay = _formatDisplayDate(now);
+    final endTime = _formatDisplayTime(now);
+
+    final duration = now.difference(startDt);
+    final hours = duration.inHours;
+    final mins = duration.inMinutes % 60;
+    final workingTimeStr =
+        hours > 0 ? '$hours hrs $mins mins' : '$mins mins';
+
+    final user = widget.user ?? _loggedInUser;
+    final empName = user?.name.isNotEmpty == true
+        ? user!.name
+        : (user?.username ?? _getAssigneeDisplayName(task.assignedTo));
+    final empId = user?.userId.isNotEmpty == true
+        ? user!.userId
+        : (user?.id ?? task.assignedTo ?? 'EMP-01');
+
+    final notesCtrl = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final media = MediaQuery.of(ctx);
+          return Container(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 18,
+              bottom: media.viewInsets.bottom + 20,
+            ),
+            decoration: BoxDecoration(
+              color: CeladonColors.cardBackground,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
+              border: Border.all(color: CeladonColors.border, width: 1.2),
+            ),
+            child: SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Task Completion Report',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            color: CeladonColors.textPrimary,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            color: CeladonColors.textMuted,
+                          ),
+                          onPressed: () => Navigator.pop(ctx),
+                        ),
+                      ],
+                    ),
+                    const Divider(color: CeladonColors.divider, height: 1),
+                    const SizedBox(height: 14),
+
+                    // Auto-populated summary card
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: CeladonColors.searchBackground,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: CeladonColors.border),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildDetailRow('Employee Name', empName),
+                          _buildDetailRow('Employee ID', empId),
+                          const Divider(
+                            color: CeladonColors.divider,
+                            height: 12,
+                          ),
+                          _buildDetailRow('Start Day', startDay),
+                          _buildDetailRow('Start Time', startTime),
+                          const Divider(
+                            color: CeladonColors.divider,
+                            height: 12,
+                          ),
+                          _buildDetailRow('End Day', endDay),
+                          _buildDetailRow('End Time', endTime),
+                          const Divider(
+                            color: CeladonColors.divider,
+                            height: 12,
+                          ),
+                          _buildDetailRow(
+                            'Total Working Time',
+                            workingTimeStr,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    _buildInputLabel('Work Summary / Completion Notes *'),
+                    _buildDarkTextField(
+                      controller: notesCtrl,
+                      hintText:
+                          'Summarize work completed, results, or notes for the company...',
+                      maxLines: 4,
+                    ),
+                    const SizedBox(height: 20),
+
+                    ElevatedButton(
+                      onPressed: () async {
+                        final text = notesCtrl.text.trim();
+                        if (text.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              backgroundColor: CeladonColors.error,
+                              content: Text(
+                                'Please enter completion notes / summary',
+                              ),
+                            ),
+                          );
+                          return;
+                        }
+
+                        final nav = Navigator.of(ctx);
+                        final messenger = ScaffoldMessenger.of(context);
+
+                        final report = TaskCompletionReportModel(
+                          reportText: text,
+                          submittedAt: now.toIso8601String(),
+                          startDay: startDay,
+                          startTime: startTime,
+                          endDay: endDay,
+                          endTime: endTime,
+                          employeeName: empName,
+                          employeeId: empId,
+                          workingTime: workingTimeStr,
+                        );
+
+                        try {
+                          final updated =
+                              await _taskService.submitCompletionReport(
+                            id: task.id,
+                            report: report,
+                          );
+                          if (mounted) {
+                            setState(() {
+                              final idx = _tasks.indexWhere(
+                                (t) => t.id == task.id,
+                              );
+                              if (idx != -1) _tasks[idx] = updated;
+                            });
+                            nav.pop();
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                backgroundColor: CeladonColors.primary,
+                                content: Text(
+                                  'Completion report submitted & task completed!',
+                                ),
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          messenger.showSnackBar(
+                            SnackBar(
+                              backgroundColor: CeladonColors.error,
+                              content: Text('Failed to submit report: $e'),
+                            ),
+                          );
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: CeladonColors.primary,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      child: const Text(
+                        'Submit Final Report & Complete',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showExtensionRequestSheet(TaskModel task) {
+    final now = DateTime.now();
+    String requestedDate =
+        task.endDate ?? task.dueDate ?? now.toIso8601String().split('T')[0];
+    String requestedTime = task.dueTime ?? '05:00 PM';
+    final reasonCtrl = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final media = MediaQuery.of(ctx);
+          return Container(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 18,
+              bottom: media.viewInsets.bottom + 20,
+            ),
+            decoration: BoxDecoration(
+              color: CeladonColors.cardBackground,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
+              border: Border.all(color: CeladonColors.border, width: 1.2),
+            ),
+            child: SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Request Deadline Extension',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            color: CeladonColors.textPrimary,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            color: CeladonColors.textMuted,
+                          ),
+                          onPressed: () => Navigator.pop(ctx),
+                        ),
+                      ],
+                    ),
+                    const Divider(color: CeladonColors.divider, height: 1),
+                    const SizedBox(height: 14),
+
+                    _buildInputLabel('Current Deadline'),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: CeladonColors.searchBackground,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: CeladonColors.border),
+                      ),
+                      child: Text(
+                        '${task.endDate ?? task.dueDate ?? 'Not set'} at ${task.dueTime ?? 'EOD'}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: CeladonColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildInputLabel('Requested New Date *'),
+                              InkWell(
+                                onTap: () async {
+                                  final picked = await showDatePicker(
+                                    context: context,
+                                    initialDate:
+                                        now.add(const Duration(days: 1)),
+                                    firstDate: now,
+                                    lastDate:
+                                        now.add(const Duration(days: 180)),
+                                  );
+                                  if (picked != null) {
+                                    setSheetState(() {
+                                      requestedDate = picked
+                                          .toIso8601String()
+                                          .split('T')[0];
+                                    });
+                                  }
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: CeladonColors.inputBackground,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: CeladonColors.inputBorder,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.calendar_month_rounded,
+                                        size: 16,
+                                        color: CeladonColors.primary,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          requestedDate,
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            color:
+                                                CeladonColors.textPrimary,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildInputLabel('Requested Time *'),
+                              InkWell(
+                                onTap: () async {
+                                  final picked = await showTimePicker(
+                                    context: context,
+                                    initialTime: const TimeOfDay(
+                                      hour: 17,
+                                      minute: 0,
+                                    ),
+                                  );
+                                  if (picked != null) {
+                                    final hour = picked.hourOfPeriod == 0
+                                        ? 12
+                                        : picked.hourOfPeriod;
+                                    final ampm =
+                                        picked.period == DayPeriod.pm
+                                            ? 'PM'
+                                            : 'AM';
+                                    final timeStr =
+                                        '${hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')} $ampm';
+                                    setSheetState(() {
+                                      requestedTime = timeStr;
+                                    });
+                                  }
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: CeladonColors.inputBackground,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: CeladonColors.inputBorder,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.access_time_rounded,
+                                        size: 16,
+                                        color: CeladonColors.primary,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          requestedTime,
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            color:
+                                                CeladonColors.textPrimary,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+
+                    _buildInputLabel('Reason for Extra Time *'),
+                    _buildDarkTextField(
+                      controller: reasonCtrl,
+                      hintText:
+                          'Explain why more time is needed to complete the task...',
+                      maxLines: 3,
+                    ),
+                    const SizedBox(height: 20),
+
+                    ElevatedButton(
+                      onPressed: () async {
+                        final reason = reasonCtrl.text.trim();
+                        if (reason.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              backgroundColor: CeladonColors.error,
+                              content: Text(
+                                'Please state the reason for extra time',
+                              ),
+                            ),
+                          );
+                          return;
+                        }
+
+                        final nav = Navigator.of(ctx);
+                        final messenger = ScaffoldMessenger.of(context);
+
+                        final extReq = TaskExtensionRequestModel(
+                          requestedDueDate: requestedDate,
+                          requestedDueTime: requestedTime,
+                          reason: reason,
+                          status: 'pending',
+                          requestedAt: DateTime.now().toIso8601String(),
+                        );
+
+                        try {
+                          final updated =
+                              await _taskService.requestDeadlineExtension(
+                            id: task.id,
+                            request: extReq,
+                          );
+                          if (mounted) {
+                            setState(() {
+                              final idx = _tasks.indexWhere(
+                                (t) => t.id == task.id,
+                              );
+                              if (idx != -1) _tasks[idx] = updated;
+                            });
+                            nav.pop();
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                backgroundColor: CeladonColors.primary,
+                                content: Text(
+                                  'Deadline extension requested & manager notified!',
+                                ),
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          messenger.showSnackBar(
+                            SnackBar(
+                              backgroundColor: CeladonColors.error,
+                              content: Text('Failed to submit request: $e'),
+                            ),
+                          );
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: CeladonColors.primary,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      child: const Text(
+                        'Send Extension Request',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _handleReviewExtension(
+    TaskModel task,
+    bool accept,
+    BuildContext modalCtx,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final updated = await _taskService.reviewDeadlineExtension(
+        task: task,
+        accept: accept,
+        companyResponse: accept
+            ? 'Deadline extended by company manager'
+            : 'Extension rejected by company manager',
+      );
+      if (mounted) {
+        setState(() {
+          final idx = _tasks.indexWhere((t) => t.id == task.id);
+          if (idx != -1) _tasks[idx] = updated;
+        });
+        Navigator.pop(modalCtx);
+        messenger.showSnackBar(
+          SnackBar(
+            backgroundColor:
+                accept ? CeladonColors.primary : CeladonColors.error,
+            content: Text(
+              accept
+                  ? 'Deadline extension approved and updated!'
+                  : 'Deadline extension rejected.',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          backgroundColor: CeladonColors.error,
+          content: Text('Failed to update extension: $e'),
+        ),
+      );
+    }
+  }
+
+  Widget _buildExtensionRequestCard(TaskModel task, BuildContext modalCtx) {
+    final ext = task.extensionRequest;
+    if (ext == null || ext.status == 'none') return const SizedBox.shrink();
+
+    final isPending = ext.status == 'pending';
+    final isAccepted = ext.status == 'accepted';
+
+    Color bgColor = isPending
+        ? const Color(0xFFFEF3C7)
+        : (isAccepted ? CeladonColors.lightGreen : const Color(0xFFFEF2F2));
+    Color borderColor = isPending
+        ? const Color(0xFFF59E0B)
+        : (isAccepted ? CeladonColors.primary : CeladonColors.error);
+    Color textColor = isPending
+        ? const Color(0xFFB45309)
+        : (isAccepted ? CeladonColors.primary : CeladonColors.error);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderColor.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isPending
+                    ? Icons.hourglass_top_rounded
+                    : (isAccepted
+                        ? Icons.check_circle_rounded
+                        : Icons.cancel_rounded),
+                color: borderColor,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                isPending
+                    ? 'Deadline Extension Requested'
+                    : (isAccepted
+                        ? 'Extension Approved'
+                        : 'Extension Rejected'),
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: textColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Requested Deadline: ${ext.requestedDueDate ?? 'Date'} (${ext.requestedDueTime ?? 'Time'})',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: CeladonColors.textPrimary,
+            ),
+          ),
+          if (ext.reason != null && ext.reason!.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Reason: ${ext.reason!}',
+              style: const TextStyle(
+                fontSize: 11.5,
+                color: CeladonColors.textSecondary,
+              ),
+            ),
+          ],
+          if (ext.companyResponse != null &&
+              ext.companyResponse!.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Company Response: ${ext.companyResponse!}',
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: textColor,
+              ),
+            ),
+          ],
+
+          // If Company Owner and pending: Show Accept and Reject buttons
+          if (_canManage && isPending) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () =>
+                        _handleReviewExtension(task, true, modalCtx),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: CeladonColors.primary,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: const Text(
+                      'Accept & Extend',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () =>
+                        _handleReviewExtension(task, false, modalCtx),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: CeladonColors.error),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: const Text(
+                      'Reject',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: CeladonColors.error,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompletionReportCard(TaskCompletionReportModel report) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: CeladonColors.searchBackground,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: CeladonColors.primary.withValues(alpha: 0.4),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: const [
+              Icon(
+                Icons.assignment_turned_in_rounded,
+                color: CeladonColors.primary,
+                size: 20,
+              ),
+              SizedBox(width: 8),
+              Text(
+                'Task Completion Report',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: CeladonColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _buildDetailRow('Employee Name', report.employeeName ?? 'Assignee'),
+          if (report.employeeId != null)
+            _buildDetailRow('Employee ID', report.employeeId!),
+          const Divider(color: CeladonColors.divider, height: 12),
+          _buildDetailRow(
+            'Start Day & Time',
+            '${report.startDay} • ${report.startTime}',
+          ),
+          _buildDetailRow(
+            'End Day & Time',
+            '${report.endDay} • ${report.endTime}',
+          ),
+          if (report.workingTime != null)
+            _buildDetailRow('Total Working Time', report.workingTime!),
+          const Divider(color: CeladonColors.divider, height: 12),
+          const Text(
+            'Work Summary & Report:',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: CeladonColors.textMuted,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            report.reportText,
+            style: const TextStyle(
+              fontSize: 12.5,
+              color: CeladonColors.textPrimary,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _loadInitialData() async {
@@ -2664,6 +3701,101 @@ class _TasksViewState extends State<TasksView> {
                           const SizedBox(height: 14),
                         ],
 
+                        // ATTACHED DOCUMENTS
+                        if (task.attachments.isNotEmpty) ...[
+                          const Text(
+                            'ATTACHED DOCUMENTS',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: CeladonColors.textMuted,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          ...task.attachments.map((doc) => Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: CeladonColors.searchBackground,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: CeladonColors.border),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    color: CeladonColors.primary
+                                        .withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(
+                                    Icons.description_rounded,
+                                    color: CeladonColors.primary,
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        doc.name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                          color: CeladonColors.textPrimary,
+                                        ),
+                                      ),
+                                      Text(
+                                        doc.displaySize.isNotEmpty
+                                            ? doc.displaySize
+                                            : (doc.fileType ?? 'Document'),
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: CeladonColors.textSecondary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.download_rounded,
+                                    color: CeladonColors.primary,
+                                    size: 22,
+                                  ),
+                                  tooltip: 'Download to device storage',
+                                  onPressed: () =>
+                                      _downloadAttachment(task, doc),
+                                ),
+                              ],
+                            ),
+                          )),
+                          const SizedBox(height: 14),
+                        ],
+
+                        // DEADLINE EXTENSION REQUEST BANNER
+                        if (task.extensionRequest != null &&
+                            task.extensionRequest!.status != 'none') ...[
+                          _buildExtensionRequestCard(task, ctx),
+                          const SizedBox(height: 14),
+                        ],
+
+                        // COMPLETION REPORT CARD
+                        if (task.completionReport != null) ...[
+                          _buildCompletionReportCard(task.completionReport!),
+                          const SizedBox(height: 14),
+                        ],
+
                         // SECTION 1: ASSIGNED PERSON DETAILS
                         const Text(
                           'ASSIGNED PERSON DETAILS',
@@ -2747,6 +3879,24 @@ class _TasksViewState extends State<TasksView> {
                                 'Start Date',
                                 task.startDate ?? 'Today',
                               ),
+                              if (task.startedAt != null &&
+                                  task.startedAt!.isNotEmpty)
+                                _buildDetailRow(
+                                  'Started At',
+                                  DateTime.tryParse(task.startedAt!) != null
+                                      ? '${_formatDisplayDate(DateTime.parse(task.startedAt!))} at ${_formatDisplayTime(DateTime.parse(task.startedAt!))}'
+                                      : task.startedAt!,
+                                ),
+                              if (task.isInProgress)
+                                _buildDetailRow(
+                                  'Working Time (Live)',
+                                  _formatRunningDuration(task),
+                                )
+                              else if (task.completionReport?.workingTime != null)
+                                _buildDetailRow(
+                                  'Working Time (Logged)',
+                                  task.completionReport!.workingTime!,
+                                ),
                               _buildDetailRow(
                                 'End Date / Deadline',
                                 task.endDate ?? task.dueDate ?? 'Not set',
@@ -2764,8 +3914,45 @@ class _TasksViewState extends State<TasksView> {
 
                               const SizedBox(height: 8),
 
+                              // Progress bar for pending task
+                              if (task.isPending) ...[
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          'Current Progress: ${task.progressPercentage > 0 ? '${task.progressPercentage}%' : (task.isInProgress ? 'In Progress (50%)' : 'To Do (10%)')}',
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: CeladonColors.info,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(6),
+                                      child: LinearProgressIndicator(
+                                        value: (task.progressPercentage > 0
+                                                ? task.progressPercentage
+                                                : (task.isInProgress ? 50 : 10)) /
+                                            100,
+                                        backgroundColor: CeladonColors.divider,
+                                        color: CeladonColors.info,
+                                        minHeight: 8,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+
                               // Conditional Details by Status
                               if (isDone) ...[
+                                const SizedBox(height: 8),
                                 Container(
                                   padding: const EdgeInsets.all(10),
                                   decoration: BoxDecoration(
@@ -2799,6 +3986,7 @@ class _TasksViewState extends State<TasksView> {
                                   ),
                                 ),
                               ] else if (isIncomplete) ...[
+                                const SizedBox(height: 8),
                                 Container(
                                   padding: const EdgeInsets.all(10),
                                   decoration: BoxDecoration(
@@ -2831,37 +4019,78 @@ class _TasksViewState extends State<TasksView> {
                                     ],
                                   ),
                                 ),
-                              ] else if (task.isPending) ...[
-                                // Progress bar for pending task
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(
-                                          'Current Progress: ${task.isInProgress ? 'In Progress (50%)' : 'To Do (10%)'}',
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w700,
-                                            color: CeladonColors.info,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 6),
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(6),
-                                      child: LinearProgressIndicator(
-                                        value: task.isInProgress ? 0.5 : 0.1,
-                                        backgroundColor: CeladonColors.divider,
-                                        color: CeladonColors.info,
-                                        minHeight: 8,
-                                      ),
-                                    ),
-                                  ],
+                              ],
+
+                              // Daily Progress Log list
+                              if (task.progressUpdates.isNotEmpty) ...[
+                                const SizedBox(height: 12),
+                                const Text(
+                                  'DAILY PROGRESS UPDATES',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: CeladonColors.textMuted,
+                                  ),
                                 ),
+                                const SizedBox(height: 6),
+                                ...task.progressUpdates.reversed.map((prog) => Container(
+                                  margin: const EdgeInsets.only(bottom: 6),
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: CeladonColors.cardBackground,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: CeladonColors.border),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 6,
+                                              vertical: 2,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: CeladonColors.primary
+                                                  .withValues(alpha: 0.15),
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                            ),
+                                            child: Text(
+                                              '${prog.percentage}% Complete',
+                                              style: const TextStyle(
+                                                fontSize: 10.5,
+                                                fontWeight: FontWeight.w800,
+                                                color: CeladonColors.primary,
+                                              ),
+                                            ),
+                                          ),
+                                          Text(
+                                            DateTime.tryParse(prog.date) != null
+                                                ? '${_formatDisplayDate(DateTime.parse(prog.date))} ${_formatDisplayTime(DateTime.parse(prog.date))}'
+                                                : prog.date,
+                                            style: const TextStyle(
+                                              fontSize: 10,
+                                              color:
+                                                  CeladonColors.textSecondary,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        prog.updateText,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: CeladonColors.textPrimary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )),
                               ],
                             ],
                           ),
@@ -2912,41 +4141,198 @@ class _TasksViewState extends State<TasksView> {
                             ),
                           )
                         else if (!isIncomplete)
-                          SizedBox(
-                            width: double.infinity,
-                            height: 48,
-                            child: ElevatedButton(
-                              onPressed: () {
-                                Navigator.pop(ctx);
-                                if (task.isToDo) {
-                                  _handleStartTask(task);
-                                } else if (task.isInProgress) {
-                                  _handleCompleteTask(task);
-                                } else {
-                                  _toggleTaskCompletion(task);
-                                }
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: isDone
-                                    ? const Color(0xFF3186C8)
-                                    : CeladonColors.primary,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(24),
+                          Column(
+                            children: [
+                              if (task.isToDo) ...[
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 48,
+                                  child: ElevatedButton.icon(
+                                    icon: const Icon(
+                                      Icons.play_arrow_rounded,
+                                      color: Colors.white,
+                                    ),
+                                    label: const Text(
+                                      'Start Task (Record Working Time)',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 14,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: CeladonColors.primary,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(24),
+                                      ),
+                                    ),
+                                    onPressed: () {
+                                      Navigator.pop(ctx);
+                                      _handleStartTask(task);
+                                    },
+                                  ),
                                 ),
-                              ),
-                              child: Text(
-                                task.isToDo
-                                    ? 'Start Task'
-                                    : (isDone
-                                          ? 'Reopen / Resume Task'
-                                          : 'Mark as Completed'),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 14,
-                                  color: Colors.white,
+                              ] else if (task.isInProgress) ...[
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        icon: const Icon(
+                                          Icons.edit_note_rounded,
+                                          size: 16,
+                                          color: CeladonColors.primary,
+                                        ),
+                                        label: const Text(
+                                          'Daily Progress',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: CeladonColors.primary,
+                                          ),
+                                        ),
+                                        style: OutlinedButton.styleFrom(
+                                          side: const BorderSide(
+                                            color: CeladonColors.primary,
+                                          ),
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 12,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(14),
+                                          ),
+                                        ),
+                                        onPressed: () {
+                                          Navigator.pop(ctx);
+                                          _showDailyProgressSheet(task);
+                                        },
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        icon: const Icon(
+                                          Icons.access_time_filled_rounded,
+                                          size: 16,
+                                          color: Color(0xFFF59E0B),
+                                        ),
+                                        label: const Text(
+                                          'Extra Time',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFFF59E0B),
+                                          ),
+                                        ),
+                                        style: OutlinedButton.styleFrom(
+                                          side: const BorderSide(
+                                            color: Color(0xFFF59E0B),
+                                          ),
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 12,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(14),
+                                          ),
+                                        ),
+                                        onPressed: () {
+                                          Navigator.pop(ctx);
+                                          _showExtensionRequestSheet(task);
+                                        },
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                            ),
+                                const SizedBox(height: 10),
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 48,
+                                  child: ElevatedButton.icon(
+                                    icon: const Icon(
+                                      Icons.assignment_turned_in_rounded,
+                                      color: Colors.white,
+                                      size: 18,
+                                    ),
+                                    label: const Text(
+                                      'Complete & Submit Report',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 14,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: CeladonColors.primary,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(24),
+                                      ),
+                                    ),
+                                    onPressed: () {
+                                      Navigator.pop(ctx);
+                                      _showCompletionReportSheet(task);
+                                    },
+                                  ),
+                                ),
+                              ] else ...[
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: CeladonColors.lightGreen,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: CeladonColors.primary.withValues(
+                                        alpha: 0.3,
+                                      ),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: const [
+                                      Icon(
+                                        Icons.check_circle_rounded,
+                                        color: CeladonColors.primary,
+                                        size: 18,
+                                      ),
+                                      SizedBox(width: 8),
+                                      Text(
+                                        'Task Completed & Final Report Filed',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w800,
+                                          color: CeladonColors.primary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Center(
+                                  child: TextButton.icon(
+                                    onPressed: () {
+                                      Navigator.pop(ctx);
+                                      _toggleTaskCompletion(task);
+                                    },
+                                    icon: const Icon(
+                                      Icons.refresh_rounded,
+                                      size: 16,
+                                      color: Color(0xFF3186C8),
+                                    ),
+                                    label: const Text(
+                                      'Reopen Task',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF3186C8),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                       ],
                     ),
@@ -2995,6 +4381,7 @@ class _TasksViewState extends State<TasksView> {
   }) {
     final titleCtrl = TextEditingController();
     final descCtrl = TextEditingController();
+    final List<TaskAttachmentModel> attachedDocs = [];
     String priority = 'medium';
     String durationUnit = 'days';
     num durationVal = 1;
@@ -3142,6 +4529,132 @@ class _TasksViewState extends State<TasksView> {
                             maxLines: 3,
                           ),
                           const SizedBox(height: 14),
+
+                          // Optional Document Attachments
+                          Row(
+                            mainAxisAlignment:
+                                MainAxisAlignment.spaceBetween,
+                            children: [
+                              _buildInputLabel(
+                                'Attachments (Optional)',
+                              ),
+                              TextButton.icon(
+                                onPressed: () async {
+                                  try {
+                                    final pickedFiles =
+                                        await FilePicker.pickFiles();
+                                    if (pickedFiles.isNotEmpty) {
+                                      for (final file in pickedFiles) {
+                                        final bytes =
+                                            await file.xFile.readAsBytes();
+                                        final base64Data =
+                                            base64Encode(bytes);
+                                        final size =
+                                            await file.xFile.length();
+                                        attachedDocs.add(
+                                          TaskAttachmentModel(
+                                            name: file.name,
+                                            fileType:
+                                                file.extension ?? 'file',
+                                            size: size,
+                                            data: base64Data,
+                                          ),
+                                        );
+                                      }
+                                      setModalState(() {});
+                                    }
+                                  } catch (e) {
+                                    debugPrint('Pick file error: $e');
+                                  }
+                                },
+                                icon: const Icon(
+                                  Icons.attach_file_rounded,
+                                  size: 16,
+                                  color: CeladonColors.primary,
+                                ),
+                                label: const Text(
+                                  '+ Add Files',
+                                  style: TextStyle(
+                                    color: CeladonColors.primary,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (attachedDocs.isNotEmpty) ...[
+                            ...attachedDocs.asMap().entries.map((entry) {
+                              final idx = entry.key;
+                              final doc = entry.value;
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: CeladonColors.inputBackground,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: CeladonColors.border,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.description_rounded,
+                                      size: 18,
+                                      color: CeladonColors.primary,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            doc.name,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color:
+                                                  CeladonColors.textPrimary,
+                                            ),
+                                          ),
+                                          Text(
+                                            doc.displaySize,
+                                            style: const TextStyle(
+                                              fontSize: 10,
+                                              color:
+                                                  CeladonColors.textSecondary,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.close_rounded,
+                                        size: 16,
+                                        color: CeladonColors.error,
+                                      ),
+                                      onPressed: () {
+                                        setModalState(() {
+                                          attachedDocs.removeAt(idx);
+                                        });
+                                      },
+                                      constraints: const BoxConstraints(),
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }),
+                            const SizedBox(height: 8),
+                          ],
 
                           // 3. Assignee
                           _buildInputLabel('Assignee *'),
@@ -3515,6 +5028,7 @@ class _TasksViewState extends State<TasksView> {
                                   projectId: defaultProjectId,
                                   projectName: defaultProjectName,
                                   isProjectTask: defaultProjectId != null,
+                                  attachments: attachedDocs,
                                 );
 
                                 final messenger = ScaffoldMessenger.of(context);
@@ -3587,11 +5101,82 @@ class _TasksViewState extends State<TasksView> {
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         int voiceTab = 0; // 0: Speech-to-Text, 1: Record Voice Note
-        bool isSimulatingSpeech = false;
+        bool isListening = false;
         String recognizedText = '';
+        String statusText = 'Tap mic to dictate description';
+        final speech = stt.SpeechToText();
 
         return StatefulBuilder(
           builder: (context, setVoiceState) {
+            Future<void> toggleListening() async {
+              if (isListening) {
+                await speech.stop();
+                setVoiceState(() {
+                  isListening = false;
+                  statusText = 'Speech recorded. Tap mic to speak more.';
+                });
+                return;
+              }
+
+              if (!kIsWeb &&
+                  (defaultTargetPlatform == TargetPlatform.android ||
+                      defaultTargetPlatform == TargetPlatform.iOS)) {
+                final perm = await Permission.microphone.request();
+                if (!perm.isGranted) {
+                  setVoiceState(() {
+                    statusText = 'Microphone permission denied. Enable in device settings.';
+                  });
+                  return;
+                }
+              }
+
+              try {
+                final available = await speech.initialize(
+                  onStatus: (status) {
+                    if (status == 'done' || status == 'notListening') {
+                      if (context.mounted) {
+                        setVoiceState(() {
+                          isListening = false;
+                          statusText = 'Finished listening. Tap mic to add more.';
+                        });
+                      }
+                    }
+                  },
+                  onError: (err) {
+                    if (context.mounted) {
+                      setVoiceState(() {
+                        isListening = false;
+                        statusText = 'Speech: ${err.errorMsg}';
+                      });
+                    }
+                  },
+                );
+
+                if (available) {
+                  setVoiceState(() {
+                    isListening = true;
+                    statusText = 'Listening... Speak clearly into microphone';
+                  });
+                  await speech.listen(
+                    onResult: (result) {
+                      setVoiceState(() {
+                        recognizedText = result.recognizedWords;
+                      });
+                    },
+                  );
+                } else {
+                  setVoiceState(() {
+                    statusText = 'Speech recognition not available on this device.';
+                  });
+                }
+              } catch (e) {
+                setVoiceState(() {
+                  isListening = false;
+                  statusText = 'Microphone error: $e';
+                });
+              }
+            }
+
             return Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -3632,7 +5217,10 @@ class _TasksViewState extends State<TasksView> {
                           color: CeladonColors.textMuted,
                           size: 20,
                         ),
-                        onPressed: () => Navigator.pop(ctx),
+                        onPressed: () {
+                          speech.stop();
+                          Navigator.pop(ctx);
+                        },
                       ),
                     ],
                   ),
@@ -3644,7 +5232,13 @@ class _TasksViewState extends State<TasksView> {
                     children: [
                       Expanded(
                         child: InkWell(
-                          onTap: () => setVoiceState(() => voiceTab = 0),
+                          onTap: () {
+                            speech.stop();
+                            setVoiceState(() {
+                              voiceTab = 0;
+                              isListening = false;
+                            });
+                          },
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 8),
                             decoration: BoxDecoration(
@@ -3675,7 +5269,13 @@ class _TasksViewState extends State<TasksView> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: InkWell(
-                          onTap: () => setVoiceState(() => voiceTab = 1),
+                          onTap: () {
+                            speech.stop();
+                            setVoiceState(() {
+                              voiceTab = 1;
+                              isListening = false;
+                            });
+                          },
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 8),
                             decoration: BoxDecoration(
@@ -3708,42 +5308,35 @@ class _TasksViewState extends State<TasksView> {
                   const SizedBox(height: 16),
 
                   if (voiceTab == 0) ...[
-                    // Voice-to-Text
+                    // Real Voice-to-Text
                     Center(
                       child: GestureDetector(
-                        onTap: () {
-                          setVoiceState(() {
-                            isSimulatingSpeech = !isSimulatingSpeech;
-                            if (isSimulatingSpeech) {
-                              recognizedText = 'Please review the client design specifications and submit the finalized deliverable by Friday.';
-                            }
-                          });
-                        },
+                        onTap: toggleListening,
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 300),
-                          width: 64,
-                          height: 64,
+                          width: 68,
+                          height: 68,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: isSimulatingSpeech
+                            color: isListening
                                 ? CeladonColors.error
                                 : const Color(0xFF8B5CF6),
                             boxShadow: [
                               BoxShadow(
                                 color:
-                                    (isSimulatingSpeech
+                                    (isListening
                                             ? CeladonColors.error
                                             : const Color(0xFF8B5CF6))
                                         .withValues(alpha: 0.35),
-                                blurRadius: 16,
+                                blurRadius: 18,
                               ),
                             ],
                           ),
                           child: Icon(
-                            isSimulatingSpeech
+                            isListening
                                 ? Icons.stop_rounded
                                 : Icons.mic_rounded,
-                            size: 32,
+                            size: 34,
                             color: Colors.white,
                           ),
                         ),
@@ -3752,12 +5345,12 @@ class _TasksViewState extends State<TasksView> {
                     const SizedBox(height: 10),
                     Center(
                       child: Text(
-                        isSimulatingSpeech
-                            ? 'Listening... Tap to stop'
-                            : 'Tap mic to dictate description',
-                        style: const TextStyle(
+                        statusText,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
                           fontSize: 12,
-                          color: CeladonColors.textSecondary,
+                          fontWeight: isListening ? FontWeight.w700 : FontWeight.w500,
+                          color: isListening ? CeladonColors.error : CeladonColors.textSecondary,
                         ),
                       ),
                     ),
@@ -3781,6 +5374,7 @@ class _TasksViewState extends State<TasksView> {
                       const SizedBox(height: 12),
                       ElevatedButton(
                         onPressed: () {
+                          speech.stop();
                           if (descCtrl.text.isNotEmpty) {
                             descCtrl.text =
                                 '${descCtrl.text.trim()} $recognizedText';

@@ -14,12 +14,14 @@ export const createTask = async (req, res) => {
     emitToCompany('task:change', task.companyId, { action: 'create', id: task.id });
     if (task.assignedTo) {
       try {
+        const docCount = (task.attachments && task.attachments.length) || 0;
+        const docMsg = docCount > 0 ? ` (with ${docCount} attached document${docCount > 1 ? 's' : ''})` : '';
         const notificationPayload = {
           id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
           userId: task.assignedTo,
           companyId: task.companyId,
           title: 'New Task Assigned',
-          message: `You have been assigned: ${task.title}`,
+          message: `You have been assigned: ${task.title}${docMsg}`,
           createdAt: new Date().toISOString(),
           read: false
         };
@@ -172,9 +174,51 @@ export const updateTask = async (req, res) => {
       }
     }
 
+    // Handle extension request approval
+    if (req.body.extensionRequest && req.body.extensionRequest.status === 'accepted') {
+      if (req.body.extensionRequest.requestedDueDate) {
+        req.body.dueDate = req.body.extensionRequest.requestedDueDate;
+      }
+      if (req.body.extensionRequest.requestedDueTime) {
+        req.body.dueTime = req.body.extensionRequest.requestedDueTime;
+      }
+      if (previous.status === 'not_completed') {
+        req.body.status = 'in_progress';
+      }
+    }
+
     const task = await Task.findOneAndUpdate(findFilter, req.body, { new: true });
     if (!task) return res.status(404).json({ message: 'Task not found' });
-    if (task.assignedTo) {
+    const { default: Notification } = await import('../models/Notification.js');
+
+    // Notify employee on extension review
+    if (previous.extensionRequest?.status === 'pending' && task.extensionRequest?.status === 'accepted' && task.assignedTo) {
+      try {
+        const nExt = new Notification({
+          id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          userId: task.assignedTo,
+          companyId: task.companyId,
+          title: 'Extension Request Accepted',
+          message: `Your deadline extension for "${task.title}" was accepted. New deadline: ${task.dueDate || ''}`,
+          createdAt: new Date().toISOString(),
+          read: false
+        });
+        await nExt.save();
+      } catch (e) {}
+    } else if (previous.extensionRequest?.status === 'pending' && task.extensionRequest?.status === 'rejected' && task.assignedTo) {
+      try {
+        const nExt = new Notification({
+          id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          userId: task.assignedTo,
+          companyId: task.companyId,
+          title: 'Extension Request Rejected',
+          message: `Your deadline extension for "${task.title}" was rejected.`,
+          createdAt: new Date().toISOString(),
+          read: false
+        });
+        await nExt.save();
+      } catch (e) {}
+    } else if (task.assignedTo && !req.body.extensionRequest && !req.body.progressPercentage && !req.body.completionReport) {
       try {
         const notificationPayload = {
           id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -185,12 +229,12 @@ export const updateTask = async (req, res) => {
           createdAt: new Date().toISOString(),
           read: false
         };
-        const { default: Notification } = await import('../models/Notification.js');
         const n = new Notification(notificationPayload);
         await n.save();
       } catch (e) {}
     }
-    // Notify assignor if we can resolve their userId
+
+    // Notify assignor / company owner if we can resolve their userId
     if (task.assignorName) {
       try {
         const assignorFilter = {
@@ -199,18 +243,52 @@ export const updateTask = async (req, res) => {
         if (task.companyId) assignorFilter.companyId = task.companyId;
         const assignor = await User.findOne(assignorFilter);
         if (assignor && assignor.userId) {
-          const statusLabel = String(task.status || '').replace('_', ' ') || 'updated';
-          const { default: Notification } = await import('../models/Notification.js');
-          const n2 = new Notification({
-            id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-            userId: assignor.userId,
-            companyId: task.companyId,
-            title: 'Task Status Change',
-            message: `Task "${task.title}" status: ${statusLabel}`,
-            createdAt: new Date().toISOString(),
-            read: false
-          });
-          await n2.save();
+          if (task.extensionRequest?.status === 'pending' && previous.extensionRequest?.status !== 'pending') {
+            const nExtReq = new Notification({
+              id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              userId: assignor.userId,
+              companyId: task.companyId,
+              title: 'Deadline Extension Requested',
+              message: `Extra time requested for "${task.title}": ${task.extensionRequest.requestedDueDate || ''}. Reason: ${task.extensionRequest.reason || 'None provided'}`,
+              createdAt: new Date().toISOString(),
+              read: false
+            });
+            await nExtReq.save();
+          } else if (task.completionReport?.submittedAt && !previous.completionReport?.submittedAt) {
+            const nComp = new Notification({
+              id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              userId: assignor.userId,
+              companyId: task.companyId,
+              title: 'Task Completion Report',
+              message: `Task "${task.title}" was completed by ${task.completionReport.employeeName || 'employee'}. Report submitted.`,
+              createdAt: new Date().toISOString(),
+              read: false
+            });
+            await nComp.save();
+          } else if (task.progressPercentage !== undefined && task.progressPercentage !== previous.progressPercentage) {
+            const nProg = new Notification({
+              id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              userId: assignor.userId,
+              companyId: task.companyId,
+              title: 'Task Progress Updated',
+              message: `Task "${task.title}" progress updated to ${task.progressPercentage}%.`,
+              createdAt: new Date().toISOString(),
+              read: false
+            });
+            await nProg.save();
+          } else {
+            const statusLabel = String(task.status || '').replace('_', ' ') || 'updated';
+            const n2 = new Notification({
+              id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              userId: assignor.userId,
+              companyId: task.companyId,
+              title: 'Task Status Change',
+              message: `Task "${task.title}" status: ${statusLabel}`,
+              createdAt: new Date().toISOString(),
+              read: false
+            });
+            await n2.save();
+          }
         }
       } catch (e) {}
     }

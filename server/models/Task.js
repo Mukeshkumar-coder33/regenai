@@ -19,6 +19,45 @@ const taskSchema = new mongoose.Schema({
   projectId: { type: String, index: true },
   projectName: { type: String },
   isProjectTask: { type: Boolean, default: false },
+  attachments: [{
+    name: { type: String },
+    url: { type: String },
+    fileType: { type: String },
+    size: { type: Number },
+    data: { type: String }, // base64 payload if stored inline
+  }],
+  startedAt: { type: String },
+  workingTime: { type: String },
+  completedAt: { type: String },
+  completionTime: { type: String },
+  progressPercentage: { type: Number, default: 0, min: 0, max: 100 },
+  progressUpdates: [{
+    date: { type: String },
+    updateText: { type: String },
+    percentage: { type: Number },
+    employeeName: { type: String },
+    employeeId: { type: String },
+  }],
+  completionReport: {
+    reportText: { type: String },
+    submittedAt: { type: String },
+    startDay: { type: String },
+    startTime: { type: String },
+    endDay: { type: String },
+    endTime: { type: String },
+    employeeName: { type: String },
+    employeeId: { type: String },
+    workingTime: { type: String },
+  },
+  extensionRequest: {
+    requestedDueDate: { type: String },
+    requestedDueTime: { type: String },
+    reason: { type: String },
+    status: { type: String, enum: ['none', 'pending', 'accepted', 'rejected'], default: 'none' },
+    requestedAt: { type: String },
+    reviewedAt: { type: String },
+    companyResponse: { type: String },
+  },
 }, { timestamps: true });
 
 export default mongoose.model('Task', taskSchema);

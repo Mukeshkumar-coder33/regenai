@@ -121,6 +121,20 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> with Auto
   }
 
   @override
+  void didUpdateWidget(covariant EmployeeDashboardView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldUid = oldWidget.user.userId.isNotEmpty ? oldWidget.user.userId : oldWidget.user.id;
+    final newUid = widget.user.userId.isNotEmpty ? widget.user.userId : widget.user.id;
+    if (oldUid != newUid || oldWidget.user.role != widget.user.role || oldWidget.user.token != widget.user.token) {
+      _profileUser = widget.user;
+      _dashboardService = (widget.dashboardService is DashboardService)
+          ? widget.dashboardService as DashboardService
+          : DashboardService();
+      _loadDashboardData();
+    }
+  }
+
+  @override
   void dispose() {
     _scrollController.dispose();
     _liveNotifSub?.cancel();

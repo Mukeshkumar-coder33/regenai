@@ -47,6 +47,17 @@ class _EmployeePayrollViewState extends State<EmployeePayrollView> {
     _loadPayroll();
   }
 
+  @override
+  void didUpdateWidget(covariant EmployeePayrollView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldUid = oldWidget.user.userId.isNotEmpty ? oldWidget.user.userId : oldWidget.user.id;
+    final newUid = widget.user.userId.isNotEmpty ? widget.user.userId : widget.user.id;
+    if (oldUid != newUid || oldWidget.user.role != widget.user.role || oldWidget.user.token != widget.user.token) {
+      _dashboardService = widget.dashboardService ?? DashboardService();
+      _loadPayroll();
+    }
+  }
+
   int get _joiningYear {
     final raw = widget.user.joiningDate ?? widget.user.createdAt ?? '';
     final match = RegExp(r'(\d{4})').firstMatch(raw);

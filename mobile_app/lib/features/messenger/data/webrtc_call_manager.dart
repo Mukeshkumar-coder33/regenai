@@ -1,13 +1,16 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:permission_handler/permission_handler.dart';
+
 import '../../auth/data/user_model.dart';
 import 'call_notification_service.dart';
 import 'messenger_model.dart';
 import 'messenger_socket_service.dart';
 
 enum CallPhase { idle, incoming, calling, connected }
+
 enum MeetingPhase { idle, invited, inMeeting }
 
 class MeetingParticipantState {
@@ -25,10 +28,7 @@ class MeetingParticipantState {
     this.connectionStatus = 'connecting',
   });
 
-  MeetingParticipantState copyWith({
-    bool? hasVideo,
-    String? connectionStatus,
-  }) {
+  MeetingParticipantState copyWith({bool? hasVideo, String? connectionStatus}) {
     return MeetingParticipantState(
       userId: userId,
       username: username,
@@ -165,9 +165,8 @@ class WebRtcCallManager extends ChangeNotifier {
   }
 
   /// Request microphone (and camera if video) runtime permissions on Android/iOS.
-  Future<({bool granted, bool videoAllowed, String? error})> _requestMediaPermissions({
-    required bool requireVideo,
-  }) async {
+  Future<({bool granted, bool videoAllowed, String? error})>
+  _requestMediaPermissions({required bool requireVideo}) async {
     if (kIsWeb ||
         (defaultTargetPlatform != TargetPlatform.android &&
             defaultTargetPlatform != TargetPlatform.iOS)) {
@@ -179,7 +178,7 @@ class WebRtcCallManager extends ChangeNotifier {
         return (
           granted: false,
           videoAllowed: false,
-          error: 'Microphone permission is required to make calls.'
+          error: 'Microphone permission is required to make calls.',
         );
       }
       if (!requireVideo) {
@@ -240,12 +239,14 @@ class WebRtcCallManager extends ChangeNotifier {
   }) async {
     final socket = MessengerSocketService.instance;
     if (!socket.isConnected) {
-      _statusMessage = 'Connecting to real-time server... please try again in a moment.';
+      _statusMessage =
+          'Connecting to real-time server... please try again in a moment.';
       notifyListeners();
       socket.ensureConnected();
       return;
     }
-    if (_callPhase != CallPhase.idle || _meetingPhase == MeetingPhase.inMeeting) {
+    if (_callPhase != CallPhase.idle ||
+        _meetingPhase == MeetingPhase.inMeeting) {
       _statusMessage = 'You are already in an active call.';
       notifyListeners();
       return;
@@ -295,7 +296,7 @@ class WebRtcCallManager extends ChangeNotifier {
                 'candidate': candidate.candidate,
                 'sdpMid': candidate.sdpMid,
                 'sdpMLineIndex': candidate.sdpMLineIndex,
-              }
+              },
             },
             'callId': newCallId,
           });
@@ -333,7 +334,9 @@ class WebRtcCallManager extends ChangeNotifier {
   }
 
   Future<void> acceptIncomingCall() async {
-    if (_callPhase != CallPhase.incoming || _callId == null || _peerId == null) return;
+    if (_callPhase != CallPhase.incoming || _callId == null || _peerId == null) {
+      return;
+    }
     final socket = MessengerSocketService.instance;
     await CallNotificationService.instance.cancelCallNotification(_callId!);
     await CallNotificationService.instance.cancelAllCallNotifications();
@@ -349,7 +352,9 @@ class WebRtcCallManager extends ChangeNotifier {
     try {
       Map<String, dynamic>? offer = _pendingOffer;
       if (offer == null) {
-        final active = await socket.emitWithAck('call:get-active', {'callId': _callId});
+        final active = await socket.emitWithAck('call:get-active', {
+          'callId': _callId,
+        });
         if (active is Map && active['offer'] is Map) {
           offer = Map<String, dynamic>.from(active['offer'] as Map);
         }
@@ -393,7 +398,7 @@ class WebRtcCallManager extends ChangeNotifier {
                 'candidate': candidate.candidate,
                 'sdpMid': candidate.sdpMid,
                 'sdpMLineIndex': candidate.sdpMLineIndex,
-              }
+              },
             },
             'callId': _callId,
           });
@@ -552,7 +557,8 @@ class WebRtcCallManager extends ChangeNotifier {
     final incoming = IncomingCallPayload.fromMap(data);
     if (incoming.callId.isEmpty || incoming.callerId.isEmpty) return;
 
-    if (_callPhase != CallPhase.idle || _meetingPhase == MeetingPhase.inMeeting) {
+    if (_callPhase != CallPhase.idle ||
+        _meetingPhase == MeetingPhase.inMeeting) {
       MessengerSocketService.instance.emit('call:reject', {
         'callId': incoming.callId,
         'callerId': incoming.callerId,
@@ -637,7 +643,9 @@ class WebRtcCallManager extends ChangeNotifier {
 
   Future<void> _handleCallCancelled(Map<String, dynamic> data) async {
     final cancelledCallId = data['callId']?.toString();
-    if (_callId != null && cancelledCallId != null && _callId != cancelledCallId) {
+    if (_callId != null &&
+        cancelledCallId != null &&
+        _callId != cancelledCallId) {
       return;
     }
     _statusMessage = 'Call cancelled by caller';
@@ -667,8 +675,10 @@ class WebRtcCallManager extends ChangeNotifier {
       'meetingId': meetingId,
       'title': title,
       'mediaType': mediaType,
-      if (conversationId != null && conversationId.isNotEmpty) 'conversationId': conversationId,
-      if (participantIds != null && participantIds.isNotEmpty) 'participantIds': participantIds,
+      if (conversationId != null && conversationId.isNotEmpty)
+        'conversationId': conversationId,
+      if (participantIds != null && participantIds.isNotEmpty)
+        'participantIds': participantIds,
     });
 
     await joinGroupMeeting(
@@ -690,7 +700,9 @@ class WebRtcCallManager extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    await CallNotificationService.instance.cancelCallNotification(invite.meetingId);
+    await CallNotificationService.instance.cancelCallNotification(
+      invite.meetingId,
+    );
 
     final wantVideo = invite.mediaType == 'video';
     final perm = await _requestMediaPermissions(requireVideo: wantVideo);
@@ -737,7 +749,9 @@ class WebRtcCallManager extends ChangeNotifier {
 
   void dismissMeetingInvite() {
     if (_activeMeeting != null) {
-      CallNotificationService.instance.cancelCallNotification(_activeMeeting!.meetingId);
+      CallNotificationService.instance.cancelCallNotification(
+        _activeMeeting!.meetingId,
+      );
     }
     _activeMeeting = null;
     _meetingPhase = MeetingPhase.idle;
@@ -749,7 +763,9 @@ class WebRtcCallManager extends ChangeNotifier {
     _meetingTimer = null;
 
     if (_activeMeeting != null) {
-      await CallNotificationService.instance.cancelCallNotification(_activeMeeting!.meetingId);
+      await CallNotificationService.instance.cancelCallNotification(
+        _activeMeeting!.meetingId,
+      );
       MessengerSocketService.instance.emit('meeting:leave', {
         'meetingId': _activeMeeting!.meetingId,
       });
@@ -860,13 +876,17 @@ class WebRtcCallManager extends ChangeNotifier {
     pc.onConnectionState = (RTCPeerConnectionState state) {
       final existing = _meetingParticipants[peerUserId];
       if (existing == null) return;
-      final label = state == RTCPeerConnectionState.RTCPeerConnectionStateConnected
+      final label =
+          state == RTCPeerConnectionState.RTCPeerConnectionStateConnected
           ? 'connected'
           : (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
-                  state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected)
-              ? 'disconnected'
-              : 'connecting';
-      _meetingParticipants[peerUserId] = existing.copyWith(connectionStatus: label);
+                state ==
+                    RTCPeerConnectionState.RTCPeerConnectionStateDisconnected)
+          ? 'disconnected'
+          : 'connecting';
+      _meetingParticipants[peerUserId] = existing.copyWith(
+        connectionStatus: label,
+      );
       notifyListeners();
     };
 
@@ -880,7 +900,7 @@ class WebRtcCallManager extends ChangeNotifier {
               'candidate': candidate.candidate,
               'sdpMid': candidate.sdpMid,
               'sdpMLineIndex': candidate.sdpMLineIndex,
-            }
+            },
           },
           'meetingId': meetingId,
         });
@@ -906,7 +926,9 @@ class WebRtcCallManager extends ChangeNotifier {
   void _handleMeetingStarted(Map<String, dynamic> data) {
     final invite = MeetingInvitePayload.fromMap(data);
     if (invite.meetingId.isEmpty || invite.hostId == _myUserId) return;
-    if (_meetingPhase == MeetingPhase.inMeeting || _callPhase != CallPhase.idle) return;
+    if (_meetingPhase == MeetingPhase.inMeeting || _callPhase != CallPhase.idle) {
+      return;
+    }
 
     _activeMeeting = invite;
     _meetingPhase = MeetingPhase.invited;
@@ -921,7 +943,9 @@ class WebRtcCallManager extends ChangeNotifier {
   }
 
   Future<void> _handleMeetingUserJoined(Map<String, dynamic> data) async {
-    if (_meetingPhase != MeetingPhase.inMeeting || _activeMeeting == null) return;
+    if (_meetingPhase != MeetingPhase.inMeeting || _activeMeeting == null) {
+      return;
+    }
     final joinedId = (data['userId'] ?? '').toString();
     if (joinedId.isEmpty || joinedId == _myUserId) return;
     final info = data['userInfo'] is Map ? data['userInfo'] as Map : const {};
@@ -936,7 +960,9 @@ class WebRtcCallManager extends ChangeNotifier {
   }
 
   Future<void> _handleMeetingExistingUsers(Map<String, dynamic> data) async {
-    if (_meetingPhase != MeetingPhase.inMeeting || _activeMeeting == null) return;
+    if (_meetingPhase != MeetingPhase.inMeeting || _activeMeeting == null) {
+      return;
+    }
     final users = data['users'] as List<dynamic>? ?? const [];
     for (final raw in users) {
       if (raw is! Map) continue;
@@ -953,7 +979,9 @@ class WebRtcCallManager extends ChangeNotifier {
   }
 
   Future<void> _handleMeetingSignal(Map<String, dynamic> data) async {
-    if (_meetingPhase != MeetingPhase.inMeeting || _activeMeeting == null) return;
+    if (_meetingPhase != MeetingPhase.inMeeting || _activeMeeting == null) {
+      return;
+    }
     final fromUserId = (data['fromUserId'] ?? '').toString();
     final fromUsername = (data['fromUsername'] ?? fromUserId).toString();
     final signal = data['signal'];
@@ -971,9 +999,14 @@ class WebRtcCallManager extends ChangeNotifier {
         meetingId: _activeMeeting!.meetingId,
       );
       await pc.setRemoteDescription(
-        RTCSessionDescription(rawOffer['sdp']?.toString(), rawOffer['type']?.toString() ?? 'offer'),
+        RTCSessionDescription(
+          rawOffer['sdp']?.toString(),
+          rawOffer['type']?.toString() ?? 'offer',
+        ),
       );
-      for (final c in List<RTCIceCandidate>.from(_pendingMeetingCandidates[fromUserId] ?? const [])) {
+      for (final c in List<RTCIceCandidate>.from(
+        _pendingMeetingCandidates[fromUserId] ?? const [],
+      )) {
         await pc.addCandidate(c);
       }
       _pendingMeetingCandidates[fromUserId] = [];
@@ -993,9 +1026,14 @@ class WebRtcCallManager extends ChangeNotifier {
       final pc = _meetingPeers[fromUserId];
       if (pc == null || rawAnswer is! Map) return;
       await pc.setRemoteDescription(
-        RTCSessionDescription(rawAnswer['sdp']?.toString(), rawAnswer['type']?.toString() ?? 'answer'),
+        RTCSessionDescription(
+          rawAnswer['sdp']?.toString(),
+          rawAnswer['type']?.toString() ?? 'answer',
+        ),
       );
-      for (final c in List<RTCIceCandidate>.from(_pendingMeetingCandidates[fromUserId] ?? const [])) {
+      for (final c in List<RTCIceCandidate>.from(
+        _pendingMeetingCandidates[fromUserId] ?? const [],
+      )) {
         await pc.addCandidate(c);
       }
       _pendingMeetingCandidates[fromUserId] = [];
@@ -1005,7 +1043,9 @@ class WebRtcCallManager extends ChangeNotifier {
       final candidate = RTCIceCandidate(
         rawCand['candidate']?.toString(),
         rawCand['sdpMid']?.toString(),
-        rawCand['sdpMLineIndex'] is int ? rawCand['sdpMLineIndex'] as int : null,
+        rawCand['sdpMLineIndex'] is int
+            ? rawCand['sdpMLineIndex'] as int
+            : null,
       );
       final pc = _meetingPeers[fromUserId];
       if (pc != null) {
@@ -1064,4 +1104,3 @@ class WebRtcCallManager extends ChangeNotifier {
     super.dispose();
   }
 }
-

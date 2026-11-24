@@ -73,10 +73,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (success && mounted) {
       final user = _authController.currentUser!;
+      final effectiveUid = user.userId.isNotEmpty ? user.userId : user.id;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (_) => DashboardScreen(
-            key: ValueKey('dashboard_${user.userId}_${user.role}'),
+            key: ValueKey('dashboard_${effectiveUid}_${user.role}_${user.token.hashCode}'),
             user: user,
             onLogout: () async {
               await _authController.logout();

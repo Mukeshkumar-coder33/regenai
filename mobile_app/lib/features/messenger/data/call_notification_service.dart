@@ -264,4 +264,13 @@ class CallNotificationService {
       platform: platform,
     );
   }
+
+  /// Cancels all active and scheduled notifications on logout or role switch
+  Future<void> cancelAll() async {
+    _activeCallNotificationIds.clear();
+    if (!_initialized || !_isMobilePlatform) return;
+    try {
+      await _plugin.cancelAll();
+    } catch (_) {}
+  }
 }

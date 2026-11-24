@@ -77,20 +77,15 @@ class E2eCryptoService {
           }
         }
       }
+      // CRITICAL: When userId is specified, NEVER fall back to another user's key!
+      // Return null so this user generates their own keypair or downloads their own key from server.
+      return null;
     }
 
-    // Fallback: check unscoped or conversation-level key
+    // Fallback: check unscoped or conversation-level key only if userId was not provided (legacy migration)
     final unscoped = prefs.getString('e2e_$conversationId');
     if (unscoped != null && unscoped.trim().isNotEmpty) return unscoped;
 
-    for (final k in prefs.getKeys()) {
-      if (k.endsWith('_$conversationId') || k.endsWith(conversationId)) {
-        final val = prefs.getString(k);
-        if (val != null && val.contains('"d"') && val.contains('"x"')) {
-          return val;
-        }
-      }
-    }
     return null;
   }
 

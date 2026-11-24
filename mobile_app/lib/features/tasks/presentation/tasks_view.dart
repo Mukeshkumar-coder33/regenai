@@ -119,6 +119,18 @@ class _TasksViewState extends State<TasksView> {
   }
 
   @override
+  void didUpdateWidget(covariant TasksView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldUid = oldWidget.user?.userId.isNotEmpty == true ? oldWidget.user!.userId : oldWidget.user?.id;
+    final newUid = widget.user?.userId.isNotEmpty == true ? widget.user!.userId : widget.user?.id;
+    if (oldUid != newUid || oldWidget.user?.role != widget.user?.role || oldWidget.user?.token != widget.user?.token) {
+      _taskService = widget.taskService ?? TaskService();
+      _dashboardService = widget.dashboardService ?? DashboardService();
+      _loadInitialData();
+    }
+  }
+
+  @override
   void dispose() {
     _liveTicker?.cancel();
     _taskSearchController.dispose();
@@ -1009,6 +1021,7 @@ class _TasksViewState extends State<TasksView> {
     BuildContext modalCtx,
   ) async {
     final messenger = ScaffoldMessenger.of(context);
+    final modalNav = Navigator.of(modalCtx);
     try {
       final updated = await _taskService.reviewDeadlineExtension(
         task: task,
@@ -1022,7 +1035,7 @@ class _TasksViewState extends State<TasksView> {
           final idx = _tasks.indexWhere((t) => t.id == task.id);
           if (idx != -1) _tasks[idx] = updated;
         });
-        Navigator.pop(modalCtx);
+        modalNav.pop();
         messenger.showSnackBar(
           SnackBar(
             backgroundColor:

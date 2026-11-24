@@ -640,7 +640,15 @@ class MessengerStore extends ChangeNotifier {
 
   /// Initialize store with authenticated user and bind socket listeners
   void initialize(UserModel user) {
-    if (_initialized && _state.currentUser?.userId == user.userId) {
+    final curUid = (_state.currentUser?.userId.isNotEmpty == true
+            ? _state.currentUser!.userId
+            : _state.currentUser?.id) ??
+        '';
+    final newUid = user.userId.isNotEmpty ? user.userId : user.id;
+    if (_initialized &&
+        curUid.isNotEmpty &&
+        curUid == newUid &&
+        _state.currentUser?.role == user.role) {
       return;
     }
     _cleanup();

@@ -81,10 +81,11 @@ class _SplashScreenState extends State<SplashScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (savedUser != null && savedUser.token.isNotEmpty) {
+        final effectiveUid = savedUser.userId.isNotEmpty ? savedUser.userId : savedUser.id;
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
             builder: (_) => DashboardScreen(
-              key: ValueKey('dashboard_${savedUser.userId}_${savedUser.role}'),
+              key: ValueKey('dashboard_${effectiveUid}_${savedUser.role}_${savedUser.token.hashCode}'),
               user: savedUser,
               onLogout: () async {
                 await SessionStorage.clearSession();

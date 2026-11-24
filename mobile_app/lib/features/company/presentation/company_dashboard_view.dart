@@ -257,6 +257,20 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   }
 
   @override
+  void didUpdateWidget(covariant CompanyDashboardView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldUid = oldWidget.user.userId.isNotEmpty ? oldWidget.user.userId : oldWidget.user.id;
+    final newUid = widget.user.userId.isNotEmpty ? widget.user.userId : widget.user.id;
+    if (oldUid != newUid || oldWidget.user.role != widget.user.role || oldWidget.user.token != widget.user.token) {
+      _dashboardService = widget.dashboardService ?? DashboardService();
+      _authService = widget.authService ?? AuthService();
+      _initRealtimeCommunication(widget.user);
+      _loadCompanyBottomNavSlots();
+      _loadCompanyData();
+    }
+  }
+
+  @override
   void dispose() {
     _liveNotifSub?.cancel();
     _employeeSearchController.dispose();
@@ -2441,15 +2455,18 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       case 'settings':
         return _buildProfileTab();
       case 'tasks':
+        final effectiveUid = widget.user.userId.isNotEmpty ? widget.user.userId : widget.user.id;
         return TasksView(
+          key: ValueKey('company_tasks_${effectiveUid}_${widget.user.role}'),
           user: widget.user,
           embedded: true,
           onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer(),
           onBack: () => _navigateToCompanyPage('home'),
         );
       case 'messenger':
+        final effectiveUid = widget.user.userId.isNotEmpty ? widget.user.userId : widget.user.id;
         return MessengerView(
-          key: ValueKey('messenger_${widget.user.userId}_${widget.user.role}'),
+          key: ValueKey('company_messenger_${effectiveUid}_${widget.user.role}'),
           user: widget.user,
           embedded: true,
           onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer(),

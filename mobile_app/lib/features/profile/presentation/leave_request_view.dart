@@ -52,6 +52,16 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
   }
 
   @override
+  void didUpdateWidget(covariant LeaveRequestView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldUid = oldWidget.user?.userId.isNotEmpty == true ? oldWidget.user!.userId : oldWidget.user?.id;
+    final newUid = widget.user?.userId.isNotEmpty == true ? widget.user!.userId : widget.user?.id;
+    if (oldUid != newUid || oldWidget.user?.role != widget.user?.role || oldWidget.user?.token != widget.user?.token) {
+      _loadAllData();
+    }
+  }
+
+  @override
   void dispose() {
     _reasonController.dispose();
     super.dispose();

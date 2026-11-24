@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../../core/storage/session_storage.dart';
+import '../../messenger/data/call_notification_service.dart';
+import '../../messenger/data/messenger_service.dart';
+import '../../messenger/data/messenger_socket_service.dart';
+import '../../messenger/data/messenger_store.dart';
+import '../../messenger/data/webrtc_call_manager.dart';
 import '../data/auth_service.dart';
 import '../data/user_model.dart';
 
@@ -80,6 +85,11 @@ class AuthController extends ChangeNotifier {
 
   /// Sign out and purge local credentials
   Future<void> logout() async {
+    await WebRtcCallManager.instance.resetOnLogout();
+    MessengerSocketService.instance.disconnect();
+    MessengerStore.instance.reset();
+    MessengerService.clearKeysCache();
+    await CallNotificationService.instance.cancelAll();
     await SessionStorage.clearSession();
     _currentUser = null;
     _errorMessage = null;

@@ -11,6 +11,11 @@ class MessengerService {
   final http.Client _client;
   static final Map<String, Map<String, String>> _convoKeysCache = {};
 
+  /// Purges in-memory keys cache across user logout and role switching
+  static void clearKeysCache() {
+    _convoKeysCache.clear();
+  }
+
   Map<String, String>? getCachedKeys(String conversationId) =>
       _convoKeysCache[conversationId];
 

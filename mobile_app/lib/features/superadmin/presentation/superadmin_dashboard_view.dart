@@ -71,6 +71,18 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
   }
 
   @override
+  void didUpdateWidget(covariant SuperAdminDashboardView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldUid = oldWidget.user.userId.isNotEmpty ? oldWidget.user.userId : oldWidget.user.id;
+    final newUid = widget.user.userId.isNotEmpty ? widget.user.userId : widget.user.id;
+    if (oldUid != newUid || oldWidget.user.role != widget.user.role || oldWidget.user.token != widget.user.token) {
+      _dashboardService = widget.dashboardService ?? DashboardService();
+      _authService = widget.authService ?? AuthService();
+      _loadGlobalData();
+    }
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
     super.dispose();

@@ -1,7 +1,6 @@
-/// ReGen Task Model
-///
-/// Maps exactly to MongoDB `Task` documents returned by `GET /api/tasks`.
-library task_model;
+// ReGen Task Model
+//
+// Maps exactly to MongoDB `Task` documents returned by `GET /api/tasks`.
 
 class TaskAttachmentModel {
   final String name;

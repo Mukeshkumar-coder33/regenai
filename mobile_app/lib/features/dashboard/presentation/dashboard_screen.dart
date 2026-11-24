@@ -10,6 +10,7 @@ import '../../auth/data/user_model.dart';
 import '../../calendar/presentation/calendar_view.dart';
 import '../../company/presentation/company_dashboard_view.dart';
 import '../../messenger/data/call_notification_service.dart';
+import '../../messenger/data/messenger_service.dart';
 import '../../messenger/data/messenger_socket_service.dart';
 import '../../messenger/data/messenger_store.dart';
 import '../../messenger/data/webrtc_call_manager.dart';
@@ -140,17 +141,26 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     });
   }
 
+  String get _effectiveUserId =>
+      _currentUser.userId.isNotEmpty ? _currentUser.userId : _currentUser.id;
+
   @override
   void didUpdateWidget(covariant DashboardScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.user.id != widget.user.id ||
-        oldWidget.user.role != widget.user.role) {
+        oldWidget.user.userId != widget.user.userId ||
+        oldWidget.user.role != widget.user.role ||
+        oldWidget.user.companyId != widget.user.companyId ||
+        oldWidget.user.token != widget.user.token) {
       _currentUser = widget.user;
       _currentTabIndex = 0;
       _overridePageId = null;
       _bottomNavSlots = List<String>.from(_defaultSlotIds);
       _loadRoleBottomNavSlots();
       _initRealtimeCommunication(_currentUser);
+      if (!_currentUser.isCompanyAdmin && !_currentUser.isSuperAdmin) {
+        _checkPolicyStatus();
+      }
     }
   }
 
@@ -240,21 +250,21 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         return _buildHomeView();
       case 'tasks':
         return TasksView(
-          key: ValueKey('page_tasks_${_currentUser.userId}'),
+          key: ValueKey('page_tasks_${_effectiveUserId}_${_currentUser.role}'),
           user: _currentUser,
           onOpenDrawer: _openDrawer,
           onBack: () => _navigateToPage('home'),
         );
       case 'calendar':
         return CalendarView(
-          key: ValueKey('page_calendar_${_currentUser.userId}'),
+          key: ValueKey('page_calendar_${_effectiveUserId}_${_currentUser.role}'),
           user: _currentUser,
           onOpenDrawer: _openDrawer,
           onBack: () => _navigateToPage('home'),
         );
       case 'profile':
         return ProfileView(
-          key: ValueKey('page_profile_${_currentUser.userId}'),
+          key: ValueKey('page_profile_${_effectiveUserId}_${_currentUser.role}'),
           user: _currentUser,
           onLogout: _handleLogout,
           onNavigateToTab: _navigateToTab,
@@ -266,7 +276,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         );
       case 'messenger':
         return MessengerView(
-          key: ValueKey('messenger_${_currentUser.userId}_${_currentUser.role}'),
+          key: ValueKey('messenger_${_effectiveUserId}_${_currentUser.role}'),
           user: _currentUser,
           embedded: true,
           onOpenDrawer: _openDrawer,
@@ -279,26 +289,26 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         );
       case 'attendance':
         return AttendanceView(
-          key: ValueKey('page_attendance_${_currentUser.userId}'),
+          key: ValueKey('page_attendance_${_effectiveUserId}_${_currentUser.role}'),
           onOpenDrawer: _openDrawer,
           onBack: () => _navigateToPage('home'),
         );
       case 'leave':
         return LeaveRequestView(
-          key: ValueKey('page_leave_${_currentUser.userId}'),
+          key: ValueKey('page_leave_${_effectiveUserId}_${_currentUser.role}'),
           user: _currentUser,
           onBack: () => _navigateToPage('home'),
         );
       case 'payroll':
         return EmployeePayrollView(
-          key: ValueKey('page_payroll_${_currentUser.userId}'),
+          key: ValueKey('page_payroll_${_effectiveUserId}_${_currentUser.role}'),
           user: _currentUser,
           embedded: true,
           onBack: () => _navigateToPage('home'),
         );
       case 'settings':
         return SettingsView(
-          key: ValueKey('page_settings_${_currentUser.userId}'),
+          key: ValueKey('page_settings_${_effectiveUserId}_${_currentUser.role}'),
           user: _currentUser,
           currentSlots: _bottomNavSlots,
           onNavSlotsChanged: (updated) {
@@ -321,6 +331,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     await WebRtcCallManager.instance.resetOnLogout();
     MessengerSocketService.instance.disconnect();
     MessengerStore.instance.reset();
+    MessengerService.clearKeysCache();
+    await CallNotificationService.instance.cancelAll();
     await SessionStorage.clearSession();
     try {
       widget.onLogout();
@@ -338,7 +350,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     // Dedicated high-end Company Workspace Experience matching ReGen Design Specification
     if (_currentUser.isCompanyAdmin) {
       return CompanyDashboardView(
-        key: ValueKey('company_dashboard_${_currentUser.userId}'),
+        key: ValueKey('company_dashboard_${_effectiveUserId}_${_currentUser.role}'),
         user: _currentUser,
         onOpenDrawer: _openDrawer,
         onLogout: _handleLogout,
@@ -412,6 +424,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     // 1. Super Admin Dashboard (param)
     if (_currentUser.isSuperAdmin) {
       return SuperAdminDashboardView(
+        key: ValueKey('superadmin_home_${_effectiveUserId}_${_currentUser.role}'),
         user: _currentUser,
         onOpenDrawer: _openDrawer,
         onLogout: _handleLogout,
@@ -426,6 +439,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     // 2. Company Owner/Admin Dashboard (owner, admin)
     if (_currentUser.isCompanyAdmin) {
       return CompanyDashboardView(
+        key: ValueKey('company_dashboard_${_effectiveUserId}_${_currentUser.role}'),
         user: _currentUser,
         onOpenDrawer: _openDrawer,
         onLogout: _handleLogout,
@@ -439,7 +453,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
 
     // 3. Employee / Staff Dashboard (staff, intern)
     return EmployeeDashboardView(
-      key: ValueKey('emp_home_${_currentUser.userId}'),
+      key: ValueKey('emp_home_${_effectiveUserId}_${_currentUser.role}'),
       user: _currentUser,
       onOpenDrawer: _openDrawer,
       onLogout: _handleLogout,

@@ -165,6 +165,7 @@ class _MessengerViewState extends State<MessengerView> {
     if (userChanged) {
       _messengerService = widget.messengerService ?? MessengerService();
       _dashboardService = widget.dashboardService ?? DashboardService();
+      MessengerStore.instance.init(widget.user);
       WebRtcCallManager.instance.bindUser(widget.user);
       MessengerSocketService.instance.connect(user: widget.user);
       setState(() {

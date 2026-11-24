@@ -92,6 +92,16 @@ class _CalendarViewState extends State<CalendarView> {
     _loadAllBackendData();
   }
 
+  @override
+  void didUpdateWidget(covariant CalendarView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldUid = oldWidget.user?.userId.isNotEmpty == true ? oldWidget.user!.userId : oldWidget.user?.id;
+    final newUid = widget.user?.userId.isNotEmpty == true ? widget.user!.userId : widget.user?.id;
+    if (oldUid != newUid || oldWidget.user?.role != widget.user?.role || oldWidget.user?.token != widget.user?.token) {
+      _loadAllBackendData();
+    }
+  }
+
   String _formatTimeStr(String? iso) {
     if (iso == null || iso.isEmpty) return '--:--';
     final dt = DateTime.tryParse(iso)?.toLocal();

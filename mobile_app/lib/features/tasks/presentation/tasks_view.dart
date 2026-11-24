@@ -15,6 +15,8 @@ import '../../dashboard/data/dashboard_service.dart';
 import '../data/project_model.dart';
 import '../data/task_model.dart';
 import '../data/task_service.dart';
+import '../../messenger/data/call_notification_service.dart';
+import '../../messenger/data/messenger_socket_service.dart';
 import '../../../core/theme/celadon_colors.dart';
 
 /// Screen: Enterprise Tasks, Projects & Schedules
@@ -103,6 +105,8 @@ class _TasksViewState extends State<TasksView> {
       0; // 0: All, 1: Pending, 2: Completed, 3: Incomplete
 
   Timer? _liveTicker;
+  StreamSubscription? _socketNotifSub;
+  StreamSubscription? _socketTaskSub;
 
   @override
   void initState() {
@@ -115,6 +119,15 @@ class _TasksViewState extends State<TasksView> {
       if (mounted && _tasks.any((t) => t.isInProgress)) {
         setState(() {});
       }
+    });
+
+    _socketNotifSub =
+        MessengerSocketService.instance.onNotification.listen((_) {
+      if (mounted) _loadInitialData();
+    });
+    _socketTaskSub =
+        MessengerSocketService.instance.onTaskChange.listen((_) {
+      if (mounted) _loadInitialData();
     });
   }
 
@@ -133,6 +146,8 @@ class _TasksViewState extends State<TasksView> {
   @override
   void dispose() {
     _liveTicker?.cancel();
+    _socketNotifSub?.cancel();
+    _socketTaskSub?.cancel();
     _taskSearchController.dispose();
     _projectSearchController.dispose();
     _projectTaskSearchController.dispose();
@@ -318,9 +333,7 @@ class _TasksViewState extends State<TasksView> {
   }
 
   void _showDailyProgressSheet(TaskModel task) {
-    int percentage = task.progressPercentage > 0
-        ? task.progressPercentage
-        : (task.isInProgress ? 50 : 10);
+    int percentage = task.progressPercentage.clamp(0, 100);
     final notesCtrl = TextEditingController();
 
     showModalBottomSheet(
@@ -411,7 +424,7 @@ class _TasksViewState extends State<TasksView> {
                     value: percentage.toDouble(),
                     min: 0,
                     max: 100,
-                    divisions: 20,
+                    divisions: 100,
                     label: '$percentage%',
                     activeColor: CeladonColors.primary,
                     inactiveColor: CeladonColors.divider,
@@ -444,6 +457,11 @@ class _TasksViewState extends State<TasksView> {
                           percentage: percentage,
                           employeeName: user?.name ?? user?.username,
                           employeeId: user?.userId ?? user?.id,
+                        );
+                        CallNotificationService.instance.showTaskAlert(
+                          id: 'prog_${task.id}_${DateTime.now().millisecondsSinceEpoch}',
+                          title: 'Task Progress Updated',
+                          body: '${user?.name ?? 'Employee'} updated "${task.title}" to $percentage%${notes.isNotEmpty ? ': $notes' : ''}',
                         );
                         if (mounted) {
                           setState(() {
@@ -659,6 +677,11 @@ class _TasksViewState extends State<TasksView> {
                               await _taskService.submitCompletionReport(
                             id: task.id,
                             report: report,
+                          );
+                          CallNotificationService.instance.showTaskAlert(
+                            id: 'comp_${task.id}_${DateTime.now().millisecondsSinceEpoch}',
+                            title: 'Task Completion Report',
+                            body: 'Task "${task.title}" completed by $empName: $text',
                           );
                           if (mounted) {
                             setState(() {
@@ -3312,6 +3335,115 @@ class _TasksViewState extends State<TasksView> {
                 ),
               ],
 
+              // Daily Progress & Latest Notes (During process / when progress exists)
+              if (task.progressPercentage > 0 ||
+                  task.progressUpdates.isNotEmpty ||
+                  isRunning) ...[
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Progress: ${task.progressPercentage}%',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: CeladonColors.primary,
+                      ),
+                    ),
+                    if (task.progressUpdates.isNotEmpty)
+                      Expanded(
+                        child: Text(
+                          'Last note: "${task.progressUpdates.last.updateText}"',
+                          textAlign: TextAlign.end,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 10.5,
+                            fontStyle: FontStyle.italic,
+                            color: CeladonColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: (task.progressPercentage.clamp(0, 100)) / 100,
+                    backgroundColor: CeladonColors.divider,
+                    color: CeladonColors.primary,
+                    minHeight: 5,
+                  ),
+                ),
+              ],
+
+              // Completion Report Summary Card
+              if (task.completionReport != null) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: CeladonColors.lightGreen,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: CeladonColors.primary.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.check_circle_rounded,
+                            size: 13,
+                            color: CeladonColors.primary,
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            'Report by ${task.completionReport!.employeeName}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: CeladonColors.primary,
+                            ),
+                          ),
+                          if (task.completionReport!.workingTime != null &&
+                              task.completionReport!.workingTime!.isNotEmpty) ...[
+                            const Spacer(),
+                            Text(
+                              task.completionReport!.workingTime!,
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: CeladonColors.primary,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      if (task.completionReport!.reportText.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          'Notes: "${task.completionReport!.reportText}"',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: CeladonColors.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+
               const SizedBox(height: 10),
               const Divider(color: CeladonColors.divider, height: 1),
               const SizedBox(height: 8),
@@ -3937,7 +4069,7 @@ class _TasksViewState extends State<TasksView> {
                                           MainAxisAlignment.spaceBetween,
                                       children: [
                                         Text(
-                                          'Current Progress: ${task.progressPercentage > 0 ? '${task.progressPercentage}%' : (task.isInProgress ? 'In Progress (50%)' : 'To Do (10%)')}',
+                                          'Current Progress: ${task.progressPercentage}%',
                                           style: const TextStyle(
                                             fontSize: 12,
                                             fontWeight: FontWeight.w700,
@@ -3950,10 +4082,7 @@ class _TasksViewState extends State<TasksView> {
                                     ClipRRect(
                                       borderRadius: BorderRadius.circular(6),
                                       child: LinearProgressIndicator(
-                                        value: (task.progressPercentage > 0
-                                                ? task.progressPercentage
-                                                : (task.isInProgress ? 50 : 10)) /
-                                            100,
+                                        value: task.progressPercentage.clamp(0, 100) / 100,
                                         backgroundColor: CeladonColors.divider,
                                         color: CeladonColors.info,
                                         minHeight: 8,
@@ -4537,8 +4666,7 @@ class _TasksViewState extends State<TasksView> {
                           const SizedBox(height: 6),
                           _buildDarkTextField(
                             controller: descCtrl,
-                            hintText:
-                                'Add details, speak, or record voice note...',
+                            hintText: 'Add details or dictate via voice...',
                             maxLines: 3,
                           ),
                           const SizedBox(height: 14),
@@ -5103,7 +5231,7 @@ class _TasksViewState extends State<TasksView> {
     );
   }
 
-  // Voice Description Modal (Voice-to-Text Dictation & Voice Note Recording)
+  // Voice Description Modal (Voice-to-Text Dictation)
   void _openVoiceDescriptionModal(
     TextEditingController descCtrl,
     VoidCallback onUpdate,
@@ -5113,7 +5241,6 @@ class _TasksViewState extends State<TasksView> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
-        int voiceTab = 0; // 0: Speech-to-Text, 1: Record Voice Note
         bool isListening = false;
         String recognizedText = '';
         String statusText = 'Tap mic to dictate description';
@@ -5215,7 +5342,7 @@ class _TasksViewState extends State<TasksView> {
                           ),
                           SizedBox(width: 8),
                           Text(
-                            'Voice Description Assistant',
+                            'Voice-to-Text Dictation',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w800,
@@ -5238,216 +5365,80 @@ class _TasksViewState extends State<TasksView> {
                     ],
                   ),
                   const Divider(color: CeladonColors.divider, height: 1),
-                  const SizedBox(height: 12),
-
-                  // Mode Switcher: Dictation vs Audio Note
-                  Row(
-                    children: [
-                      Expanded(
-                        child: InkWell(
-                          onTap: () {
-                            speech.stop();
-                            setVoiceState(() {
-                              voiceTab = 0;
-                              isListening = false;
-                            });
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            decoration: BoxDecoration(
-                              color: voiceTab == 0
-                                  ? const Color(0xFF8B5CF6)
-                                  : CeladonColors.inputBackground,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: voiceTab == 0
-                                    ? const Color(0xFF8B5CF6)
-                                    : CeladonColors.border,
-                              ),
-                            ),
-                            alignment: Alignment.center,
-                            child: Text(
-                              'Voice-to-Text',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: voiceTab == 0
-                                    ? Colors.white
-                                    : CeladonColors.textSecondary,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: InkWell(
-                          onTap: () {
-                            speech.stop();
-                            setVoiceState(() {
-                              voiceTab = 1;
-                              isListening = false;
-                            });
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            decoration: BoxDecoration(
-                              color: voiceTab == 1
-                                  ? const Color(0xFF8B5CF6)
-                                  : CeladonColors.inputBackground,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: voiceTab == 1
-                                    ? const Color(0xFF8B5CF6)
-                                    : CeladonColors.border,
-                              ),
-                            ),
-                            alignment: Alignment.center,
-                            child: Text(
-                              'Record Voice Note',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: voiceTab == 1
-                                    ? Colors.white
-                                    : CeladonColors.textSecondary,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
                   const SizedBox(height: 16),
 
-                  if (voiceTab == 0) ...[
-                    // Real Voice-to-Text
-                    Center(
-                      child: GestureDetector(
-                        onTap: toggleListening,
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 300),
-                          width: 68,
-                          height: 68,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: isListening
-                                ? CeladonColors.error
-                                : const Color(0xFF8B5CF6),
-                            boxShadow: [
-                              BoxShadow(
-                                color:
-                                    (isListening
-                                            ? CeladonColors.error
-                                            : const Color(0xFF8B5CF6))
-                                        .withValues(alpha: 0.35),
-                                blurRadius: 18,
-                              ),
-                            ],
-                          ),
-                          child: Icon(
-                            isListening
-                                ? Icons.stop_rounded
-                                : Icons.mic_rounded,
-                            size: 34,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Center(
-                      child: Text(
-                        statusText,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: isListening ? FontWeight.w700 : FontWeight.w500,
-                          color: isListening ? CeladonColors.error : CeladonColors.textSecondary,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    if (recognizedText.isNotEmpty) ...[
-                      Container(
-                        padding: const EdgeInsets.all(12),
+                  // Real Voice-to-Text
+                  Center(
+                    child: GestureDetector(
+                      onTap: toggleListening,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        width: 68,
+                        height: 68,
                         decoration: BoxDecoration(
-                          color: CeladonColors.searchBackground,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: CeladonColors.border),
-                        ),
-                        child: Text(
-                          recognizedText,
-                          style: const TextStyle(
-                            color: CeladonColors.textPrimary,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      ElevatedButton(
-                        onPressed: () {
-                          speech.stop();
-                          if (descCtrl.text.isNotEmpty) {
-                            descCtrl.text =
-                                '${descCtrl.text.trim()} $recognizedText';
-                          } else {
-                            descCtrl.text = recognizedText;
-                          }
-                          onUpdate();
-                          Navigator.pop(ctx);
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF8B5CF6),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text(
-                          'Insert Spoken Text',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ] else ...[
-                    // Record Voice Note
-                    Center(
-                      child: Container(
-                        width: 64,
-                        height: 64,
-                        decoration: const BoxDecoration(
                           shape: BoxShape.circle,
-                          color: Color(0xFF8B5CF6),
+                          color: isListening
+                              ? CeladonColors.error
+                              : const Color(0xFF8B5CF6),
+                          boxShadow: [
+                            BoxShadow(
+                              color: (isListening
+                                      ? CeladonColors.error
+                                      : const Color(0xFF8B5CF6))
+                                  .withValues(alpha: 0.35),
+                              blurRadius: 18,
+                            ),
+                          ],
                         ),
-                        child: const Icon(
-                          Icons.radio_button_checked_rounded,
+                        child: Icon(
+                          isListening
+                              ? Icons.stop_rounded
+                              : Icons.mic_rounded,
+                          size: 34,
                           color: Colors.white,
-                          size: 30,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Center(
+                    child: Text(
+                      statusText,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: isListening ? FontWeight.w700 : FontWeight.w500,
+                        color: isListening ? CeladonColors.error : CeladonColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  if (recognizedText.isNotEmpty) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: CeladonColors.searchBackground,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: CeladonColors.border),
+                      ),
+                      child: Text(
+                        recognizedText,
+                        style: const TextStyle(
+                          color: CeladonColors.textPrimary,
+                          fontSize: 13,
                         ),
                       ),
                     ),
                     const SizedBox(height: 12),
-                    const Center(
-                      child: Text(
-                        '00:15 - Voice Note Ready',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: CeladonColors.textPrimary,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
                     ElevatedButton(
                       onPressed: () {
-                        final tag =
-                            '[voice_note:recorded_audio_${DateTime.now().millisecondsSinceEpoch}.m4a]';
-                        descCtrl.text = descCtrl.text.isNotEmpty
-                            ? '${descCtrl.text.trim()}\n$tag'
-                            : tag;
+                        speech.stop();
+                        if (descCtrl.text.isNotEmpty) {
+                          descCtrl.text =
+                              '${descCtrl.text.trim()} $recognizedText';
+                        } else {
+                          descCtrl.text = recognizedText;
+                        }
                         onUpdate();
                         Navigator.pop(ctx);
                       },
@@ -5458,7 +5449,7 @@ class _TasksViewState extends State<TasksView> {
                         ),
                       ),
                       child: const Text(
-                        'Attach Voice Note Audio',
+                        'Insert Spoken Text',
                         style: TextStyle(
                           fontWeight: FontWeight.w700,
                           color: Colors.white,

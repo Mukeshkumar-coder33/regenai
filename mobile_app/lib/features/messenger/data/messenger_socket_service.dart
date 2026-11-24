@@ -41,6 +41,7 @@ class MessengerSocketService {
   final _dmChangeController = StreamController<Map<String, dynamic>>.broadcast();
   final _dmKeyExchangeController = StreamController<Map<String, dynamic>>.broadcast();
   final _notificationController = StreamController<Map<String, dynamic>>.broadcast();
+  final _taskChangeController = StreamController<Map<String, dynamic>>.broadcast();
   final _presenceController = StreamController<Map<String, dynamic>>.broadcast();
 
   // 1:1 WebRTC signaling streams
@@ -64,6 +65,7 @@ class MessengerSocketService {
   Stream<Map<String, dynamic>> get onDmChange => _dmChangeController.stream;
   Stream<Map<String, dynamic>> get onDmKeyExchange => _dmKeyExchangeController.stream;
   Stream<Map<String, dynamic>> get onNotification => _notificationController.stream;
+  Stream<Map<String, dynamic>> get onTaskChange => _taskChangeController.stream;
   Stream<Map<String, dynamic>> get onPresenceUpdate => _presenceController.stream;
 
   Stream<Map<String, dynamic>> get onCallIncoming => _callIncomingController.stream;
@@ -148,6 +150,7 @@ class MessengerSocketService {
     socket.on('dm:change', (d) => _dmChangeController.add(_asMap(d)));
     socket.on('dm:key-exchange', (d) => _dmKeyExchangeController.add(_asMap(d)));
     socket.on('notification:new', (d) => _notificationController.add(_asMap(d)));
+    socket.on('task:change', (d) => _taskChangeController.add(_asMap(d)));
     socket.on('presence:update', (d) => _presenceController.add(_asMap(d)));
 
     // 1:1 WebRTC Call Signaling

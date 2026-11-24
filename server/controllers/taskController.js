@@ -28,6 +28,7 @@ export const createTask = async (req, res) => {
         const { default: Notification } = await import('../models/Notification.js');
         const n = new Notification(notificationPayload);
         await n.save();
+        emitToCompany('notification:new', task.companyId, n);
       } catch (e) {
         console.error(e);
       }
@@ -191,106 +192,107 @@ export const updateTask = async (req, res) => {
     if (!task) return res.status(404).json({ message: 'Task not found' });
     const { default: Notification } = await import('../models/Notification.js');
 
-    // Notify employee on extension review
-    if (previous.extensionRequest?.status === 'pending' && task.extensionRequest?.status === 'accepted' && task.assignedTo) {
-      try {
-        const nExt = new Notification({
-          id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-          userId: task.assignedTo,
-          companyId: task.companyId,
-          title: 'Extension Request Accepted',
-          message: `Your deadline extension for "${task.title}" was accepted. New deadline: ${task.dueDate || ''}`,
-          createdAt: new Date().toISOString(),
-          read: false
-        });
-        await nExt.save();
-      } catch (e) {}
-    } else if (previous.extensionRequest?.status === 'pending' && task.extensionRequest?.status === 'rejected' && task.assignedTo) {
-      try {
-        const nExt = new Notification({
-          id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-          userId: task.assignedTo,
-          companyId: task.companyId,
-          title: 'Extension Request Rejected',
-          message: `Your deadline extension for "${task.title}" was rejected.`,
-          createdAt: new Date().toISOString(),
-          read: false
-        });
-        await nExt.save();
-      } catch (e) {}
-    } else if (task.assignedTo && !req.body.extensionRequest && !req.body.progressPercentage && !req.body.completionReport) {
-      try {
-        const notificationPayload = {
-          id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-          userId: task.assignedTo,
-          companyId: task.companyId,
-          title: 'Task Updated',
-          message: `Your task was updated: ${task.title}`,
-          createdAt: new Date().toISOString(),
-          read: false
-        };
-        const n = new Notification(notificationPayload);
-        await n.save();
-      } catch (e) {}
-    }
+    // ------------------------------------------------------------------------
+    // NOTIFICATIONS: Company Owner, Admins & Task Assignee
+    // ------------------------------------------------------------------------
+    try {
+      const recipientUserIds = new Set();
+      // 1. Task Assignee
+      if (task.assignedTo) {
+        recipientUserIds.add(String(task.assignedTo));
+      }
 
-    // Notify assignor / company owner if we can resolve their userId
-    if (task.assignorName) {
-      try {
-        const assignorFilter = {
-          $or: [{ username: task.assignorName }, { name: task.assignorName }]
-        };
-        if (task.companyId) assignorFilter.companyId = task.companyId;
-        const assignor = await User.findOne(assignorFilter);
-        if (assignor && assignor.userId) {
-          if (task.extensionRequest?.status === 'pending' && previous.extensionRequest?.status !== 'pending') {
-            const nExtReq = new Notification({
-              id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-              userId: assignor.userId,
-              companyId: task.companyId,
-              title: 'Deadline Extension Requested',
-              message: `Extra time requested for "${task.title}": ${task.extensionRequest.requestedDueDate || ''}. Reason: ${task.extensionRequest.reason || 'None provided'}`,
-              createdAt: new Date().toISOString(),
-              read: false
-            });
-            await nExtReq.save();
-          } else if (task.completionReport?.submittedAt && !previous.completionReport?.submittedAt) {
-            const nComp = new Notification({
-              id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-              userId: assignor.userId,
-              companyId: task.companyId,
-              title: 'Task Completion Report',
-              message: `Task "${task.title}" was completed by ${task.completionReport.employeeName || 'employee'}. Report submitted.`,
-              createdAt: new Date().toISOString(),
-              read: false
-            });
-            await nComp.save();
-          } else if (task.progressPercentage !== undefined && task.progressPercentage !== previous.progressPercentage) {
-            const nProg = new Notification({
-              id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-              userId: assignor.userId,
-              companyId: task.companyId,
-              title: 'Task Progress Updated',
-              message: `Task "${task.title}" progress updated to ${task.progressPercentage}%.`,
-              createdAt: new Date().toISOString(),
-              read: false
-            });
-            await nProg.save();
-          } else {
-            const statusLabel = String(task.status || '').replace('_', ' ') || 'updated';
-            const n2 = new Notification({
-              id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-              userId: assignor.userId,
-              companyId: task.companyId,
-              title: 'Task Status Change',
-              message: `Task "${task.title}" status: ${statusLabel}`,
-              createdAt: new Date().toISOString(),
-              read: false
-            });
-            await n2.save();
-          }
+      // 2. Company Owner & Admins for this company
+      if (task.companyId) {
+        const adminUsers = await User.find({
+          companyId: task.companyId,
+          role: { $in: ['admin', 'owner', 'company_admin', 'superadmin', 'param'] }
+        }).select('userId StaffId username _id').lean();
+
+        adminUsers.forEach(u => {
+          if (u.userId) recipientUserIds.add(String(u.userId));
+          if (u.username) recipientUserIds.add(String(u.username));
+          if (u._id) recipientUserIds.add(String(u._id));
+        });
+
+        const compDoc = await Company.findById(task.companyId).select('ownerId').lean();
+        if (compDoc?.ownerId) {
+          recipientUserIds.add(String(compDoc.ownerId));
         }
-      } catch (e) {}
+      }
+
+      // 3. Task Assignor
+      if (task.assignorName) {
+        const assignor = await User.findOne({
+          $or: [{ username: task.assignorName }, { name: task.assignorName }]
+        }).select('userId StaffId username _id').lean();
+        if (assignor) {
+          if (assignor.userId) recipientUserIds.add(String(assignor.userId));
+          if (assignor.username) recipientUserIds.add(String(assignor.username));
+          if (assignor._id) recipientUserIds.add(String(assignor._id));
+        }
+      }
+
+      // Determine notification title, message, and metadata
+      let notifTitle = '';
+      let notifMessage = '';
+      let notifMeta = {};
+
+      if (task.extensionRequest?.status === 'pending' && previous.extensionRequest?.status !== 'pending') {
+        notifTitle = 'Deadline Extension Requested';
+        notifMessage = `Extra time requested for "${task.title}": ${task.extensionRequest.requestedDueDate || ''}. Reason: ${task.extensionRequest.reason || 'None provided'}`;
+        notifMeta = { taskId: task.id, type: 'extension_request' };
+      } else if (task.completionReport?.submittedAt && !previous.completionReport?.submittedAt) {
+        const rep = task.completionReport;
+        const repTime = rep.workingTime ? ` (Working Time: ${rep.workingTime})` : '';
+        const repNotes = rep.reportText ? ` • Note: "${rep.reportText}"` : '';
+        notifTitle = 'Task Completion Report';
+        notifMessage = `Task "${task.title}" was completed by ${rep.employeeName || 'employee'}${repTime}${repNotes}`;
+        notifMeta = { taskId: task.id, completionReport: rep, type: 'completion_report' };
+      } else if (
+        (task.progressPercentage !== undefined && task.progressPercentage !== previous.progressPercentage) ||
+        (task.progressUpdates?.length > (previous.progressUpdates?.length || 0))
+      ) {
+        const latestProg = task.progressUpdates && task.progressUpdates.length > 0
+          ? task.progressUpdates[task.progressUpdates.length - 1]
+          : null;
+        const noteSnippet = latestProg?.updateText ? ` • Note: "${latestProg.updateText}"` : '';
+        notifTitle = 'Task Progress Updated';
+        notifMessage = `Task "${task.title}" progress updated to ${task.progressPercentage}% by ${latestProg?.employeeName || 'employee'}${noteSnippet}`;
+        notifMeta = { taskId: task.id, progressPercentage: task.progressPercentage, latestProgress: latestProg, type: 'daily_progress' };
+      } else if (previous.extensionRequest?.status === 'pending' && task.extensionRequest?.status === 'accepted') {
+        notifTitle = 'Extension Request Accepted';
+        notifMessage = `Deadline extension for "${task.title}" was accepted. New deadline: ${task.dueDate || ''}`;
+        notifMeta = { taskId: task.id, type: 'extension_accepted' };
+      } else if (previous.extensionRequest?.status === 'pending' && task.extensionRequest?.status === 'rejected') {
+        notifTitle = 'Extension Request Rejected';
+        notifMessage = `Deadline extension for "${task.title}" was rejected.`;
+        notifMeta = { taskId: task.id, type: 'extension_rejected' };
+      } else if (task.assignedTo && !req.body.extensionRequest && !req.body.progressPercentage && !req.body.completionReport) {
+        notifTitle = 'Task Updated';
+        notifMessage = `Your task was updated: ${task.title}`;
+        notifMeta = { taskId: task.id, type: 'task_update' };
+      }
+
+      if (notifTitle && notifMessage && recipientUserIds.size > 0) {
+        for (const recipientId of recipientUserIds) {
+          const nDoc = new Notification({
+            id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            userId: recipientId,
+            companyId: task.companyId,
+            title: notifTitle,
+            message: notifMessage,
+            type: 'project_task',
+            metadata: notifMeta,
+            createdAt: new Date().toISOString(),
+            read: false
+          });
+          await nDoc.save();
+          emitToCompany('notification:new', task.companyId, nDoc);
+        }
+      }
+    } catch (notifErr) {
+      console.error('[taskController] notification dispatch error:', notifErr);
     }
     emitToCompany('task:change', task.companyId, { action: 'update', id: task.id });
     res.status(200).json(task);

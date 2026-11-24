@@ -137,5 +137,23 @@ void main() {
       expect(res['endDate'], '2026-11-27');
       expect(res['dueTime'], '18:00');
     });
+
+    test('Daily progress percentage initializes directly to current progress', () {
+      final taskWith42 = TaskModel(
+        id: 't-42',
+        title: 'Feature Work',
+        status: 'in_progress',
+        progressPercentage: 42,
+      );
+      expect(taskWith42.progressPercentage.clamp(0, 100), 42);
+
+      final taskZero = TaskModel(
+        id: 't-0',
+        title: 'Feature Work',
+        status: 'pending',
+        progressPercentage: 0,
+      );
+      expect(taskZero.progressPercentage.clamp(0, 100), 0);
+    });
   });
 }

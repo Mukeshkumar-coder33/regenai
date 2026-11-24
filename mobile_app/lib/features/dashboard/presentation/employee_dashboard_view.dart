@@ -57,10 +57,14 @@ class EmployeeDashboardView extends StatefulWidget {
   State<EmployeeDashboardView> createState() => _EmployeeDashboardViewState();
 }
 
-class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
+class _EmployeeDashboardViewState extends State<EmployeeDashboardView> with AutomaticKeepAliveClientMixin {
   late final DashboardService _dashboardService;
   final AttendanceService _attendanceService = AttendanceService();
   final NotificationService _notificationService = NotificationService();
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  bool get wantKeepAlive => true;
 
   bool _isLoading = true;
   String? _errorMessage;
@@ -118,6 +122,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _liveNotifSub?.cancel();
     _taskTicker?.cancel();
     super.dispose();
@@ -153,9 +158,9 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
       final myId = _profileUser.userId.isNotEmpty ? _profileUser.userId : _profileUser.id;
 
       final results = await Future.wait([
-        _dashboardService.getTasks(),
-        _dashboardService.getAttendance(),
-        _dashboardService.getLeaves(),
+        _dashboardService.getTasks().catchError((_) => <TaskModel>[]),
+        _dashboardService.getAttendance().catchError((_) => <AttendanceModel>[]),
+        _dashboardService.getLeaves().catchError((_) => <LeaveModel>[]),
         _dashboardService.getProjects().catchError((_) => <Map<String, dynamic>>[]),
         _dashboardService.getMyPayrollRecords(month: currMonth).catchError(
               (_) => const <String, dynamic>{'payroll': null, 'history': []},
@@ -167,7 +172,20 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
         _attendanceService.getTodayAttendance().catchError((_) => null),
         _attendanceService.getWorkSchedule().catchError((_) => const WorkScheduleModel()),
         _attendanceService.getHolidays().catchError((_) => <HolidayModel>[]),
-      ]);
+      ]).timeout(const Duration(seconds: 12), onTimeout: () {
+        return [
+          <TaskModel>[],
+          <AttendanceModel>[],
+          <LeaveModel>[],
+          <Map<String, dynamic>>[],
+          const <String, dynamic>{'payroll': null, 'history': []},
+          _profileUser,
+          <NotificationModel>[],
+          null,
+          const WorkScheduleModel(),
+          <HolidayModel>[],
+        ];
+      });
 
       if (!mounted) return;
 
@@ -960,6 +978,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final displayName = _profileUser.name.isNotEmpty
         ? _profileUser.name
         : (_profileUser.username.isNotEmpty ? _profileUser.username : 'Employee');
@@ -1098,6 +1117,8 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> {
                           color: CeladonColors.primary,
                           onRefresh: _loadDashboardData,
                           child: SingleChildScrollView(
+                            key: const PageStorageKey('employee_home_scroll'),
+                            controller: _scrollController,
                             physics: const AlwaysScrollableScrollPhysics(),
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                             child: Column(

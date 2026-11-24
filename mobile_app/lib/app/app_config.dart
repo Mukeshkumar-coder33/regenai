@@ -47,6 +47,6 @@ abstract final class AppConfig {
   // Endpoint routes
   static String get loginUrl => '$activeBaseUrl/api/auth/login';
   static String get healthUrl => '$activeBaseUrl/api/health';
-  static String get profileUrl => '$activeBaseUrl/api/users/profile';
+  static String get profileUrl => '$activeBaseUrl/api/users/me';
 }
 

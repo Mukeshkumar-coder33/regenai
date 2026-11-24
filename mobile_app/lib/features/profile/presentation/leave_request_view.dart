@@ -82,10 +82,12 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
           _holidays = results[4] as List<HolidayModel>;
 
           // Adjust selected type if currently selected is disabled
-          if (_selectedLeaveType == 'casual' && !_policy.casualLeave.enabled) {
-            _selectedLeaveType = _policy.sickLeave.enabled ? 'sick' : 'unpaid';
-          } else if (_selectedLeaveType == 'sick' && !_policy.sickLeave.enabled) {
-            _selectedLeaveType = _policy.casualLeave.enabled ? 'casual' : 'unpaid';
+          final isCasual = _policy.casualLeave.enabled && _balance.casual.enabled;
+          final isSick = _policy.sickLeave.enabled && _balance.sick.enabled;
+          if (_selectedLeaveType == 'casual' && !isCasual) {
+            _selectedLeaveType = isSick ? 'sick' : 'unpaid';
+          } else if (_selectedLeaveType == 'sick' && !isSick) {
+            _selectedLeaveType = isCasual ? 'casual' : 'unpaid';
           }
           _isLoading = false;
         });
@@ -348,7 +350,11 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
   Widget _buildLeaveBalanceSection() {
     final cards = <Widget>[];
 
-    if (_policy.casualLeave.enabled) {
+    final bool showCasual = _policy.casualLeave.enabled && _balance.casual.enabled;
+    final bool showSick = _policy.sickLeave.enabled && _balance.sick.enabled;
+    final bool showUnpaid = _policy.unpaidLeave.enabled && _balance.unpaid.enabled;
+
+    if (showCasual) {
       cards.add(_buildSingleBalanceCard(
         title: 'Casual Leave',
         tag: 'Paid Leave',
@@ -360,7 +366,7 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
       ));
     }
 
-    if (_policy.sickLeave.enabled) {
+    if (showSick) {
       cards.add(_buildSingleBalanceCard(
         title: 'Sick Leave',
         tag: 'Paid Leave',
@@ -372,7 +378,7 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
       ));
     }
 
-    if (_policy.unpaidLeave.enabled) {
+    if (showUnpaid) {
       cards.add(_buildUnpaidBalanceCard());
     }
 
@@ -736,19 +742,19 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
 
     // Filter available leave types
     final availableTypes = <DropdownMenuItem<String>>[];
-    if (_policy.casualLeave.enabled) {
+    if (_policy.casualLeave.enabled && _balance.casual.enabled) {
       availableTypes.add(const DropdownMenuItem(
         value: 'casual',
         child: Text('Casual Leave (Paid)', overflow: TextOverflow.ellipsis, maxLines: 1),
       ));
     }
-    if (_policy.sickLeave.enabled) {
+    if (_policy.sickLeave.enabled && _balance.sick.enabled) {
       availableTypes.add(const DropdownMenuItem(
         value: 'sick',
         child: Text('Sick Leave (Paid)', overflow: TextOverflow.ellipsis, maxLines: 1),
       ));
     }
-    if (_policy.unpaidLeave.enabled) {
+    if (_policy.unpaidLeave.enabled && _balance.unpaid.enabled) {
       availableTypes.add(const DropdownMenuItem(
         value: 'unpaid',
         child: Text('Unpaid Leave (Loss of Pay)', overflow: TextOverflow.ellipsis, maxLines: 1),
@@ -786,7 +792,7 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
               isExpanded: true,
               initialValue: availableTypes.any((t) => t.value == _selectedLeaveType)
                   ? _selectedLeaveType
-                  : (availableTypes.isNotEmpty ? availableTypes.first.value : 'casual'),
+                  : (availableTypes.isNotEmpty ? availableTypes.first.value : 'unpaid'),
               decoration: InputDecoration(
                 labelText: 'Leave Type *',
                 filled: true,

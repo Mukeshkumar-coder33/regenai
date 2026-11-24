@@ -185,10 +185,11 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   }
 
   void _navigateToTab(int index) {
-    // Preserve semantic mapping for legacy numeric callers (0=home, 1=tasks, 2=calendar, 3=profile)
-    const semanticIds = ['home', 'tasks', 'calendar', 'profile'];
-    if (index >= 0 && index < semanticIds.length) {
-      _navigateToPage(semanticIds[index]);
+    if (index >= 0 && index < _bottomNavSlots.length) {
+      setState(() {
+        _currentTabIndex = index;
+        _overridePageId = null;
+      });
       return;
     }
     setState(() {
@@ -238,18 +239,21 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         return _buildHomeView();
       case 'tasks':
         return TasksView(
+          key: ValueKey('page_tasks_${_currentUser.userId}'),
           user: _currentUser,
           onOpenDrawer: _openDrawer,
           onBack: () => _navigateToPage('home'),
         );
       case 'calendar':
         return CalendarView(
+          key: ValueKey('page_calendar_${_currentUser.userId}'),
           user: _currentUser,
           onOpenDrawer: _openDrawer,
           onBack: () => _navigateToPage('home'),
         );
       case 'profile':
         return ProfileView(
+          key: ValueKey('page_profile_${_currentUser.userId}'),
           user: _currentUser,
           onLogout: _handleLogout,
           onNavigateToTab: _navigateToTab,
@@ -274,22 +278,26 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         );
       case 'attendance':
         return AttendanceView(
+          key: ValueKey('page_attendance_${_currentUser.userId}'),
           onOpenDrawer: _openDrawer,
           onBack: () => _navigateToPage('home'),
         );
       case 'leave':
         return LeaveRequestView(
+          key: ValueKey('page_leave_${_currentUser.userId}'),
           user: _currentUser,
           onBack: () => _navigateToPage('home'),
         );
       case 'payroll':
         return EmployeePayrollView(
+          key: ValueKey('page_payroll_${_currentUser.userId}'),
           user: _currentUser,
           embedded: true,
           onBack: () => _navigateToPage('home'),
         );
       case 'settings':
         return SettingsView(
+          key: ValueKey('page_settings_${_currentUser.userId}'),
           user: _currentUser,
           currentSlots: _bottomNavSlots,
           onNavSlotsChanged: (updated) {
@@ -361,12 +369,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         currentTabIndex: _currentTabIndex,
         currentPageId: _activePageId,
       ),
-      body: _overridePageId != null
-          ? _buildPageById(_overridePageId!)
-          : IndexedStack(
-              index: _currentTabIndex.clamp(0, _bottomNavSlots.length - 1),
-              children: _bottomNavSlots.map(_buildPageById).toList(),
-            ),
+      body: _buildPageById(_activePageId),
       bottomNavigationBar: (_overridePageId != null ||
               (_activePageId == 'messenger' && _messengerInChat))
           ? null
@@ -433,6 +436,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
 
     // 3. Employee / Staff Dashboard (staff, intern)
     return EmployeeDashboardView(
+      key: ValueKey('emp_home_${_currentUser.userId}'),
       user: _currentUser,
       onOpenDrawer: _openDrawer,
       onLogout: _handleLogout,

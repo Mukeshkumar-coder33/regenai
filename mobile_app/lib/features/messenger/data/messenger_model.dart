@@ -91,6 +91,17 @@ class MessageAttachmentModel {
     final normalized = path.startsWith('/') ? path : '/$path';
     return '${AppConfig.activeBaseUrl}$normalized';
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'path': path,
+      'name': name,
+      'type': type,
+      if (size != null) 'size': size,
+      if (duration != null) 'duration': duration,
+      if (transcript != null) 'transcript': transcript,
+    };
+  }
 }
 
 class MessengerContactModel {

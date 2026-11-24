@@ -38,6 +38,10 @@ class AppDrawer extends StatelessWidget {
   });
 
   void _routeById(BuildContext context, String pageId) {
+    if (onNavigateToPage != null) {
+      onNavigateToPage!(pageId);
+      return;
+    }
     switch (pageId) {
       case 'profile':
         onNavigateToTab?.call(3);
@@ -165,20 +169,30 @@ class AppDrawer extends StatelessWidget {
                 // 2. User Profile & Company Banner (Matching Company Drawer Card)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: CeladonColors.border, width: 1.0),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x06000000),
-                          blurRadius: 8,
-                          offset: Offset(0, 2),
-                        ),
-                      ],
-                    ),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(18),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      if (onNavigateToPage != null) {
+                        onNavigateToPage!('profile');
+                      } else {
+                        _routeById(context, 'profile');
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: CeladonColors.border, width: 1.0),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x06000000),
+                            blurRadius: 8,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
+                      ),
                     child: Row(
                       children: [
                         Container(
@@ -249,6 +263,7 @@ class AppDrawer extends StatelessWidget {
                     ),
                   ),
                 ),
+              ),
 
                 const SizedBox(height: 6),
 

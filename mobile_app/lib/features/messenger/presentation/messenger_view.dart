@@ -9,6 +9,7 @@ import '../data/e2e_crypto_service.dart';
 import '../data/messenger_model.dart';
 import '../data/messenger_service.dart';
 import '../data/messenger_socket_service.dart';
+import '../data/messenger_store.dart';
 import '../data/webrtc_call_manager.dart';
 import 'media_attachment_widgets.dart';
 import 'voice_recorder_sheet.dart';
@@ -93,6 +94,7 @@ class _MessengerViewState extends State<MessengerView> {
     super.initState();
     _messengerService = widget.messengerService ?? MessengerService();
     _dashboardService = widget.dashboardService ?? DashboardService();
+    MessengerStore.instance.init(widget.user);
     WebRtcCallManager.instance.bindUser(widget.user);
     MessengerSocketService.instance.connect(user: widget.user);
     _activeTab = 0;
@@ -125,7 +127,24 @@ class _MessengerViewState extends State<MessengerView> {
   void _markCurrentConversationRead() {
     if (_activeConversation == null) return;
     final convId = _activeConversation!.conversationId;
-    MessengerSocketService.instance.emit('dm:read', {'conversationId': convId});
+    final hasUnread = _directMessages.any(
+      (m) => m.senderId != _myUserId && !m.readBy.contains(_myUserId),
+    );
+    if (!hasUnread) return;
+
+    setState(() {
+      _directMessages = _directMessages.map((m) {
+        if (!m.readBy.contains(_myUserId)) {
+          return m.copyWith(readBy: [...m.readBy, _myUserId]);
+        }
+        return m;
+      }).toList();
+    });
+
+    MessengerSocketService.instance.emit('dm:read', {
+      'conversationId': convId,
+      'userId': _myUserId,
+    });
     _messengerService.markConversationRead(
       user: widget.user,
       conversationId: convId,
@@ -304,7 +323,8 @@ class _MessengerViewState extends State<MessengerView> {
       socket.onDmChange.listen((payload) async {
         final convId = (payload['conversationId'] ?? '').toString();
         if (_activeConversation != null &&
-            (convId.isEmpty || convId == _activeConversation!.conversationId)) {
+            convId.isNotEmpty &&
+            convId == _activeConversation!.conversationId) {
           if (payload['publicKeys'] is Map) {
             final newKeys = <String, String>{};
             (payload['publicKeys'] as Map).forEach((k, v) {
@@ -340,6 +360,9 @@ class _MessengerViewState extends State<MessengerView> {
           final rawMsg = payload['message'];
           if (rawMsg is Map && payload['action'] == 'create') {
             final incomingMsg = DirectMessageModel.fromJson(Map<String, dynamic>.from(rawMsg));
+            if (incomingMsg.conversationId != _activeConversation!.conversationId) {
+              return;
+            }
             final isMine = incomingMsg.senderId == _myUserId;
 
             // Deduplicate: check if message already present (either by real ID or local optimistic ID)
@@ -817,6 +840,7 @@ class _MessengerViewState extends State<MessengerView> {
   }
 
   void _closeActiveConversation() {
+    MessengerStore.instance.dispatch(const CloseConversationAction());
     if (_activeConversation != null) {
       MessengerSocketService.instance.setActiveConversation(null);
       MessengerSocketService.instance.emit('dm:leave-conversation', {
@@ -841,6 +865,7 @@ class _MessengerViewState extends State<MessengerView> {
     }
 
     MessengerSocketService.instance.setActiveConversation(conv.conversationId);
+    MessengerStore.instance.dispatch(OpenConversationAction(conv.conversationId));
     setState(() {
       _activeConversation = conv;
       _isLoadingDm = true;
@@ -960,7 +985,14 @@ class _MessengerViewState extends State<MessengerView> {
                   ))
               .copyWith(decryptedContent: text);
           setState(() {
-            _directMessages.add(msgToDisplay);
+            final existingIdx = _directMessages.indexWhere((m) =>
+                m.id == msgToDisplay.id ||
+                (sent != null && (m.id == sent.id || m.id.startsWith('local-dm-')) && m.content == msgToDisplay.content));
+            if (existingIdx >= 0) {
+              _directMessages[existingIdx] = msgToDisplay;
+            } else {
+              _directMessages.add(msgToDisplay);
+            }
             _isSending = false;
           });
           _scrollToBottom();
@@ -1031,7 +1063,16 @@ class _MessengerViewState extends State<MessengerView> {
           attachments: [attachment],
         );
         if (mounted) {
-          if (sent != null) setState(() => _directMessages.add(sent));
+          if (sent != null) {
+            setState(() {
+              final existingIdx = _directMessages.indexWhere((m) => m.id == sent.id);
+              if (existingIdx >= 0) {
+                _directMessages[existingIdx] = sent;
+              } else {
+                _directMessages.add(sent);
+              }
+            });
+          }
           setState(() => _isSending = false);
           _scrollToBottom();
         }
@@ -1093,7 +1134,14 @@ class _MessengerViewState extends State<MessengerView> {
         );
         if (mounted) {
           if (sent != null) {
-            setState(() => _directMessages.add(sent));
+            setState(() {
+              final existingIdx = _directMessages.indexWhere((m) => m.id == sent.id);
+              if (existingIdx >= 0) {
+                _directMessages[existingIdx] = sent;
+              } else {
+                _directMessages.add(sent);
+              }
+            });
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -1896,11 +1944,10 @@ class _MessengerViewState extends State<MessengerView> {
             Expanded(
               child: GestureDetector(
                 onTap: () {
+                  _closeActiveConversation();
                   setState(() {
                     _activeTab = 1;
-                    _activeConversation = null;
                   });
-                  _notifyChatState();
                 },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 180),
@@ -3095,8 +3142,7 @@ class _MessengerViewState extends State<MessengerView> {
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
         if (_activeConversation != null) {
-          setState(() => _activeConversation = null);
-          _notifyChatState();
+          _closeActiveConversation();
         } else if (widget.onBack != null) {
           widget.onBack!();
         } else if (Navigator.of(context).canPop()) {

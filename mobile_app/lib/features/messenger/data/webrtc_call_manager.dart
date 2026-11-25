@@ -8,6 +8,7 @@ import '../../auth/data/user_model.dart';
 import 'call_notification_service.dart';
 import 'messenger_model.dart';
 import 'messenger_socket_service.dart';
+import 'messenger_sound_service.dart';
 
 enum CallPhase { idle, incoming, calling, connected }
 
@@ -334,6 +335,7 @@ class WebRtcCallManager extends ChangeNotifier {
   }
 
   Future<void> acceptIncomingCall() async {
+    await MessengerSoundService.instance.stopRingtone();
     if (_callPhase != CallPhase.incoming || _callId == null || _peerId == null) {
       return;
     }
@@ -440,6 +442,7 @@ class WebRtcCallManager extends ChangeNotifier {
   }
 
   Future<void> rejectIncomingCall({String reason = 'declined'}) async {
+    await MessengerSoundService.instance.stopRingtone();
     if (_callId != null && _peerId != null) {
       await CallNotificationService.instance.cancelCallNotification(_callId!);
       await CallNotificationService.instance.cancelAllCallNotifications();
@@ -453,6 +456,7 @@ class WebRtcCallManager extends ChangeNotifier {
   }
 
   Future<void> endCall() async {
+    await MessengerSoundService.instance.stopRingtone();
     if (_callId != null && _peerId != null) {
       await CallNotificationService.instance.cancelCallNotification(_callId!);
       await CallNotificationService.instance.cancelAllCallNotifications();
@@ -511,6 +515,7 @@ class WebRtcCallManager extends ChangeNotifier {
   }
 
   Future<void> _cleanupCall() async {
+    await MessengerSoundService.instance.stopRingtone();
     _callTimer?.cancel();
     _callTimer = null;
     if (_callId != null) {
@@ -576,6 +581,10 @@ class WebRtcCallManager extends ChangeNotifier {
     _statusMessage = null;
     notifyListeners();
 
+    // Start in-app ringing sound (plays looping cadence)
+    MessengerSoundService.instance.startIncomingCallRingtone();
+
+    // Show native device notification (ringtone + vibration + full-screen intent)
     CallNotificationService.instance.showIncomingCallNotification(
       callId: incoming.callId,
       callerName: incoming.callerName,
@@ -584,6 +593,7 @@ class WebRtcCallManager extends ChangeNotifier {
   }
 
   Future<void> _handleCallAccepted(Map<String, dynamic> data) async {
+    await MessengerSoundService.instance.stopRingtone();
     if (_peerConnection == null) return;
     final rawAnswer = data['answer'];
     if (rawAnswer is! Map) return;
@@ -637,8 +647,21 @@ class WebRtcCallManager extends ChangeNotifier {
   }
 
   Future<void> _handleCallEnded(Map<String, dynamic> data) async {
-    _statusMessage = 'Call ended';
+    await MessengerSoundService.instance.stopRingtone();
+    final wasIncoming = _callPhase == CallPhase.incoming;
+    final callerName = _peerName ?? 'Someone';
+    final mediaType = _callMediaType;
+    final callId = _callId;
+    _statusMessage = wasIncoming ? 'Missed call from $callerName' : 'Call ended';
     await _cleanupCall();
+    if (wasIncoming) {
+      await MessengerSoundService.instance.playMissedCallTone();
+      await CallNotificationService.instance.showMissedCallNotification(
+        id: callId ?? '${DateTime.now().millisecondsSinceEpoch}',
+        callerName: callerName,
+        mediaType: mediaType,
+      );
+    }
   }
 
   Future<void> _handleCallCancelled(Map<String, dynamic> data) async {
@@ -648,8 +671,21 @@ class WebRtcCallManager extends ChangeNotifier {
         _callId != cancelledCallId) {
       return;
     }
-    _statusMessage = 'Call cancelled by caller';
+    await MessengerSoundService.instance.stopRingtone();
+    final wasIncoming = _callPhase == CallPhase.incoming;
+    final callerName = _peerName ?? 'Someone';
+    final mediaType = _callMediaType;
+    final callId = _callId;
+    _statusMessage = 'Missed call from $callerName';
     await _cleanupCall();
+    if (wasIncoming) {
+      await MessengerSoundService.instance.playMissedCallTone();
+      await CallNotificationService.instance.showMissedCallNotification(
+        id: callId ?? '${DateTime.now().millisecondsSinceEpoch}',
+        callerName: callerName,
+        mediaType: mediaType,
+      );
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -700,6 +736,7 @@ class WebRtcCallManager extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    await MessengerSoundService.instance.stopRingtone();
     await CallNotificationService.instance.cancelCallNotification(
       invite.meetingId,
     );
@@ -748,6 +785,7 @@ class WebRtcCallManager extends ChangeNotifier {
   }
 
   void dismissMeetingInvite() {
+    MessengerSoundService.instance.stopRingtone();
     if (_activeMeeting != null) {
       CallNotificationService.instance.cancelCallNotification(
         _activeMeeting!.meetingId,
@@ -759,6 +797,7 @@ class WebRtcCallManager extends ChangeNotifier {
   }
 
   Future<void> leaveGroupMeeting() async {
+    await MessengerSoundService.instance.stopRingtone();
     _meetingTimer?.cancel();
     _meetingTimer = null;
 
@@ -934,6 +973,7 @@ class WebRtcCallManager extends ChangeNotifier {
     _meetingPhase = MeetingPhase.invited;
     notifyListeners();
 
+    MessengerSoundService.instance.startIncomingCallRingtone();
     CallNotificationService.instance.showIncomingCallNotification(
       callId: invite.meetingId,
       callerName: invite.hostName,

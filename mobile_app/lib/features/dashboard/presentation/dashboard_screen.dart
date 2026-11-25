@@ -22,6 +22,7 @@ import '../../profile/presentation/profile_view.dart';
 import '../../profile/presentation/settings_view.dart';
 import '../../superadmin/presentation/superadmin_dashboard_view.dart';
 import '../../tasks/presentation/tasks_view.dart';
+import 'dashboard_navigation.dart';
 import 'employee_dashboard_view.dart';
 import 'employee_payroll_view.dart';
 
@@ -79,6 +80,14 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    DashboardNavigation.navigateToPage = _navigateToPage;
+    if (DashboardNavigation.pendingTargetPage != null) {
+      final target = DashboardNavigation.pendingTargetPage!;
+      DashboardNavigation.pendingTargetPage = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _navigateToPage(target);
+      });
+    }
     _currentUser = widget.user;
     _bottomNavSlots = List<String>.from(_defaultSlotIds);
     _loadRoleBottomNavSlots();
@@ -93,6 +102,9 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    if (DashboardNavigation.navigateToPage == _navigateToPage) {
+      DashboardNavigation.navigateToPage = null;
+    }
     _notifSub?.cancel();
     MessengerSocketService.instance.disconnect();
     super.dispose();
@@ -108,37 +120,9 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   Future<void> _initRealtimeCommunication(UserModel user) async {
     WebRtcCallManager.instance.bindUser(user);
     await CallNotificationService.instance.initialize(onTap: (payload) {
-      if (payload['conversationId'] != null) {
-        _navigateToPage('messenger');
-      }
+      DashboardNavigation.handleNotificationTap(payload);
     });
     await MessengerSocketService.instance.connect(user: user);
-
-    _notifSub?.cancel();
-    _notifSub = MessengerSocketService.instance.onNotification.listen((payload) {
-      final senderId = payload['senderId']?.toString() ?? '';
-      final myId = user.userId.isNotEmpty ? user.userId : user.id;
-      if (senderId != myId) {
-        final type = (payload['type'] ?? 'general').toString();
-        // Never trigger message notifications for incoming calls (handled by WebRtcCallManager)
-        if (type == 'voice_call' || type == 'video_call' || type == 'team_meeting') {
-          return;
-        }
-        final convId = payload['conversationId']?.toString();
-        // Suppress notification if user is actively in this conversation in Messenger
-        if (convId != null && MessengerSocketService.instance.isConversationActive(convId)) {
-          return;
-        }
-        final title = payload['title']?.toString() ?? payload['senderName']?.toString() ?? 'New Message';
-        final body = payload['message']?.toString() ?? '';
-        CallNotificationService.instance.showMessageNotification(
-          id: (payload['id'] ?? payload['_id'] ?? DateTime.now().millisecondsSinceEpoch).toString(),
-          senderName: title,
-          preview: body,
-          conversationId: convId,
-        );
-      }
-    });
   }
 
   String get _effectiveUserId =>

@@ -337,7 +337,7 @@ export const getConversationMessages = async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 100, 500);
     const before = req.query.before;
 
-    const filter = { conversationId: convo._id };
+    const filter = { conversationId: convo._id, deletedFor: { $ne: actor.userId } };
     if (before) filter.createdAt = { $lt: new Date(before) };
 
     const msgs = await DirectMessage.find(filter)
@@ -697,6 +697,7 @@ export const editDirectMessage = async (req, res) => {
 export const deleteDirectMessage = async (req, res) => {
   try {
     const { messageId } = req.params;
+    const mode = (req.query.mode || req.body?.mode || 'for_everyone').toString();
     const actor = await resolveMessengerActor(req.user?.userId, req.user?.role);
     if (!actor) return res.status(401).json({ message: 'Unauthorized' });
 
@@ -707,8 +708,18 @@ export const deleteDirectMessage = async (req, res) => {
     const access = canAccessConversation(actor, convo);
     if (!access.allowed) return res.status(403).json({ message: access.reason });
 
+    if (mode === 'for_me') {
+      // Delete for Me only: push actor.userId to deletedFor
+      await DirectMessage.updateOne(
+        { _id: msg._id },
+        { $addToSet: { deletedFor: actor.userId } }
+      );
+      return res.status(200).json({ message: 'Message deleted for you', mode: 'for_me' });
+    }
+
+    // Delete for Everyone: only sender or owner/superadmin
     if (msg.senderId !== actor.userId && !['param', 'owner'].includes(actor.role)) {
-      return res.status(403).json({ message: 'You can only delete your own messages' });
+      return res.status(403).json({ message: 'You can only delete your own messages for everyone' });
     }
 
     const convoId = msg.conversationId;
@@ -719,10 +730,11 @@ export const deleteDirectMessage = async (req, res) => {
         action: 'delete',
         conversationId: convoId.toString(),
         messageId: msg._id.toString(),
+        deletedForEveryone: true,
       });
     }
 
-    res.status(200).json({ message: 'Message deleted' });
+    res.status(200).json({ message: 'Message deleted for everyone', mode: 'for_everyone' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

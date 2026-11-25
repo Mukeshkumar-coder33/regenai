@@ -11,6 +11,8 @@ const directMessageSchema = new mongoose.Schema({
   encrypted: { type: Boolean, default: false },
   attachments: [{ type: mongoose.Schema.Types.Mixed }],
   readBy: [{ type: String }], // userIds who have read the message
+  deletedFor: [{ type: String }], // userIds who deleted this message for themselves
+  deletedForEveryone: { type: Boolean, default: false },
   editedAt: { type: Date, default: null }
 }, { timestamps: true });
 

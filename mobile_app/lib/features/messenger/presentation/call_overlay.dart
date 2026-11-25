@@ -2,8 +2,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../../../core/theme/celadon_colors.dart';
+import '../../dashboard/presentation/dashboard_navigation.dart';
 import '../data/call_notification_service.dart';
 import '../data/messenger_socket_service.dart';
+import '../data/messenger_sound_service.dart';
 import '../data/webrtc_call_manager.dart';
 
 /// App-wide overlay mounted in DashboardScreen to display incoming/active
@@ -54,10 +56,31 @@ class _CallOverlayState extends State<CallOverlay> {
     final body = (notif['message'] ?? '').toString();
     final id = (notif['id'] ?? notif['_id'] ?? DateTime.now().millisecondsSinceEpoch).toString();
     final convId = notif['conversationId']?.toString();
+    final senderId = notif['senderId']?.toString() ?? '';
+    final activeUid = MessengerSocketService.instance.activeUserId;
+
+    // Never notify ourselves
+    if (senderId.isNotEmpty && activeUid != null && senderId == activeUid) {
+      return;
+    }
+
+    // Suppress notification if user is actively viewing this conversation in Messenger
+    if (convId != null && MessengerSocketService.instance.isConversationActive(convId)) {
+      return;
+    }
 
     // Immediately show native system notification on Android/iOS for non-call alerts
     // (incoming calls already show a dedicated full-screen call notification via WebRtcCallManager)
-    if (type != 'voice_call' && type != 'video_call' && type != 'team_meeting') {
+    if (type == 'missed_call') {
+      MessengerSoundService.instance.playMissedCallTone();
+      CallNotificationService.instance.showMissedCallNotification(
+        id: id,
+        callerName: title,
+        mediaType: notif['mediaType']?.toString() ?? 'voice',
+        conversationId: convId,
+      );
+    } else if (type != 'voice_call' && type != 'video_call' && type != 'team_meeting') {
+      MessengerSoundService.instance.playMessageReceivedTone();
       CallNotificationService.instance.showMessageNotification(
         id: id,
         senderName: title,
@@ -159,7 +182,11 @@ class _CallOverlayState extends State<CallOverlay> {
               borderRadius: BorderRadius.circular(18),
               onTap: () {
                 _bannerTimer?.cancel();
+                final currentBanner = _liveBanner;
                 setState(() => _liveBanner = null);
+                if (currentBanner != null) {
+                  DashboardNavigation.handleNotificationTap(currentBanner);
+                }
                 if (isMsg) widget.onOpenMessenger?.call();
               },
               child: Padding(

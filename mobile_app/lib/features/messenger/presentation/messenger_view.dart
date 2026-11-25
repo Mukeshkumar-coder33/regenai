@@ -1,11 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:cryptography/cryptography.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../../../core/theme/celadon_colors.dart';
 import '../../auth/data/user_model.dart';
 import '../../dashboard/data/dashboard_service.dart';
 import '../data/e2e_crypto_service.dart';
+import '../data/media_download_service.dart';
 import '../data/messenger_model.dart';
 import '../data/messenger_service.dart';
 import '../data/messenger_socket_service.dart';
@@ -1029,6 +1033,228 @@ class _MessengerViewState extends State<MessengerView> {
     }
   }
 
+  void _openVoiceToTextModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        bool isListening = false;
+        String recognizedText = '';
+        String statusText = 'Tap mic to dictate message';
+        final speech = stt.SpeechToText();
+
+        return StatefulBuilder(
+          builder: (context, setVoiceState) {
+            Future<void> toggleListening() async {
+              if (isListening) {
+                await speech.stop();
+                setVoiceState(() {
+                  isListening = false;
+                  statusText = 'Speech recorded. Tap mic to speak more.';
+                });
+                return;
+              }
+
+              if (!kIsWeb &&
+                  (defaultTargetPlatform == TargetPlatform.android ||
+                      defaultTargetPlatform == TargetPlatform.iOS)) {
+                final perm = await Permission.microphone.request();
+                if (!perm.isGranted) {
+                  setVoiceState(() {
+                    statusText = 'Microphone permission denied. Enable in device settings.';
+                  });
+                  return;
+                }
+              }
+
+              try {
+                final available = await speech.initialize(
+                  onStatus: (status) {
+                    if (status == 'done' || status == 'notListening') {
+                      if (context.mounted) {
+                        setVoiceState(() {
+                          isListening = false;
+                          statusText = 'Finished listening. Tap mic to add more.';
+                        });
+                      }
+                    }
+                  },
+                  onError: (err) {
+                    if (context.mounted) {
+                      setVoiceState(() {
+                        isListening = false;
+                        statusText = 'Speech: ${err.errorMsg}';
+                      });
+                    }
+                  },
+                );
+
+                if (available) {
+                  setVoiceState(() {
+                    isListening = true;
+                    statusText = 'Listening... Speak clearly into microphone';
+                  });
+                  await speech.listen(
+                    onResult: (result) {
+                      setVoiceState(() {
+                        recognizedText = result.recognizedWords;
+                      });
+                    },
+                  );
+                } else {
+                  setVoiceState(() {
+                    statusText = 'Speech recognition not available on this device.';
+                  });
+                }
+              } catch (e) {
+                setVoiceState(() {
+                  isListening = false;
+                  statusText = 'Microphone error: $e';
+                });
+              }
+            }
+
+            return Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: CeladonColors.cardBackground,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                border: Border.all(color: CeladonColors.border, width: 1.2),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: const [
+                          Icon(Icons.mic_rounded, color: Color(0xFF8B5CF6), size: 20),
+                          SizedBox(width: 8),
+                          Text(
+                            'Voice-to-Text Dictation',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: CeladonColors.textPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, color: CeladonColors.textMuted, size: 20),
+                        onPressed: () {
+                          speech.stop();
+                          Navigator.pop(ctx);
+                        },
+                      ),
+                    ],
+                  ),
+                  const Divider(color: CeladonColors.divider, height: 1),
+                  const SizedBox(height: 16),
+                  Center(
+                    child: GestureDetector(
+                      onTap: toggleListening,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        width: 68,
+                        height: 68,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isListening ? CeladonColors.error : const Color(0xFF8B5CF6),
+                          boxShadow: [
+                            BoxShadow(
+                              color: (isListening ? CeladonColors.error : const Color(0xFF8B5CF6)).withValues(alpha: 0.35),
+                              blurRadius: 18,
+                            ),
+                          ],
+                        ),
+                        child: Icon(
+                          isListening ? Icons.stop_rounded : Icons.mic_rounded,
+                          size: 34,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Center(
+                    child: Text(
+                      statusText,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: isListening ? FontWeight.w700 : FontWeight.w500,
+                        color: isListening ? CeladonColors.error : CeladonColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  if (recognizedText.isNotEmpty) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: CeladonColors.searchBackground,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: CeladonColors.border),
+                      ),
+                      child: Text(
+                        recognizedText,
+                        style: const TextStyle(color: CeladonColors.textPrimary, fontSize: 13),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              speech.stop();
+                              if (_messageController.text.isNotEmpty) {
+                                _messageController.text = '${_messageController.text.trim()} $recognizedText';
+                              } else {
+                                _messageController.text = recognizedText;
+                              }
+                              _messageController.selection = TextSelection.fromPosition(
+                                TextPosition(offset: _messageController.text.length),
+                              );
+                              setState(() {});
+                              Navigator.pop(ctx);
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF8B5CF6),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            child: const Text('Insert Text', style: TextStyle(fontWeight: FontWeight.w700, color: Colors.white)),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed: () {
+                            speech.stop();
+                            Navigator.pop(ctx);
+                            _handleSendText(overrideText: recognizedText);
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: CeladonColors.primary,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: const Text('Send Now', style: TextStyle(fontWeight: FontWeight.w700, color: Colors.white)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _sendVoiceAttachment(VoiceCaptureResult voice) async {
     if (_isSending) return;
     setState(() => _isSending = true);
@@ -1715,31 +1941,140 @@ class _MessengerViewState extends State<MessengerView> {
                 'Delete Message',
                 style: TextStyle(fontWeight: FontWeight.w700, color: CeladonColors.error),
               ),
-              onTap: () async {
+              onTap: () {
                 Navigator.pop(ctx);
-                if (isTeam) {
-                  final ok = await _messengerService.deleteTeamMessage(
-                    user: widget.user,
-                    messageId: id,
-                  );
-                  if (ok && mounted) {
-                    setState(() => _teamMessages.removeWhere((m) => m.id == id || m.messageId == id));
-                  }
-                } else {
-                  final ok = await _messengerService.deleteDirectMessage(
-                    user: widget.user,
-                    messageId: id,
-                  );
-                  if (ok && mounted) {
-                    setState(() => _directMessages.removeWhere((m) => m.id == id));
-                  }
-                }
+                _showDeleteOptionsSheet(isTeam: isTeam, id: id, isMine: isMine);
               },
             ),
           ],
         ),
       ),
     );
+  }
+
+  void _showDeleteOptionsSheet({
+    required bool isTeam,
+    required String id,
+    required bool isMine,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+        decoration: BoxDecoration(
+          color: CeladonColors.cardBackground,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border.all(color: CeladonColors.border, width: 1.2),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: const [
+                  Icon(Icons.delete_sweep_rounded, color: CeladonColors.error, size: 22),
+                  SizedBox(width: 8),
+                  Text(
+                    'Delete message?',
+                    style: TextStyle(
+                      fontSize: 16.5,
+                      fontWeight: FontWeight.w800,
+                      color: CeladonColors.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Choose how you want to delete this message:',
+                style: TextStyle(fontSize: 12.5, color: CeladonColors.textSecondary),
+              ),
+              const SizedBox(height: 14),
+              if (isMine)
+                ListTile(
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  tileColor: const Color(0xFFFEF2F2),
+                  leading: const Icon(Icons.delete_sweep_rounded, color: CeladonColors.error),
+                  title: const Text(
+                    'Delete for everyone',
+                    style: TextStyle(fontWeight: FontWeight.w800, color: CeladonColors.error, fontSize: 14),
+                  ),
+                  subtitle: const Text(
+                    'Delete this message for all participants in this chat',
+                    style: TextStyle(fontSize: 11.5, color: CeladonColors.textSecondary),
+                  ),
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    _executeDeleteMessage(isTeam: isTeam, id: id, mode: 'for_everyone');
+                  },
+                ),
+              if (isMine) const SizedBox(height: 8),
+              ListTile(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                tileColor: CeladonColors.searchBackground,
+                leading: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEA580C)),
+                title: const Text(
+                  'Delete for me',
+                  style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFFEA580C), fontSize: 14),
+                ),
+                subtitle: const Text(
+                  'Delete this message only from your device',
+                  style: TextStyle(fontSize: 11.5, color: CeladonColors.textSecondary),
+                ),
+                onTap: () {
+                  Navigator.pop(sheetCtx);
+                  _executeDeleteMessage(isTeam: isTeam, id: id, mode: 'for_me');
+                },
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => Navigator.pop(sheetCtx),
+                child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.w700, color: CeladonColors.textMuted)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _executeDeleteMessage({
+    required bool isTeam,
+    required String id,
+    required String mode,
+  }) async {
+    final messenger = ScaffoldMessenger.of(context);
+    bool ok = false;
+    if (isTeam) {
+      ok = await _messengerService.deleteTeamMessage(
+        user: widget.user,
+        messageId: id,
+        mode: mode,
+      );
+      if (ok && mounted) {
+        setState(() => _teamMessages.removeWhere((m) => m.id == id || m.messageId == id));
+      }
+    } else {
+      ok = await _messengerService.deleteDirectMessage(
+        user: widget.user,
+        messageId: id,
+        mode: mode,
+      );
+      if (ok && mounted) {
+        setState(() => _directMessages.removeWhere((m) => m.id == id));
+      }
+    }
+    if (ok && mounted) {
+      messenger.showSnackBar(
+        SnackBar(
+          backgroundColor: CeladonColors.primary,
+          duration: const Duration(seconds: 2),
+          content: Text(mode == 'for_everyone' ? 'Message deleted for everyone' : 'Message deleted for you'),
+        ),
+      );
+    }
   }
 
   Future<void> _promptEditMessage({
@@ -2835,23 +3170,59 @@ class _MessengerViewState extends State<MessengerView> {
             for (final img in imageAtts)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
-                child: GestureDetector(
-                  onTap: () {
-                    if (img.resolvedUrl.isEmpty) return;
-                    showDialog(
-                      context: context,
-                      builder: (_) => FullScreenImageViewer(imageUrl: img.resolvedUrl),
-                    );
-                  },
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.network(
-                      img.resolvedUrl,
-                      height: 150,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                child: Stack(
+                  children: [
+                    GestureDetector(
+                      onTap: () {
+                        if (img.resolvedUrl.isEmpty) return;
+                        showDialog(
+                          context: context,
+                          builder: (_) => FullScreenImageViewer(
+                            imageUrl: img.resolvedUrl,
+                            fileName: img.name,
+                          ),
+                        );
+                      },
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.network(
+                          img.resolvedUrl,
+                          height: 150,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                        ),
+                      ),
                     ),
-                  ),
+                    Positioned(
+                      bottom: 6,
+                      right: 6,
+                      child: Material(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        shape: const CircleBorder(),
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: () {
+                            MediaDownloadService.instance.downloadMedia(
+                              context: context,
+                              fileName: img.name.isNotEmpty
+                                  ? img.name
+                                  : 'IMG_${DateTime.now().millisecondsSinceEpoch}.jpg',
+                              url: img.resolvedUrl,
+                              isImage: true,
+                            );
+                          },
+                          child: const Padding(
+                            padding: EdgeInsets.all(5),
+                            child: Icon(
+                              Icons.download_rounded,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             for (final vid in videoAtts)
@@ -2958,6 +3329,15 @@ class _MessengerViewState extends State<MessengerView> {
                         ),
                       ),
                     ),
+                    // Voice-to-Text dictation mic icon (matches task creation modal)
+                    IconButton(
+                      icon: const Icon(Icons.mic_none_rounded, color: Color(0xFF8B5CF6), size: 20),
+                      tooltip: 'Voice-to-Text Dictation',
+                      onPressed: _isSending ? null : _openVoiceToTextModal,
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.all(6),
+                      constraints: const BoxConstraints(),
+                    ),
                   ],
                 ),
               ),
@@ -2983,7 +3363,7 @@ class _MessengerViewState extends State<MessengerView> {
             ),
             const SizedBox(width: 4),
 
-            // (B) Voice Note Recorder Sheet
+            // (B) Voice Note Recorder
             Tooltip(
               message: 'Record Voice Message',
               child: Material(
@@ -2991,7 +3371,8 @@ class _MessengerViewState extends State<MessengerView> {
                 shape: const CircleBorder(),
                 child: InkWell(
                   customBorder: const CircleBorder(),
-                  onTap: _handleOpenVoiceRecorder,
+                  onTap: _openVoiceToTextModal,
+                  onLongPress: _handleOpenVoiceRecorder,
                   child: const Padding(
                     padding: EdgeInsets.all(7.5),
                     child: Icon(Icons.mic_rounded, color: CeladonColors.primary, size: 17.5),

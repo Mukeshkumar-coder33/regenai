@@ -20,6 +20,8 @@ class CallNotificationService {
   static const String callChannelName = 'Incoming Voice & Video Calls';
   static const String messageChannelId = 'regen_messages_v2';
   static const String messageChannelName = 'ReGen Messages';
+  static const String missedCallChannelId = 'regen_missed_calls_v2';
+  static const String missedCallChannelName = 'Missed Calls';
 
   final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
   bool _initialized = false;
@@ -89,8 +91,19 @@ class CallNotificationService {
         audioAttributesUsage: AudioAttributesUsage.notification,
       );
 
+      const missedCallChannel = AndroidNotificationChannel(
+        missedCallChannelId,
+        missedCallChannelName,
+        description: 'Missed voice and video calls in ReGen Messenger',
+        importance: Importance.high,
+        playSound: true,
+        enableVibration: true,
+        audioAttributesUsage: AudioAttributesUsage.notification,
+      );
+
       await androidImpl?.createNotificationChannel(callChannel);
       await androidImpl?.createNotificationChannel(messageChannel);
+      await androidImpl?.createNotificationChannel(missedCallChannel);
 
       _initialized = true;
     } catch (e) {
@@ -189,6 +202,7 @@ class CallNotificationService {
           priority: Priority.high,
           category: AndroidNotificationCategory.message,
           visibility: NotificationVisibility.public,
+          autoCancel: true,
           playSound: true,
           enableVibration: true,
         ),
@@ -206,6 +220,50 @@ class CallNotificationService {
         notificationDetails: details,
         payload: jsonEncode({
           'type': 'message',
+          'conversationId': conversationId,
+        }),
+      );
+    } catch (_) {}
+  }
+
+  /// Display a missed call notification when caller hangs up before answer.
+  Future<void> showMissedCallNotification({
+    required String id,
+    required String callerName,
+    String mediaType = 'voice',
+    String? conversationId,
+  }) async {
+    if (!_initialized || !_isMobilePlatform) return;
+    try {
+      final details = NotificationDetails(
+        android: AndroidNotificationDetails(
+          missedCallChannelId,
+          missedCallChannelName,
+          channelDescription: 'Missed voice and video calls in ReGen Messenger',
+          importance: Importance.high,
+          priority: Priority.high,
+          category: AndroidNotificationCategory.missedCall,
+          visibility: NotificationVisibility.public,
+          autoCancel: true,
+          playSound: true,
+          enableVibration: true,
+        ),
+        iOS: const DarwinNotificationDetails(
+          presentAlert: true,
+          presentSound: true,
+          presentBadge: true,
+          interruptionLevel: InterruptionLevel.active,
+        ),
+      );
+
+      await _plugin.show(
+        id: id.hashCode & 0x7FFFFFFF,
+        title: 'Missed ${mediaType == 'video' ? 'Video' : 'Voice'} Call',
+        body: '$callerName called you',
+        notificationDetails: details,
+        payload: jsonEncode({
+          'type': 'missed_call',
+          'callerName': callerName,
           'conversationId': conversationId,
         }),
       );

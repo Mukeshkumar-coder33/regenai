@@ -9,6 +9,8 @@ const messageSchema = new mongoose.Schema({
   content: { type: String, default: '' },
   timestamp: { type: String, required: true },
   attachments: [{ type: mongoose.Schema.Types.Mixed }], // Can be object with path, name, type, size
+  deletedFor: [{ type: String }],
+  deletedForEveryone: { type: Boolean, default: false },
   editedAt: { type: Date, default: null }
 }, { timestamps: true });
 

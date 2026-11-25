@@ -13,4 +13,5 @@ frontend/package-lock.json
 server/package-lock.json
 nginx.conf.new
 *.log
+*.apk
 .DS_Store

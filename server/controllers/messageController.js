@@ -175,7 +175,10 @@ export const getAllMessages = async (req, res) => {
     if (!req.companyId) {
       return res.status(200).json([]);
     }
-    const msgs = await Message.find({ companyId: req.companyId }).sort({ createdAt: 1 });
+    const myId = req.user?.userId || req.user?.id || req.user?.StaffId;
+    const filter = { companyId: req.companyId };
+    if (myId) filter.deletedFor = { $ne: myId };
+    const msgs = await Message.find(filter).sort({ createdAt: 1 });
     res.status(200).json(msgs);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -232,17 +235,27 @@ export const updateMessage = async (req, res) => {
 export const deleteMessage = async (req, res) => {
   try {
     const id = req.params.id;
+    const mode = (req.query.mode || req.body?.mode || 'for_everyone').toString();
     const baseQuery = { $or: [{ messageId: id }, { id }, { _id: id }] };
     const query = req.companyId ? { ...baseQuery, companyId: req.companyId } : baseQuery;
     const msg = await Message.findOne(query);
     if (!msg) return res.status(404).json({ message: 'Message not found' });
 
+    const myId = req.user?.userId || req.user?.id || req.user?.StaffId;
+
+    if (mode === 'for_me') {
+      if (myId) {
+        await Message.updateOne({ _id: msg._id }, { $addToSet: { deletedFor: myId } });
+      }
+      return res.status(200).json({ message: 'Message deleted for you', mode: 'for_me' });
+    }
+
     const check = canModifyMessage(req.user, msg);
     if (!check.allowed) return res.status(403).json({ message: check.reason });
 
     await Message.deleteOne({ _id: msg._id });
-    emitToCompany('message:change', msg.companyId, { action: 'delete', id: msg.messageId || msg.id });
-    res.status(200).json({ message: 'Message deleted' });
+    emitToCompany('message:change', msg.companyId, { action: 'delete', id: msg.messageId || msg.id, deletedForEveryone: true });
+    res.status(200).json({ message: 'Message deleted for everyone', mode: 'for_everyone' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

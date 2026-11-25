@@ -185,13 +185,14 @@ class MessengerService {
     }
   }
 
-  /// Delete a Team Chat message (`DELETE /api/messages/:id`)
+  /// Delete a Team Chat message (`DELETE /api/messages/:id?mode=...`)
   Future<bool> deleteTeamMessage({
     required UserModel user,
     required String messageId,
+    String mode = 'for_everyone',
   }) async {
     final headers = await _getHeaders(user: user);
-    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/messages/$messageId');
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/messages/$messageId?mode=$mode');
     try {
       final res = await _client.delete(url, headers: headers).timeout(const Duration(seconds: 8));
       return res.statusCode == 200;
@@ -547,13 +548,14 @@ class MessengerService {
     }
   }
 
-  /// Delete a direct/group message (`DELETE /api/dm/messages/:messageId`)
+  /// Delete a direct/group message (`DELETE /api/dm/messages/:messageId?mode=...`)
   Future<bool> deleteDirectMessage({
     required UserModel user,
     required String messageId,
+    String mode = 'for_everyone',
   }) async {
     final headers = await _getHeaders(user: user);
-    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/dm/messages/$messageId');
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/dm/messages/$messageId?mode=$mode');
     try {
       final res = await _client.delete(url, headers: headers).timeout(const Duration(seconds: 8));
       return res.statusCode == 200;

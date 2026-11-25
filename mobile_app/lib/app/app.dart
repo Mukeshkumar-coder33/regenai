@@ -4,6 +4,8 @@ import '../core/widgets/virtual_device_frame.dart';
 import '../features/messenger/presentation/call_overlay.dart';
 import '../features/splash/presentation/splash_screen.dart';
 
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
+
 /// ReGenApp Root Widget
 ///
 /// Sets up global MaterialApp configuration, Celadon theme,
@@ -15,6 +17,7 @@ class ReGenApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: appNavigatorKey,
       title: 'ReGen',
       debugShowCheckedModeBanner: false,
       theme: CeladonTheme.lightTheme,

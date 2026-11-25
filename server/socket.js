@@ -407,11 +407,13 @@ export function initSocketIO(httpServer) {
     socket.on('call:end', async (data) => {
       try {
         const { targetUserId, callId } = data || {};
+        const existingCall = callId ? activeCalls.get(callId) : null;
+        const wasPending = existingCall && existingCall.actionStatus === 'pending';
         if (callId) {
           activeCalls.delete(callId);
           await Notification.updateOne(
             { id: `call-notif-${callId}` },
-            { $set: { actionStatus: 'ended', read: true } }
+            { $set: { actionStatus: wasPending ? 'missed' : 'ended', read: true } }
           ).catch(() => {});
         }
         if (targetUserId) {
@@ -419,11 +421,32 @@ export function initSocketIO(httpServer) {
           broadcastToRooms(targetRooms, 'call:ended', {
             callId,
             endedBy: userId,
+            wasPending,
           });
           broadcastToRooms(targetRooms, 'call:cancelled', {
             callId,
             callerId: userId,
+            wasPending,
           });
+          if (wasPending) {
+            const callerName = socket.user?.name || socket.user?.username || 'Someone';
+            const mediaType = existingCall?.mediaType || 'voice';
+            const missedNotif = new Notification({
+              id: `missed-${Date.now()}-${callId}`,
+              companyId: socket.user.companyId || null,
+              userId: targetUserId,
+              title: `Missed ${mediaType === 'video' ? 'Video' : 'Voice'} Call`,
+              message: `${callerName} called you`,
+              type: 'missed_call',
+              senderId: userId,
+              senderName: callerName,
+              metadata: { mediaType, callId },
+              createdAt: new Date().toISOString(),
+              read: false,
+            });
+            await missedNotif.save().catch(() => {});
+            broadcastToRooms(targetRooms, 'notification:new', missedNotif);
+          }
         }
       } catch (err) {
         console.error('[Socket] call:end error:', err.message);

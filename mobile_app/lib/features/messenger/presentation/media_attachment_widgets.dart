@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:video_player/video_player.dart';
 import '../../../core/theme/celadon_colors.dart';
+import '../data/media_download_service.dart';
 import '../data/messenger_model.dart';
 
 enum MediaAttachKind { photo, video, document }
@@ -728,6 +729,20 @@ class VideoMessageBubble extends StatelessWidget {
                 ],
               ),
             ),
+            IconButton(
+              icon: const Icon(Icons.download_rounded, color: Colors.white70, size: 20),
+              tooltip: 'Save to Gallery',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              onPressed: () {
+                MediaDownloadService.instance.downloadMedia(
+                  context: context,
+                  fileName: attachment.name.isNotEmpty ? attachment.name : 'VID_${DateTime.now().millisecondsSinceEpoch}.mp4',
+                  url: attachment.resolvedUrl,
+                  isVideo: true,
+                );
+              },
+            ),
           ],
         ),
       ),
@@ -798,6 +813,18 @@ class _VideoPlayerDialogState extends State<_VideoPlayerDialog> {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
                     ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.download_rounded, color: Colors.white, size: 22),
+                    tooltip: 'Save to Gallery',
+                    onPressed: () {
+                      MediaDownloadService.instance.downloadMedia(
+                        context: context,
+                        fileName: widget.title.isNotEmpty ? widget.title : 'VID_${DateTime.now().millisecondsSinceEpoch}.mp4',
+                        url: widget.videoUrl,
+                        isVideo: true,
+                      );
+                    },
                   ),
                   IconButton(
                     icon: const Icon(Icons.close_rounded, color: Colors.white),
@@ -884,57 +911,74 @@ class DocumentAttachmentCard extends StatelessWidget {
             : '${(attachment.size! / 1024).toStringAsFixed(1)} KB')
         : 'Document';
 
-    return Container(
-      margin: const EdgeInsets.only(top: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: isMine
-            ? Colors.white.withValues(alpha: 0.14)
-            : const Color(0xFFF1F5F9),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: isMine ? Colors.white.withValues(alpha: 0.2) : badgeColor.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(9),
+    return InkWell(
+      onTap: () {
+        MediaDownloadService.instance.downloadMedia(
+          context: context,
+          fileName: attachment.name,
+          url: attachment.resolvedUrl,
+          dataUri: attachment.path.startsWith('data:') ? attachment.path : null,
+        );
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        margin: const EdgeInsets.only(top: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: isMine
+              ? Colors.white.withValues(alpha: 0.14)
+              : const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: isMine ? Colors.white.withValues(alpha: 0.2) : badgeColor.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: Icon(
+                Icons.description_rounded,
+                color: isMine ? Colors.white : badgeColor,
+                size: 20,
+              ),
             ),
-            child: Icon(
-              Icons.description_rounded,
-              color: isMine ? Colors.white : badgeColor,
+            const SizedBox(width: 10),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    attachment.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: isMine ? Colors.white : CeladonColors.textPrimary,
+                    ),
+                  ),
+                  Text(
+                    sizeText,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      color: isMine ? Colors.white70 : const Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              Icons.download_rounded,
               size: 20,
+              color: isMine ? Colors.white70 : CeladonColors.primary,
             ),
-          ),
-          const SizedBox(width: 10),
-          Flexible(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  attachment.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    color: isMine ? Colors.white : CeladonColors.textPrimary,
-                  ),
-                ),
-                Text(
-                  sizeText,
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    color: isMine ? Colors.white70 : const Color(0xFF64748B),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -943,8 +987,9 @@ class DocumentAttachmentCard extends StatelessWidget {
 /// Full-screen zoomable photo preview dialog when tapping an image in chat.
 class FullScreenImageViewer extends StatelessWidget {
   final String imageUrl;
+  final String? fileName;
 
-  const FullScreenImageViewer({super.key, required this.imageUrl});
+  const FullScreenImageViewer({super.key, required this.imageUrl, this.fileName});
 
   @override
   Widget build(BuildContext context) {
@@ -961,9 +1006,26 @@ class FullScreenImageViewer extends StatelessWidget {
           Positioned(
             top: 36,
             right: 16,
-            child: IconButton(
-              icon: const Icon(Icons.close_rounded, color: Colors.white, size: 28),
-              onPressed: () => Navigator.pop(context),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.download_rounded, color: Colors.white, size: 26),
+                  tooltip: 'Save to Gallery',
+                  onPressed: () {
+                    MediaDownloadService.instance.downloadMedia(
+                      context: context,
+                      fileName: fileName ?? 'IMG_${DateTime.now().millisecondsSinceEpoch}.jpg',
+                      url: imageUrl,
+                      isImage: true,
+                    );
+                  },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded, color: Colors.white, size: 28),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
             ),
           ),
         ],

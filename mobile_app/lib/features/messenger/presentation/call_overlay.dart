@@ -57,10 +57,16 @@ class _CallOverlayState extends State<CallOverlay> {
     final id = (notif['id'] ?? notif['_id'] ?? DateTime.now().millisecondsSinceEpoch).toString();
     final convId = notif['conversationId']?.toString();
     final senderId = notif['senderId']?.toString() ?? '';
+    final targetUserId = (notif['userId'] ?? '').toString();
     final activeUid = MessengerSocketService.instance.activeUserId;
 
     // Never notify ourselves
     if (senderId.isNotEmpty && activeUid != null && senderId == activeUid) {
+      return;
+    }
+
+    // Never notify if explicitly addressed to another user
+    if (targetUserId.isNotEmpty && activeUid != null && targetUserId != activeUid) {
       return;
     }
 

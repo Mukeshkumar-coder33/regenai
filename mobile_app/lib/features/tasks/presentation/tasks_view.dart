@@ -112,6 +112,8 @@ class _TasksViewState extends State<TasksView> {
   Timer? _liveTicker;
   StreamSubscription? _socketNotifSub;
   StreamSubscription? _socketTaskSub;
+  final Set<String> _handledNotificationIds = <String>{};
+  BuildContext? _activeDialogContext;
 
   @override
   void initState() {
@@ -132,6 +134,22 @@ class _TasksViewState extends State<TasksView> {
         _loadInitialData();
         try {
           final notif = NotificationModel.fromJson(data);
+          final currentUid = widget.user?.userId.isNotEmpty == true ? widget.user!.userId : widget.user?.id;
+
+          // 1. Never show if addressed to another user
+          if (notif.userId.isNotEmpty && currentUid != null && notif.userId != currentUid) {
+            return;
+          }
+          // 2. Never show if originated by ourselves
+          if (notif.senderId != null && notif.senderId!.isNotEmpty && currentUid != null && notif.senderId == currentUid) {
+            return;
+          }
+          // 3. Deduplicate by notification ID
+          if (_handledNotificationIds.contains(notif.id)) {
+            return;
+          }
+          _handledNotificationIds.add(notif.id);
+
           if (notif.isTask ||
               notif.type.contains('task') ||
               notif.type.contains('daily_progress') ||
@@ -1106,6 +1124,9 @@ class _TasksViewState extends State<TasksView> {
   ) async {
     final messenger = ScaffoldMessenger.of(context);
     final modalNav = Navigator.of(modalCtx);
+    if (modalNav.canPop()) {
+      modalNav.pop();
+    }
     try {
       final updated = await _taskService.reviewDeadlineExtension(
         task: task,
@@ -1119,7 +1140,7 @@ class _TasksViewState extends State<TasksView> {
           final idx = _tasks.indexWhere((t) => t.id == task.id);
           if (idx != -1) _tasks[idx] = updated;
         });
-        modalNav.pop();
+        _loadInitialData();
         messenger.showSnackBar(
           SnackBar(
             backgroundColor:
@@ -3851,10 +3872,18 @@ class _TasksViewState extends State<TasksView> {
     TaskModel? task,
     NotificationModel? notif,
   }) {
+    if (_activeDialogContext != null) {
+      try {
+        Navigator.of(_activeDialogContext!).pop();
+      } catch (_) {}
+      _activeDialogContext = null;
+    }
+
     showDialog(
       context: context,
       barrierDismissible: true,
       builder: (dialogCtx) {
+        _activeDialogContext = dialogCtx;
         return Dialog(
           backgroundColor: Colors.transparent,
           insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
@@ -3989,12 +4018,15 @@ class _TasksViewState extends State<TasksView> {
                       Expanded(
                         child: ElevatedButton(
                           onPressed: () async {
-                            final nav = Navigator.of(dialogCtx);
                             final messenger = ScaffoldMessenger.of(context);
+                            _activeDialogContext = null;
+                            Navigator.of(dialogCtx).pop();
                             try {
                               await _taskService.reviewDeadlineExtension(
                                 task: task,
                                 accept: true,
+                                requestedDueDate: requestedDueDate,
+                                requestedDueTime: requestedDueTime,
                                 companyResponse:
                                     'Deadline extended as requested by employee',
                               );
@@ -4003,7 +4035,6 @@ class _TasksViewState extends State<TasksView> {
                                     .markAsRead(notif.id, mongoId: notif.mongoId)
                                     .catchError((_) => false);
                               }
-                              nav.pop();
                               _loadInitialData();
                               messenger.showSnackBar(
                                 SnackBar(
@@ -4043,12 +4074,15 @@ class _TasksViewState extends State<TasksView> {
                       Expanded(
                         child: OutlinedButton(
                           onPressed: () async {
-                            final nav = Navigator.of(dialogCtx);
                             final messenger = ScaffoldMessenger.of(context);
+                            _activeDialogContext = null;
+                            Navigator.of(dialogCtx).pop();
                             try {
                               await _taskService.reviewDeadlineExtension(
                                 task: task,
                                 accept: false,
+                                requestedDueDate: requestedDueDate,
+                                requestedDueTime: requestedDueTime,
                                 companyResponse: 'Deadline extension declined',
                               );
                               if (notif != null) {
@@ -4056,7 +4090,6 @@ class _TasksViewState extends State<TasksView> {
                                     .markAsRead(notif.id, mongoId: notif.mongoId)
                                     .catchError((_) => false);
                               }
-                              nav.pop();
                               _loadInitialData();
                               messenger.showSnackBar(
                                 const SnackBar(
@@ -4097,6 +4130,7 @@ class _TasksViewState extends State<TasksView> {
                 ] else ...[
                   ElevatedButton(
                     onPressed: () {
+                      _activeDialogContext = null;
                       if (notif != null) {
                         _notificationService
                             .markAsRead(notif.id, mongoId: notif.mongoId)

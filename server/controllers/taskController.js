@@ -2,7 +2,7 @@ import Task from '../models/Task.js';
 import User from '../models/User.js';
 import Company from '../models/Company.js';
 import { resolveCompanyId } from '../utils/resolveCompanyId.js';
-import { emitToCompany } from '../socket.js';
+import { emitToCompany, emitToUser } from '../socket.js';
 import { sendReportEmail } from '../utils/mailer.js';
 
 export const createTask = async (req, res) => {
@@ -22,13 +22,16 @@ export const createTask = async (req, res) => {
           companyId: task.companyId,
           title: 'New Task Assigned',
           message: `You have been assigned: ${task.title}${docMsg}`,
+          type: 'project_task',
+          metadata: { taskId: task.id, type: 'task_assigned' },
           createdAt: new Date().toISOString(),
           read: false
         };
         const { default: Notification } = await import('../models/Notification.js');
         const n = new Notification(notificationPayload);
         await n.save();
-        emitToCompany('notification:new', task.companyId, n);
+        // Emit exclusively to the assigned employee (never broadcast company-wide)
+        await emitToUser(task.assignedTo, 'notification:new', n);
       } catch (e) {
         console.error(e);
       }
@@ -202,47 +205,13 @@ export const updateTask = async (req, res) => {
     // ------------------------------------------------------------------------
     try {
       const recipientUserIds = new Set();
-      // 1. Task Assignee
-      if (task.assignedTo) {
-        recipientUserIds.add(String(task.assignedTo));
-      }
-
-      // 2. Company Owner & Admins for this company
-      if (task.companyId) {
-        const adminUsers = await User.find({
-          companyId: task.companyId,
-          role: { $in: ['admin', 'owner', 'company_admin', 'superadmin', 'param'] }
-        }).select('userId StaffId username _id').lean();
-
-        adminUsers.forEach(u => {
-          if (u.userId) recipientUserIds.add(String(u.userId));
-          if (u.username) recipientUserIds.add(String(u.username));
-          if (u._id) recipientUserIds.add(String(u._id));
-        });
-
-        const compDoc = await Company.findById(task.companyId).select('ownerId').lean();
-        if (compDoc?.ownerId) {
-          recipientUserIds.add(String(compDoc.ownerId));
-        }
-      }
-
-      // 3. Task Assignor
-      if (task.assignorName) {
-        const assignor = await User.findOne({
-          $or: [{ username: task.assignorName }, { name: task.assignorName }]
-        }).select('userId StaffId username _id').lean();
-        if (assignor) {
-          if (assignor.userId) recipientUserIds.add(String(assignor.userId));
-          if (assignor.username) recipientUserIds.add(String(assignor.username));
-          if (assignor._id) recipientUserIds.add(String(assignor._id));
-        }
-      }
-
-      // Determine notification title, message, and metadata
       let notifTitle = '';
       let notifMessage = '';
       let notifMeta = {};
+      let isForEmployee = false;
+      let isForManagement = false;
 
+      // 1. Employee requested deadline extension -> ONLY management receives
       if (task.extensionRequest?.status === 'pending' && previous.extensionRequest?.status !== 'pending') {
         notifTitle = 'Deadline Extension Requested';
         notifMessage = `Extra time requested for "${task.title}": ${task.extensionRequest.requestedDueDate || ''}. Reason: ${task.extensionRequest.reason || 'None provided'}`;
@@ -254,7 +223,10 @@ export const updateTask = async (req, res) => {
           reason: task.extensionRequest.reason,
           employeeName: task.extensionRequest.employeeName || ''
         };
-      } else if (task.completionReport?.submittedAt && !previous.completionReport?.submittedAt) {
+        isForManagement = true;
+      }
+      // 2. Employee submitted completion report -> ONLY management receives
+      else if (task.completionReport?.submittedAt && !previous.completionReport?.submittedAt) {
         const rep = task.completionReport;
         const repTime = rep.workingTime ? ` (Working Time: ${rep.workingTime})` : '';
         const repNotes = rep.reportText ? ` • Note: "${rep.reportText}"` : '';
@@ -268,7 +240,10 @@ export const updateTask = async (req, res) => {
           reportText: rep.reportText,
           employeeName: rep.employeeName
         };
-      } else if (
+        isForManagement = true;
+      }
+      // 3. Employee submitted daily progress -> ONLY management receives
+      else if (
         (task.progressPercentage !== undefined && task.progressPercentage !== previous.progressPercentage) ||
         (task.progressUpdates?.length > (previous.progressUpdates?.length || 0))
       ) {
@@ -286,18 +261,69 @@ export const updateTask = async (req, res) => {
           updateText: latestProg?.updateText,
           employeeName: latestProg?.employeeName
         };
-      } else if (previous.extensionRequest?.status === 'pending' && task.extensionRequest?.status === 'accepted') {
+        isForManagement = true;
+      }
+      // 4. Company Owner accepted deadline extension -> ONLY assigned employee receives
+      else if (previous.extensionRequest?.status === 'pending' && task.extensionRequest?.status === 'accepted') {
         notifTitle = 'Extension Request Accepted';
         notifMessage = `Deadline extension for "${task.title}" was accepted. New deadline: ${task.dueDate || ''}`;
         notifMeta = { taskId: task.id, type: 'extension_accepted' };
-      } else if (previous.extensionRequest?.status === 'pending' && task.extensionRequest?.status === 'rejected') {
+        isForEmployee = true;
+      }
+      // 5. Company Owner rejected deadline extension -> ONLY assigned employee receives
+      else if (previous.extensionRequest?.status === 'pending' && task.extensionRequest?.status === 'rejected') {
         notifTitle = 'Extension Request Rejected';
         notifMessage = `Deadline extension for "${task.title}" was rejected.`;
         notifMeta = { taskId: task.id, type: 'extension_rejected' };
-      } else if (task.assignedTo && !req.body.extensionRequest && !req.body.progressPercentage && !req.body.completionReport) {
+        isForEmployee = true;
+      }
+      // 6. Generic task update from company
+      else if (task.assignedTo && !req.body.extensionRequest && !req.body.progressPercentage && !req.body.completionReport) {
         notifTitle = 'Task Updated';
         notifMessage = `Your task was updated: ${task.title}`;
         notifMeta = { taskId: task.id, type: 'task_update' };
+        isForEmployee = true;
+      }
+
+      const assignedEmployeeId = task.assignedTo ? String(task.assignedTo) : null;
+
+      if (isForEmployee) {
+        // ONLY the assigned employee receives task assignment / extension accept or decline!
+        if (assignedEmployeeId) {
+          recipientUserIds.add(assignedEmployeeId);
+        }
+      } else if (isForManagement) {
+        // Company Owner & Admins receive daily, extra, completion notes!
+        // Strictly exclude the employee who submitted them!
+        if (task.companyId) {
+          const adminUsers = await User.find({
+            companyId: task.companyId,
+            role: { $in: ['admin', 'owner', 'company_admin', 'superadmin', 'param'] }
+          }).select('userId StaffId').lean();
+
+          adminUsers.forEach(u => {
+            const uid = u.userId || u.StaffId;
+            if (uid && String(uid) !== assignedEmployeeId) {
+              recipientUserIds.add(String(uid));
+            }
+          });
+
+          const compDoc = await Company.findById(task.companyId).select('ownerId').lean();
+          if (compDoc?.ownerId && String(compDoc.ownerId) !== assignedEmployeeId) {
+            recipientUserIds.add(String(compDoc.ownerId));
+          }
+        }
+
+        // Task Assignor (if distinct from assigned employee)
+        if (task.assignorName) {
+          const assignor = await User.findOne({
+            $or: [{ username: task.assignorName }, { name: task.assignorName }]
+          }).select('userId StaffId').lean();
+          const aId = assignor?.userId || assignor?.StaffId;
+          if (aId && String(aId) !== assignedEmployeeId) {
+            recipientUserIds.add(String(aId));
+          }
+        }
       }
 
       if (notifTitle && notifMessage && recipientUserIds.size > 0) {
@@ -314,7 +340,8 @@ export const updateTask = async (req, res) => {
             read: false
           });
           await nDoc.save();
-          emitToCompany('notification:new', task.companyId, nDoc);
+          // Emit strictly to the target recipient user — NOT broadcast to the whole company!
+          await emitToUser(recipientId, 'notification:new', nDoc);
         }
       }
     } catch (notifErr) {

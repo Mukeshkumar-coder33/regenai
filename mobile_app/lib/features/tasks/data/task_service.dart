@@ -162,12 +162,16 @@ class TaskService {
   Future<TaskModel> reviewDeadlineExtension({
     required TaskModel task,
     required bool accept,
+    String? requestedDueDate,
+    String? requestedDueTime,
     String? companyResponse,
   }) async {
     final ext = task.extensionRequest;
+    final effDueDate = requestedDueDate ?? ext?.requestedDueDate;
+    final effDueTime = requestedDueTime ?? ext?.requestedDueTime;
     final updatedReq = TaskExtensionRequestModel(
-      requestedDueDate: ext?.requestedDueDate,
-      requestedDueTime: ext?.requestedDueTime,
+      requestedDueDate: effDueDate,
+      requestedDueTime: effDueTime,
       reason: ext?.reason,
       status: accept ? 'accepted' : 'rejected',
       requestedAt: ext?.requestedAt,
@@ -178,11 +182,11 @@ class TaskService {
     final updates = <String, dynamic>{
       'extensionRequest': updatedReq.toJson(),
     };
-    if (accept && ext?.requestedDueDate != null) {
-      updates['dueDate'] = ext!.requestedDueDate;
-      updates['endDate'] = ext.requestedDueDate;
-      if (ext.requestedDueTime != null) {
-        updates['dueTime'] = ext.requestedDueTime;
+    if (accept && effDueDate != null) {
+      updates['dueDate'] = effDueDate;
+      updates['endDate'] = effDueDate;
+      if (effDueTime != null) {
+        updates['dueTime'] = effDueTime;
       }
       if (task.status == 'not_completed') {
         updates['status'] = 'in_progress';

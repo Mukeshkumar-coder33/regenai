@@ -1,3 +1,5 @@
+import '../../notifications/data/notification_model.dart';
+import '../../notifications/data/notification_service.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -40,6 +42,7 @@ class TasksView extends StatefulWidget {
   final TaskService? taskService;
   final DashboardService? dashboardService;
   final bool embedded;
+  final NotificationModel? initialNotification;
 
   const TasksView({
     super.key,
@@ -49,6 +52,7 @@ class TasksView extends StatefulWidget {
     this.taskService,
     this.dashboardService,
     this.embedded = false,
+    this.initialNotification,
   });
 
   /// Automatically computes End Date & Due Time from Start Date and Duration
@@ -71,6 +75,7 @@ class TasksView extends StatefulWidget {
 class _TasksViewState extends State<TasksView> {
   late final TaskService _taskService;
   late final DashboardService _dashboardService;
+  final NotificationService _notificationService = NotificationService();
 
   UserModel? _loggedInUser;
   bool _isLoading = true;
@@ -122,8 +127,20 @@ class _TasksViewState extends State<TasksView> {
     });
 
     _socketNotifSub =
-        MessengerSocketService.instance.onNotification.listen((_) {
-      if (mounted) _loadInitialData();
+        MessengerSocketService.instance.onNotification.listen((data) {
+      if (mounted) {
+        _loadInitialData();
+        try {
+          final notif = NotificationModel.fromJson(data);
+          if (notif.isTask ||
+              notif.type.contains('task') ||
+              notif.type.contains('daily_progress') ||
+              notif.type.contains('completion') ||
+              notif.type.contains('extension')) {
+            _handleNotificationPopup(notif);
+          }
+        } catch (_) {}
+      }
     });
     _socketTaskSub =
         MessengerSocketService.instance.onTaskChange.listen((_) {
@@ -249,6 +266,40 @@ class _TasksViewState extends State<TasksView> {
     final dayName = days[dt.weekday - 1];
     final monthName = months[dt.month - 1];
     return '$dayName, $monthName ${dt.day}, ${dt.year}';
+  }
+
+  static String? _formatCleanDate(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final trimmed = raw.trim();
+    final dt = DateTime.tryParse(trimmed);
+    if (dt != null) {
+      const months = [
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      ];
+      return '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
+    }
+    if (trimmed.contains('T')) {
+      return trimmed.split('T')[0];
+    }
+    if (trimmed.length > 24) {
+      return trimmed.substring(0, 10);
+    }
+    return trimmed;
+  }
+
+  static String _formatCleanDateTime(String raw) {
+    final dt = DateTime.tryParse(raw.trim());
+    if (dt != null) {
+      const months = [
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      ];
+      final dateStr = '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
+      final timeStr = _formatDisplayTime(dt);
+      return '$dateStr at $timeStr';
+    }
+    return _formatCleanDate(raw) ?? raw;
   }
 
   static String _formatDisplayTime(DateTime dt) {
@@ -464,11 +515,21 @@ class _TasksViewState extends State<TasksView> {
                           body: '${user?.name ?? 'Employee'} updated "${task.title}" to $percentage%${notes.isNotEmpty ? ': $notes' : ''}',
                         );
                         if (mounted) {
+                          final guaranteed = updated.copyWith(
+                            progressPercentage: percentage,
+                          );
                           setState(() {
                             final idx = _tasks.indexWhere(
-                              (t) => t.id == task.id,
+                              (t) =>
+                                  t.id == task.id ||
+                                  (t.mongoId != null &&
+                                      t.mongoId == task.mongoId),
                             );
-                            if (idx != -1) _tasks[idx] = updated;
+                            if (idx != -1) {
+                              _tasks[idx] = guaranteed;
+                            } else {
+                              _tasks.add(guaranteed);
+                            }
                           });
                           nav.pop();
                           messenger.showSnackBar(
@@ -1318,6 +1379,12 @@ class _TasksViewState extends State<TasksView> {
           _teamMembers = results[2] as List<UserModel>;
           _isLoading = false;
         });
+
+        if (widget.initialNotification != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _handleNotificationPopup(widget.initialNotification!);
+          });
+        }
       }
     } catch (_) {
       if (mounted) {
@@ -3335,10 +3402,8 @@ class _TasksViewState extends State<TasksView> {
                 ),
               ],
 
-              // Daily Progress & Latest Notes (During process / when progress exists)
-              if (task.progressPercentage > 0 ||
-                  task.progressUpdates.isNotEmpty ||
-                  isRunning) ...[
+              // Daily Progress & Latest Notes
+              if (!isDone) ...[
                 const SizedBox(height: 8),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -3353,15 +3418,25 @@ class _TasksViewState extends State<TasksView> {
                     ),
                     if (task.progressUpdates.isNotEmpty)
                       Expanded(
-                        child: Text(
-                          'Last note: "${task.progressUpdates.last.updateText}"',
-                          textAlign: TextAlign.end,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 10.5,
-                            fontStyle: FontStyle.italic,
-                            color: CeladonColors.textSecondary,
+                        child: InkWell(
+                          onTap: () => _showNotificationNoteDialog(
+                            title: 'Daily Progress Note',
+                            taskTitle: task.title,
+                            employeeName: _getAssigneeDisplayName(task.assignedTo),
+                            note: task.progressUpdates.last.updateText,
+                            percentage: task.progressPercentage,
+                            task: task,
+                          ),
+                          child: Text(
+                            'Last note: "${task.progressUpdates.last.updateText}"',
+                            textAlign: TextAlign.end,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 10.5,
+                              fontStyle: FontStyle.italic,
+                              color: CeladonColors.textSecondary,
+                            ),
                           ),
                         ),
                       ),
@@ -3379,67 +3454,157 @@ class _TasksViewState extends State<TasksView> {
                 ),
               ],
 
-              // Completion Report Summary Card
-              if (task.completionReport != null) ...[
+              // Deadline Extension Request Banner on Card
+              if (task.extensionRequest != null &&
+                  task.extensionRequest!.status == 'pending') ...[
                 const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
+                InkWell(
+                  onTap: () => _showNotificationNoteDialog(
+                    title: 'Deadline Extension Request',
+                    taskTitle: task.title,
+                    employeeName: _getAssigneeDisplayName(task.assignedTo),
+                    note: task.extensionRequest!.reason,
+                    requestedDueDate: task.extensionRequest!.requestedDueDate,
+                    requestedDueTime: task.extensionRequest!.requestedDueTime,
+                    isExtraTime: true,
+                    task: task,
                   ),
-                  decoration: BoxDecoration(
-                    color: CeladonColors.lightGreen,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: CeladonColors.primary.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
                     ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.check_circle_rounded,
-                            size: 13,
-                            color: CeladonColors.primary,
-                          ),
-                          const SizedBox(width: 5),
-                          Text(
-                            'Report by ${task.completionReport!.employeeName}',
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF3C7),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: const Color(0xFFF59E0B).withValues(alpha: 0.5),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.more_time_rounded,
+                          size: 14,
+                          color: Color(0xFFB45309),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Extra time requested: ${task.extensionRequest!.requestedDueDate ?? ''} (${task.extensionRequest!.requestedDueTime ?? ''})',
                             style: const TextStyle(
                               fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              color: CeladonColors.primary,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFFB45309),
                             ),
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          if (task.completionReport!.workingTime != null &&
-                              task.completionReport!.workingTime!.isNotEmpty) ...[
-                            const Spacer(),
-                            Text(
-                              task.completionReport!.workingTime!,
-                              style: const TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
+                        ),
+                        if (_canManage) ...[
+                          const SizedBox(width: 6),
+                          GestureDetector(
+                            onTap: () => _handleReviewExtensionFromCard(task, true),
+                            child: const Tooltip(
+                              message: 'Accept & Extend',
+                              child: Icon(
+                                Icons.check_circle_rounded,
+                                size: 18,
                                 color: CeladonColors.primary,
                               ),
                             ),
-                          ],
-                        ],
-                      ),
-                      if (task.completionReport!.reportText.isNotEmpty) ...[
-                        const SizedBox(height: 3),
-                        Text(
-                          'Notes: "${task.completionReport!.reportText}"',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: CeladonColors.textPrimary,
                           ),
-                        ),
+                          const SizedBox(width: 6),
+                          GestureDetector(
+                            onTap: () => _handleReviewExtensionFromCard(task, false),
+                            child: const Tooltip(
+                              message: 'Decline',
+                              child: Icon(
+                                Icons.cancel_rounded,
+                                size: 18,
+                                color: CeladonColors.error,
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
+                  ),
+                ),
+              ],
+
+              // Completion Report Summary Card
+              if (task.completionReport != null) ...[
+                const SizedBox(height: 8),
+                InkWell(
+                  onTap: () => _showNotificationNoteDialog(
+                    title: 'Task Completion Report',
+                    taskTitle: task.title,
+                    employeeName: task.completionReport!.employeeName ?? 'Employee',
+                    workingTime: task.completionReport!.workingTime,
+                    note: task.completionReport!.reportText,
+                    task: task,
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: CeladonColors.lightGreen,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: CeladonColors.primary.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.check_circle_rounded,
+                              size: 13,
+                              color: CeladonColors.primary,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              'Report by ${task.completionReport!.employeeName ?? 'Employee'}',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: CeladonColors.primary,
+                              ),
+                            ),
+                            if (task.completionReport!.workingTime != null &&
+                                task.completionReport!.workingTime!.isNotEmpty) ...[
+                              const Spacer(),
+                              Text(
+                                task.completionReport!.workingTime!,
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: CeladonColors.primary,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        if (task.completionReport!.reportText.isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            'Notes: "${task.completionReport!.reportText}"',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: CeladonColors.textPrimary,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -3494,14 +3659,19 @@ class _TasksViewState extends State<TasksView> {
                             color: CeladonColors.textMuted,
                           ),
                           const SizedBox(width: 4),
-                          Text(
-                            task.endDate ?? task.dueDate ?? 'No deadline',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: isIncomplete
-                                  ? CeladonColors.error
-                                  : CeladonColors.textSecondary,
+                          Flexible(
+                            child: Text(
+                              _formatCleanDate(task.endDate ?? task.dueDate) ??
+                                  'No deadline',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: isIncomplete
+                                    ? CeladonColors.error
+                                    : CeladonColors.textSecondary,
+                              ),
                             ),
                           ),
                         ],
@@ -3560,6 +3730,440 @@ class _TasksViewState extends State<TasksView> {
         ),
       ),
     );
+  }
+
+
+  // Handle Notification Popup (Redirected from notification click or live socket alert)
+  void _handleNotificationPopup(NotificationModel notif) {
+    final meta = notif.metadata;
+    final taskId = meta['taskId']?.toString();
+    final taskTitle = meta['taskTitle']?.toString() ?? '';
+    final notifType = (meta['type'] ?? notif.type).toString().toLowerCase();
+
+    TaskModel? matchedTask;
+    if (taskId != null && taskId.isNotEmpty) {
+      final idx = _tasks.indexWhere(
+        (t) => t.id == taskId || t.mongoId == taskId,
+      );
+      if (idx != -1) matchedTask = _tasks[idx];
+    }
+    if (matchedTask == null) {
+      for (final t in _tasks) {
+        if (notif.message.contains(t.title) || notif.title.contains(t.title)) {
+          matchedTask = t;
+          break;
+        }
+      }
+    }
+
+    final effectiveTitle = matchedTask?.title ?? taskTitle;
+
+    if (notifType.contains('extension') ||
+        notif.title.toLowerCase().contains('extension') ||
+        notif.message.toLowerCase().contains('extra time')) {
+      final reqDate = meta['requestedDueDate']?.toString() ??
+          matchedTask?.extensionRequest?.requestedDueDate ??
+          '';
+      final reqTime = meta['requestedDueTime']?.toString() ??
+          matchedTask?.extensionRequest?.requestedDueTime ??
+          '18:00';
+      final reason = meta['reason']?.toString() ??
+          matchedTask?.extensionRequest?.reason ??
+          notif.message;
+      final empName = meta['employeeName']?.toString() ??
+          (matchedTask != null
+              ? _getAssigneeDisplayName(matchedTask.assignedTo)
+              : notif.senderName ?? 'Employee');
+
+      _showNotificationNoteDialog(
+        title: 'Deadline Extension Request',
+        taskTitle: effectiveTitle.isNotEmpty ? effectiveTitle : 'Task Assignment',
+        employeeName: empName,
+        requestedDueDate: reqDate,
+        requestedDueTime: reqTime,
+        note: reason,
+        isExtraTime: true,
+        task: matchedTask,
+        notif: notif,
+      );
+    } else if (notifType.contains('completion') ||
+        notif.title.toLowerCase().contains('completion')) {
+      final repText = meta['reportText']?.toString() ??
+          matchedTask?.completionReport?.reportText ??
+          notif.message;
+      final workingTime = meta['workingTime']?.toString() ??
+          matchedTask?.completionReport?.workingTime ??
+          '';
+      final empName = meta['employeeName']?.toString() ??
+          matchedTask?.completionReport?.employeeName ??
+          (matchedTask != null
+              ? _getAssigneeDisplayName(matchedTask.assignedTo)
+              : notif.senderName ?? 'Employee');
+
+      _showNotificationNoteDialog(
+        title: 'Task Completion Report',
+        taskTitle: effectiveTitle.isNotEmpty ? effectiveTitle : 'Task Assignment',
+        employeeName: empName,
+        workingTime: workingTime.isNotEmpty ? workingTime : null,
+        note: repText,
+        task: matchedTask,
+        notif: notif,
+      );
+    } else {
+      // Daily progress
+      final progPercent = meta['progressPercentage'] is num
+          ? (meta['progressPercentage'] as num).toInt()
+          : (num.tryParse(meta['progressPercentage']?.toString() ?? '')?.toInt() ??
+              matchedTask?.progressPercentage ??
+              0);
+      final updateText = meta['updateText']?.toString() ??
+          (matchedTask?.progressUpdates.isNotEmpty == true
+              ? matchedTask!.progressUpdates.last.updateText
+              : notif.message);
+      final empName = meta['employeeName']?.toString() ??
+          (matchedTask != null
+              ? _getAssigneeDisplayName(matchedTask.assignedTo)
+              : notif.senderName ?? 'Employee');
+
+      _showNotificationNoteDialog(
+        title: 'Daily Progress Update',
+        taskTitle: effectiveTitle.isNotEmpty ? effectiveTitle : 'Task Assignment',
+        employeeName: empName,
+        percentage: progPercent,
+        note: updateText,
+        task: matchedTask,
+        notif: notif,
+      );
+    }
+  }
+
+  // Beautiful Celadon Dialog for Notes (Daily Progress, Completion Report, Extra Time)
+  void _showNotificationNoteDialog({
+    required String title,
+    required String taskTitle,
+    required String employeeName,
+    String? note,
+    int? percentage,
+    String? workingTime,
+    String? requestedDueDate,
+    String? requestedDueTime,
+    bool isExtraTime = false,
+    TaskModel? task,
+    NotificationModel? notif,
+  }) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogCtx) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: CeladonColors.cardBackground,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: CeladonColors.border, width: 1.2),
+              boxShadow: const [
+                BoxShadow(
+                  color: CeladonColors.shadow,
+                  blurRadius: 16,
+                  offset: Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Header
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: (isExtraTime
+                                ? const Color(0xFFF59E0B)
+                                : CeladonColors.primary)
+                            .withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        isExtraTime
+                            ? Icons.more_time_rounded
+                            : (workingTime != null
+                                ? Icons.assignment_turned_in_rounded
+                                : Icons.trending_up_rounded),
+                        color: isExtraTime
+                            ? const Color(0xFFB45309)
+                            : CeladonColors.primary,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: CeladonColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: CeladonColors.textMuted,
+                        size: 20,
+                      ),
+                      onPressed: () => Navigator.pop(dialogCtx),
+                    ),
+                  ],
+                ),
+                const Divider(color: CeladonColors.divider, height: 16),
+
+                // Details Box
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: CeladonColors.searchBackground,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: CeladonColors.border),
+                  ),
+                  child: Column(
+                    children: [
+                      _buildDetailRow('Task', taskTitle),
+                      _buildDetailRow('Employee', employeeName),
+                      if (percentage != null)
+                        _buildDetailRow('Completion Progress', '$percentage%'),
+                      if (workingTime != null && workingTime.isNotEmpty)
+                        _buildDetailRow('Working Time', workingTime),
+                      if (requestedDueDate != null && requestedDueDate.isNotEmpty)
+                        _buildDetailRow(
+                          'Requested Deadline',
+                          '${_formatCleanDate(requestedDueDate) ?? requestedDueDate} (${requestedDueTime ?? '18:00'})',
+                        ),
+                    ],
+                  ),
+                ),
+
+                // Employee Note
+                if (note != null && note.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Employee Note / Summary:',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: CeladonColors.textMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: CeladonColors.searchBackground,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: CeladonColors.border),
+                    ),
+                    child: Text(
+                      note,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: CeladonColors.textPrimary,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: 18),
+
+                // Action Buttons
+                if (isExtraTime && _canManage && task != null) ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            final nav = Navigator.of(dialogCtx);
+                            final messenger = ScaffoldMessenger.of(context);
+                            try {
+                              await _taskService.reviewDeadlineExtension(
+                                task: task,
+                                accept: true,
+                                companyResponse:
+                                    'Deadline extended as requested by employee',
+                              );
+                              if (notif != null) {
+                                _notificationService
+                                    .markAsRead(notif.id, mongoId: notif.mongoId)
+                                    .catchError((_) => false);
+                              }
+                              nav.pop();
+                              _loadInitialData();
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  backgroundColor: CeladonColors.primary,
+                                  content: Text(
+                                    'Deadline extended to ${requestedDueDate ?? 'new date'}!',
+                                  ),
+                                ),
+                              );
+                            } catch (e) {
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  backgroundColor: CeladonColors.error,
+                                  content: Text('Failed to accept: $e'),
+                                ),
+                              );
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: CeladonColors.primary,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Text(
+                            'Accept & Extend',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () async {
+                            final nav = Navigator.of(dialogCtx);
+                            final messenger = ScaffoldMessenger.of(context);
+                            try {
+                              await _taskService.reviewDeadlineExtension(
+                                task: task,
+                                accept: false,
+                                companyResponse: 'Deadline extension declined',
+                              );
+                              if (notif != null) {
+                                _notificationService
+                                    .markAsRead(notif.id, mongoId: notif.mongoId)
+                                    .catchError((_) => false);
+                              }
+                              nav.pop();
+                              _loadInitialData();
+                              messenger.showSnackBar(
+                                const SnackBar(
+                                  backgroundColor: CeladonColors.error,
+                                  content: Text(
+                                    'Extension request declined. Original deadline retained.',
+                                  ),
+                                ),
+                              );
+                            } catch (e) {
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  backgroundColor: CeladonColors.error,
+                                  content: Text('Failed to decline: $e'),
+                                ),
+                              );
+                            }
+                          },
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: CeladonColors.error),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Text(
+                            'Decline',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: CeladonColors.error,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ] else ...[
+                  ElevatedButton(
+                    onPressed: () {
+                      if (notif != null) {
+                        _notificationService
+                            .markAsRead(notif.id, mongoId: notif.mongoId)
+                            .catchError((_) => false);
+                      }
+                      Navigator.pop(dialogCtx);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: CeladonColors.primary,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'OK',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Quick review of deadline extension from task card
+  Future<void> _handleReviewExtensionFromCard(TaskModel task, bool accept) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final updated = await _taskService.reviewDeadlineExtension(
+        task: task,
+        accept: accept,
+        companyResponse: accept
+            ? 'Deadline extended as requested by employee'
+            : 'Extension request rejected by manager',
+      );
+      if (mounted) {
+        setState(() {
+          final idx = _tasks.indexWhere((t) => t.id == task.id);
+          if (idx != -1) _tasks[idx] = updated;
+        });
+        messenger.showSnackBar(
+          SnackBar(
+            backgroundColor: accept ? CeladonColors.primary : CeladonColors.error,
+            content: Text(
+              accept
+                  ? 'Deadline extended to ${task.extensionRequest?.requestedDueDate ?? ''}!'
+                  : 'Extension request declined.',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          backgroundColor: CeladonColors.error,
+          content: Text('Action failed: $e'),
+        ),
+      );
+    }
   }
 
   // Clean description removing [voice_note:...] tag for preview
@@ -4022,15 +4626,13 @@ class _TasksViewState extends State<TasksView> {
                             children: [
                               _buildDetailRow(
                                 'Start Date',
-                                task.startDate ?? 'Today',
+                                _formatCleanDate(task.startDate) ?? 'Today',
                               ),
                               if (task.startedAt != null &&
                                   task.startedAt!.isNotEmpty)
                                 _buildDetailRow(
                                   'Started At',
-                                  DateTime.tryParse(task.startedAt!) != null
-                                      ? '${_formatDisplayDate(DateTime.parse(task.startedAt!))} at ${_formatDisplayTime(DateTime.parse(task.startedAt!))}'
-                                      : task.startedAt!,
+                                  _formatCleanDateTime(task.startedAt!),
                                 ),
                               if (task.isInProgress)
                                 _buildDetailRow(
@@ -4044,7 +4646,7 @@ class _TasksViewState extends State<TasksView> {
                                 ),
                               _buildDetailRow(
                                 'End Date / Deadline',
-                                task.endDate ?? task.dueDate ?? 'Not set',
+                                _formatCleanDate(task.endDate ?? task.dueDate) ?? 'Not set',
                               ),
                               if (task.dueTime != null)
                                 _buildDetailRow(
@@ -4493,6 +5095,7 @@ class _TasksViewState extends State<TasksView> {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             label,
@@ -4501,12 +5104,16 @@ class _TasksViewState extends State<TasksView> {
               color: CeladonColors.textSecondary,
             ),
           ),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: CeladonColors.textPrimary,
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: CeladonColors.textPrimary,
+              ),
             ),
           ),
         ],

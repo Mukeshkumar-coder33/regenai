@@ -180,6 +180,7 @@ class TaskService {
     };
     if (accept && ext?.requestedDueDate != null) {
       updates['dueDate'] = ext!.requestedDueDate;
+      updates['endDate'] = ext.requestedDueDate;
       if (ext.requestedDueTime != null) {
         updates['dueTime'] = ext.requestedDueTime;
       }

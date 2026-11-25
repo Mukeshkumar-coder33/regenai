@@ -1,3 +1,4 @@
+import '../../tasks/presentation/tasks_view.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -963,8 +964,18 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> with Auto
                                       Navigator.pop(ctx);
                                       if (notif.isMessenger) {
                                         _navigateToPage('messenger');
-                                      } else if (notif.isTask) {
-                                        _navigateToPage('tasks', fallbackTab: 1);
+                                      } else if (notif.isTask ||
+                                          notif.type.toLowerCase().contains('task') ||
+                                          notif.title.toLowerCase().contains('task')) {
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                            builder: (pCtx) => TasksView(
+                                              user: widget.user,
+                                              initialNotification: notif,
+                                              onBack: () => Navigator.of(pCtx).pop(),
+                                            ),
+                                          ),
+                                        );
                                       } else if (notif.type.contains('leave')) {
                                         _navigateToPage('leave');
                                       } else if (notif.isAttendance) {

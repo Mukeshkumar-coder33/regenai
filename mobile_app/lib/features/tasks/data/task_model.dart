@@ -177,6 +177,26 @@ class TaskExtensionRequestModel {
     };
   }
 
+  TaskExtensionRequestModel copyWith({
+    String? requestedDueDate,
+    String? requestedDueTime,
+    String? reason,
+    String? status,
+    String? requestedAt,
+    String? reviewedAt,
+    String? companyResponse,
+  }) {
+    return TaskExtensionRequestModel(
+      requestedDueDate: requestedDueDate ?? this.requestedDueDate,
+      requestedDueTime: requestedDueTime ?? this.requestedDueTime,
+      reason: reason ?? this.reason,
+      status: status ?? this.status,
+      requestedAt: requestedAt ?? this.requestedAt,
+      reviewedAt: reviewedAt ?? this.reviewedAt,
+      companyResponse: companyResponse ?? this.companyResponse,
+    );
+  }
+
   bool get isPending => status == 'pending';
   bool get isAccepted => status == 'accepted';
   bool get isRejected => status == 'rejected';
@@ -270,9 +290,17 @@ class TaskModel {
       extReq = TaskExtensionRequestModel.fromJson(json['extensionRequest'] as Map<String, dynamic>);
     }
 
-    final progPercent = (json['progressPercentage'] is num)
-        ? (json['progressPercentage'] as num).toInt().clamp(0, 100)
-        : (json['status'] == 'done' || json['status'] == 'completed' ? 100 : 0);
+    int progPercent = 0;
+    if (json['progressPercentage'] != null) {
+      final parsed = num.tryParse(json['progressPercentage'].toString());
+      if (parsed != null) {
+        progPercent = parsed.toInt().clamp(0, 100);
+      }
+    } else if (updates.isNotEmpty) {
+      progPercent = updates.last.percentage.clamp(0, 100);
+    } else if (json['status'] == 'done' || json['status'] == 'completed') {
+      progPercent = 100;
+    }
 
     return TaskModel(
       id: (json['id'] ?? json['_id'] ?? '').toString(),

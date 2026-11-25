@@ -11488,6 +11488,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                               MaterialPageRoute(
                                                 builder: (pCtx) => TasksView(
                                                   user: widget.user,
+                                                  initialNotification: notif,
                                                   onBack: () =>
                                                       Navigator.of(pCtx).pop(),
                                                 ),

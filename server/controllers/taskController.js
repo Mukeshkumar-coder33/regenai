@@ -179,6 +179,7 @@ export const updateTask = async (req, res) => {
     if (req.body.extensionRequest && req.body.extensionRequest.status === 'accepted') {
       if (req.body.extensionRequest.requestedDueDate) {
         req.body.dueDate = req.body.extensionRequest.requestedDueDate;
+        req.body.endDate = req.body.extensionRequest.requestedDueDate;
       }
       if (req.body.extensionRequest.requestedDueTime) {
         req.body.dueTime = req.body.extensionRequest.requestedDueTime;
@@ -186,6 +187,10 @@ export const updateTask = async (req, res) => {
       if (previous.status === 'not_completed') {
         req.body.status = 'in_progress';
       }
+    }
+
+    if (req.body.progressPercentage !== undefined && req.body.progressPercentage !== null) {
+      req.body.progressPercentage = Number(req.body.progressPercentage);
     }
 
     const task = await Task.findOneAndUpdate(findFilter, req.body, { new: true });
@@ -241,14 +246,28 @@ export const updateTask = async (req, res) => {
       if (task.extensionRequest?.status === 'pending' && previous.extensionRequest?.status !== 'pending') {
         notifTitle = 'Deadline Extension Requested';
         notifMessage = `Extra time requested for "${task.title}": ${task.extensionRequest.requestedDueDate || ''}. Reason: ${task.extensionRequest.reason || 'None provided'}`;
-        notifMeta = { taskId: task.id, type: 'extension_request' };
+        notifMeta = {
+          taskId: task.id,
+          type: 'extension_request',
+          requestedDueDate: task.extensionRequest.requestedDueDate,
+          requestedDueTime: task.extensionRequest.requestedDueTime,
+          reason: task.extensionRequest.reason,
+          employeeName: task.extensionRequest.employeeName || ''
+        };
       } else if (task.completionReport?.submittedAt && !previous.completionReport?.submittedAt) {
         const rep = task.completionReport;
         const repTime = rep.workingTime ? ` (Working Time: ${rep.workingTime})` : '';
         const repNotes = rep.reportText ? ` • Note: "${rep.reportText}"` : '';
         notifTitle = 'Task Completion Report';
         notifMessage = `Task "${task.title}" was completed by ${rep.employeeName || 'employee'}${repTime}${repNotes}`;
-        notifMeta = { taskId: task.id, completionReport: rep, type: 'completion_report' };
+        notifMeta = {
+          taskId: task.id,
+          completionReport: rep,
+          type: 'completion_report',
+          workingTime: rep.workingTime,
+          reportText: rep.reportText,
+          employeeName: rep.employeeName
+        };
       } else if (
         (task.progressPercentage !== undefined && task.progressPercentage !== previous.progressPercentage) ||
         (task.progressUpdates?.length > (previous.progressUpdates?.length || 0))
@@ -259,7 +278,14 @@ export const updateTask = async (req, res) => {
         const noteSnippet = latestProg?.updateText ? ` • Note: "${latestProg.updateText}"` : '';
         notifTitle = 'Task Progress Updated';
         notifMessage = `Task "${task.title}" progress updated to ${task.progressPercentage}% by ${latestProg?.employeeName || 'employee'}${noteSnippet}`;
-        notifMeta = { taskId: task.id, progressPercentage: task.progressPercentage, latestProgress: latestProg, type: 'daily_progress' };
+        notifMeta = {
+          taskId: task.id,
+          progressPercentage: task.progressPercentage,
+          latestProgress: latestProg,
+          type: 'daily_progress',
+          updateText: latestProg?.updateText,
+          employeeName: latestProg?.employeeName
+        };
       } else if (previous.extensionRequest?.status === 'pending' && task.extensionRequest?.status === 'accepted') {
         notifTitle = 'Extension Request Accepted';
         notifMessage = `Deadline extension for "${task.title}" was accepted. New deadline: ${task.dueDate || ''}`;

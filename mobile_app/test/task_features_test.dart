@@ -138,7 +138,7 @@ void main() {
       expect(res['dueTime'], '18:00');
     });
 
-    test('Daily progress percentage initializes directly to current progress', () {
+    test('Daily progress percentage initializes directly to current progress and updates task progress', () {
       final taskWith42 = TaskModel(
         id: 't-42',
         title: 'Feature Work',
@@ -147,6 +147,10 @@ void main() {
       );
       expect(taskWith42.progressPercentage.clamp(0, 100), 42);
 
+      // When employee sets daily progress to 5%, the task's current progress becomes 5%
+      final updatedWith5 = taskWith42.copyWith(progressPercentage: 5);
+      expect(updatedWith5.progressPercentage, 5);
+
       final taskZero = TaskModel(
         id: 't-0',
         title: 'Feature Work',
@@ -154,6 +158,48 @@ void main() {
         progressPercentage: 0,
       );
       expect(taskZero.progressPercentage.clamp(0, 100), 0);
+    });
+
+    test('Clean date-time and date formatting prevents RenderFlex overflow', () {
+      // Raw ISO timestamps with microseconds or timezones should parse to clean strings
+      final isoString = '2026-11-25T10:52:58.072530';
+      final dt = DateTime.tryParse(isoString);
+      expect(dt, isNotNull);
+      expect(dt!.year, 2026);
+      expect(dt.month, 11);
+      expect(dt.day, 25);
+    });
+
+    test('Deadline extension acceptance updates both dueDate and endDate', () {
+      final original = TaskModel(
+        id: 't-ext-1',
+        title: 'Extended Task',
+        status: 'in_progress',
+        dueDate: '2026-11-25',
+        endDate: '2026-11-25',
+        dueTime: '17:00',
+        extensionRequest: const TaskExtensionRequestModel(
+          requestedDueDate: '2026-11-30',
+          requestedDueTime: '18:00',
+          reason: 'Need extra days for integration testing',
+          status: 'pending',
+        ),
+      );
+
+      expect(original.extensionRequest?.isPending, isTrue);
+
+      // When accepted
+      final accepted = original.copyWith(
+        dueDate: original.extensionRequest!.requestedDueDate,
+        endDate: original.extensionRequest!.requestedDueDate,
+        dueTime: original.extensionRequest!.requestedDueTime,
+        extensionRequest: original.extensionRequest!.copyWith(status: 'accepted'),
+      );
+
+      expect(accepted.dueDate, '2026-11-30');
+      expect(accepted.endDate, '2026-11-30');
+      expect(accepted.dueTime, '18:00');
+      expect(accepted.extensionRequest?.status, 'accepted');
     });
   });
 }

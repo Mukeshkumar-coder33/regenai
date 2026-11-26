@@ -46,14 +46,6 @@ export function getStoredPrivateKey(conversationId) {
 }
 
 /**
- * Store an imported private key JWK for a conversation.
- */
-export function storeImportedPrivateKey(conversationId, privateJwk) {
-  const str = typeof privateJwk === 'string' ? privateJwk : JSON.stringify(privateJwk);
-  localStorage.setItem(storageKey(conversationId), str);
-}
-
-/**
  * Check if we have a key pair for this conversation.
  */
 export function hasKeyPair(conversationId) {

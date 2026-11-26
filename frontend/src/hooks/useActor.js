@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useCustomAuth } from './useCustomAuth';
 import { Principal } from '@dfinity/principal';
 import { hasUserRole, safeRandomUUID } from '../lib/utils';
+import { apiFetch, resolveMediaUrl } from '../lib/backendConfig';
 
 // Helper to handle BigInt serialization
 const JSON_stringify = (data) => {
@@ -332,6 +333,24 @@ export const createMockActor = (identity) => {
         setDb('db_task_updates', all);
     },
 
+    getAllEvents: async () => getDb('db_events', []),
+    addEvent: async (event) => {
+        const events = getDb('db_events', []);
+        events.push(event);
+        setDb('db_events', events);
+    },
+    updateEvent: async (event) => {
+        const events = getDb('db_events', []);
+        const idx = events.findIndex((e) => e.id === event.id);
+        if (idx !== -1) {
+            events[idx] = event;
+            setDb('db_events', events);
+        }
+    },
+    deleteEvent: async (id) => {
+        const events = getDb('db_events', []);
+        setDb('db_events', events.filter((e) => e.id !== id));
+    },
     getAllHolidays: async () => getDb('db_holidays', [
         { id: '1', name: 'New Year', date: '2026-01-01' },
         { id: '2', name: 'Republic Day', date: '2026-01-26' },
@@ -509,7 +528,7 @@ export const createHttpActor = (identity) => {
   };
   const fetchJson = async (url, fallback = []) => {
     try {
-      const res = await fetch(url, { headers: getHeaders() });
+      const res = await apiFetch(url, { headers: getHeaders() });
       return await handleResponse(res);
     } catch (e) {
       const msg = String(e?.message || '').toLowerCase();
@@ -525,37 +544,22 @@ export const createHttpActor = (identity) => {
 
     const normalizeAvatar = (avatar) => {
         if (!avatar) return avatar;
-        const s = String(avatar).trim();
-        if (!s) return s;
-        if (s.startsWith('data:') || s.startsWith('http://') || s.startsWith('https://') || s.startsWith('/uploads/') || s.startsWith('/assets/')) {
-            return s.replace(/^\/uploads\/assets\//, '/assets/');
-        }
-        return `/assets/profiles/${s.replace(/^\/+/, '')}`;
+        return resolveMediaUrl(avatar);
     };
 
   return {
     getCallerUserProfile: async () => {
+      const token = getAuthToken();
+      if (!token) return null;
       try {
-        const res = await fetch(`${API_BASE}/users/me`, { headers: getHeaders() });
+        const res = await apiFetch(`${API_BASE}/users/me`, { headers: getHeaders() });
         if (res.status === 401 || res.status === 403) {
-          throw new Error('Invalid session. Please login again.');
+          return null;
         }
         const me = await handleResponse(res);
         if (!me) return null;
-        let localSlots = null;
-        try {
-          const raw = localStorage.getItem('user_nav_slots');
-          if (raw) localSlots = JSON.parse(raw);
-        } catch (_) {}
-        const finalSlots = (Array.isArray(me.navSlots) && me.navSlots.length > 0)
-          ? me.navSlots
-          : (Array.isArray(localSlots) && localSlots.length > 0 ? localSlots : undefined);
-        if (Array.isArray(me.navSlots) && me.navSlots.length > 0) {
-          try { localStorage.setItem('user_nav_slots', JSON.stringify(me.navSlots)); } catch (_) {}
-        }
         return {
           ...me,
-          navSlots: finalSlots,
           avatar: normalizeAvatar(me.avatar),
           role: typeof me.role === 'string' ? { [me.role]: null } : me.role,
           salary: me.salary ? BigInt(me.salary) : undefined
@@ -584,7 +588,7 @@ export const createHttpActor = (identity) => {
     },
     saveCallerUserProfile: async (profile) => {
       // Resolve stored staff ID first
-      const users = await handleResponse(await fetch(`${API_BASE}/users`, { headers }));
+      const users = await handleResponse(await apiFetch(`${API_BASE}/users`, { headers }));
       const existing = users.find((u) => u.userId === principalId || u.username === principalId) || users.find((u) => u.username === profile.username);
       const resolvedId = existing ? existing.userId : principalId;
       const user = {
@@ -609,9 +613,9 @@ export const createHttpActor = (identity) => {
       };
       
       // Update only; do not create new users on profile save
-      const target = await fetch(`${API_BASE}/users/${resolvedId}`, { headers });
+      const target = await apiFetch(`${API_BASE}/users/${resolvedId}`, { headers });
       if (target.ok) {
-         return handleResponse(await fetch(`${API_BASE}/users/${resolvedId}`, {
+         return handleResponse(await apiFetch(`${API_BASE}/users/${resolvedId}`, {
              method: 'PUT',
              headers,
              body: JSON.stringify(user)
@@ -652,7 +656,7 @@ export const createHttpActor = (identity) => {
             role: Object.keys(user.role)[0],
             salary: user.salary ? user.salary.toString() : undefined // Serialize BigInt for new users
         };
-        return handleResponse(await fetch(`${API_BASE}/users`, {
+        return handleResponse(await apiFetch(`${API_BASE}/users`, {
             method: 'POST',
             headers,
             body: JSON.stringify(payload)
@@ -666,7 +670,7 @@ export const createHttpActor = (identity) => {
             salary: user.salary ? user.salary.toString() : undefined // Serialize BigInt for updated users
         };
         const uid = user.userId ? (user.userId.toText ? user.userId.toText() : String(user.userId)) : (user.id?.toText ? user.id.toText() : String(user.id));
-        return handleResponse(await fetch(`${API_BASE}/users/${uid}`, {
+        return handleResponse(await apiFetch(`${API_BASE}/users/${uid}`, {
             method: 'PUT',
             headers,
             body: JSON.stringify(payload)
@@ -674,7 +678,7 @@ export const createHttpActor = (identity) => {
     },
     deleteUser: async (id) => {
         const uid = id?.toText ? id.toText() : String(id);
-        return handleResponse(await fetch(`${API_BASE}/users/${uid}`, {
+        return handleResponse(await apiFetch(`${API_BASE}/users/${uid}`, {
             method: 'DELETE',
             headers
         }));
@@ -731,7 +735,7 @@ export const createHttpActor = (identity) => {
             endDate: endIso,
             dueDate: endIso
         };
-        return handleResponse(await fetch(`${API_BASE}/tasks`, {
+        return handleResponse(await apiFetch(`${API_BASE}/tasks`, {
             method: 'POST',
             headers,
             body: JSON.stringify(payload)
@@ -767,14 +771,14 @@ export const createHttpActor = (identity) => {
             endDate: endIso,
             dueDate: endIso
         };
-        return handleResponse(await fetch(`${API_BASE}/tasks/${task.id}`, {
+        return handleResponse(await apiFetch(`${API_BASE}/tasks/${task.id}`, {
             method: 'PUT',
             headers,
             body: JSON.stringify(payload)
         }));
     },
     deleteTask: async (id) => {
-        return handleResponse(await fetch(`${API_BASE}/tasks/${id}`, {
+        return handleResponse(await apiFetch(`${API_BASE}/tasks/${id}`, {
             method: 'DELETE',
             headers
         }));
@@ -782,7 +786,7 @@ export const createHttpActor = (identity) => {
 
     // Attendance
     getAllAttendance: async () => {
-        const att = await handleResponse(await fetch(`${API_BASE}/attendance`, { headers }));
+        const att = await handleResponse(await apiFetch(`${API_BASE}/attendance`, { headers }));
         return att.map((a) => ({
             ...a,
             userId: safePrincipal(a.userId)
@@ -790,7 +794,7 @@ export const createHttpActor = (identity) => {
     },
     getUserAttendance: async (userId) => {
         const idStr = typeof userId === 'string' ? userId : (userId?.toText ? userId.toText() : String(userId));
-        const att = await handleResponse(await fetch(`${API_BASE}/attendance/user/${idStr}`, { headers }));
+        const att = await handleResponse(await apiFetch(`${API_BASE}/attendance/user/${idStr}`, { headers }));
          return att.map((a) => ({
             ...a,
             userId: safePrincipal(a.userId)
@@ -816,7 +820,7 @@ export const createHttpActor = (identity) => {
             longitude: attendance.longitude,
             accuracy: attendance.accuracy,
         };
-        return handleResponse(await fetch(`${API_BASE}/attendance`, {
+        return handleResponse(await apiFetch(`${API_BASE}/attendance`, {
             method: 'POST',
             headers,
             body: JSON.stringify(payload)
@@ -851,7 +855,7 @@ export const createHttpActor = (identity) => {
             totalBreakDelayMinutes: attendance.totalBreakDelayMinutes,
             breakDeduction: attendance.breakDeduction,
         };
-        return handleResponse(await fetch(`${API_BASE}/attendance/${attendance.id || attendance._id}`, {
+        return handleResponse(await apiFetch(`${API_BASE}/attendance/${attendance.id || attendance._id}`, {
             method: 'PUT',
             headers,
             body: JSON.stringify(payload)
@@ -860,7 +864,7 @@ export const createHttpActor = (identity) => {
 
     // Company
     getCompanyInfo: async () => {
-        const companies = await handleResponse(await fetch(`${API_BASE}/company`, { headers }));
+        const companies = await handleResponse(await apiFetch(`${API_BASE}/company`, { headers }));
         if (!Array.isArray(companies) || companies.length === 0) return null;
         let callerCompanyId = null;
         try {
@@ -877,24 +881,24 @@ export const createHttpActor = (identity) => {
         return companies[0] || null;
     },
     getAllCompanies: async () => {
-        return handleResponse(await fetch(`${API_BASE}/company`, { headers }));
+        return handleResponse(await apiFetch(`${API_BASE}/company`, { headers }));
     },
     createCompany: async (info) => {
-        return handleResponse(await fetch(`${API_BASE}/company`, {
+        return handleResponse(await apiFetch(`${API_BASE}/company`, {
             method: 'POST',
             headers,
             body: JSON.stringify(info)
         }));
     },
     updateCompany: async (id, info) => {
-        return handleResponse(await fetch(`${API_BASE}/company/${id}`, {
+        return handleResponse(await apiFetch(`${API_BASE}/company/${id}`, {
             method: 'PUT',
             headers,
             body: JSON.stringify(info)
         }));
     },
     saveCompanyInfo: async (info) => {
-        return handleResponse(await fetch(`${API_BASE}/company`, {
+        return handleResponse(await apiFetch(`${API_BASE}/company`, {
             method: 'POST',
             headers,
             body: JSON.stringify(info)
@@ -902,14 +906,14 @@ export const createHttpActor = (identity) => {
     },
     updateCompanyOfficeLocation: async (companyId, locationData) => {
         const idStr = typeof companyId === 'string' ? companyId : (companyId?._id || companyId?.id || String(companyId || ''));
-        const res = await fetch(`${API_BASE}/company/${encodeURIComponent(idStr)}/office-location`, {
+        const res = await apiFetch(`${API_BASE}/company/${encodeURIComponent(idStr)}/office-location`, {
             method: 'PUT',
             headers,
             body: JSON.stringify(locationData)
         });
         if (res.status === 404) {
             // Dual compatibility fallback: route through company update endpoint
-            return handleResponse(await fetch(`${API_BASE}/company/${encodeURIComponent(idStr)}`, {
+            return handleResponse(await apiFetch(`${API_BASE}/company/${encodeURIComponent(idStr)}`, {
                 method: 'PUT',
                 headers,
                 body: JSON.stringify({ officeLocation: locationData })
@@ -924,7 +928,7 @@ export const createHttpActor = (identity) => {
         return fetchJson(`${API_BASE}/notifications/user/${idStr}`, []);
     },
     sendNotification: async (notification) => {
-        return handleResponse(await fetch(`${API_BASE}/notifications`, {
+        return handleResponse(await apiFetch(`${API_BASE}/notifications`, {
             method: 'POST',
             headers,
             body: JSON.stringify(notification)
@@ -959,20 +963,20 @@ export const createHttpActor = (identity) => {
                 }))
               : []
         };
-        return handleResponse(await fetch(`${API_BASE}/messages`, {
+        return handleResponse(await apiFetch(`${API_BASE}/messages`, {
             method: 'POST',
             headers,
             body: JSON.stringify(payload)
         }));
     },
     deleteMessage: async (id) => {
-        return handleResponse(await fetch(`${API_BASE}/messages/${id}`, {
+        return handleResponse(await apiFetch(`${API_BASE}/messages/${id}`, {
             method: 'DELETE',
             headers
         }));
     },
     editMessage: async (id, content) => {
-        return handleResponse(await fetch(`${API_BASE}/messages/${id}`, {
+        return handleResponse(await apiFetch(`${API_BASE}/messages/${id}`, {
             method: 'PUT',
             headers,
             body: JSON.stringify({ content })
@@ -988,7 +992,7 @@ export const createHttpActor = (identity) => {
             content: note.content,
             timestamp: new Date(Number(note.timestamp) / 1000000).toISOString()
         };
-        return handleResponse(await fetch(`${API_BASE}/meeting-notes`, {
+        return handleResponse(await apiFetch(`${API_BASE}/meeting-notes`, {
             method: 'POST',
             headers,
             body: JSON.stringify(payload)
@@ -1001,14 +1005,14 @@ export const createHttpActor = (identity) => {
             content: note.content,
             timestamp: new Date(Number(note.timestamp) / 1000000).toISOString()
         };
-        return handleResponse(await fetch(`${API_BASE}/meeting-notes/${note.id}`, {
+        return handleResponse(await apiFetch(`${API_BASE}/meeting-notes/${note.id}`, {
             method: 'PUT',
             headers,
             body: JSON.stringify(payload)
         }));
     },
     deleteMeetingNote: async (id) => {
-        return handleResponse(await fetch(`${API_BASE}/meeting-notes/${id}`, {
+        return handleResponse(await apiFetch(`${API_BASE}/meeting-notes/${id}`, {
             method: 'DELETE',
             headers
         }));
@@ -1034,7 +1038,7 @@ export const createHttpActor = (identity) => {
             createdAt: (typeof note.createdAt === 'string' ? note.createdAt : new Date(Number(note.createdAt) / 1000000).toISOString()),
             updatedAt: (typeof note.updatedAt === 'string' ? note.updatedAt : new Date(Number(note.updatedAt) / 1000000).toISOString())
         };
-        return handleResponse(await fetch(`${API_BASE}/scrum`, {
+        return handleResponse(await apiFetch(`${API_BASE}/scrum`, {
             method: 'POST',
             headers,
             body: JSON.stringify(payload)
@@ -1054,7 +1058,7 @@ export const createHttpActor = (identity) => {
             createdAt: (typeof note.createdAt === 'string' ? note.createdAt : new Date(Number(note.createdAt) / 1000000).toISOString()),
             updatedAt: (typeof note.updatedAt === 'string' ? note.updatedAt : new Date(Number(note.updatedAt) / 1000000).toISOString())
         };
-        return handleResponse(await fetch(`${API_BASE}/scrum/${note.id}`, {
+        return handleResponse(await apiFetch(`${API_BASE}/scrum/${note.id}`, {
             method: 'PUT',
             headers,
             body: JSON.stringify(payload)
@@ -1063,36 +1067,59 @@ export const createHttpActor = (identity) => {
     getTaskUpdatesForTask: async () => [],
     getAllTaskUpdates: async () => [],
     addTaskUpdate: async () => {},
+    getAllEvents: async () => {
+        return handleResponse(await apiFetch(`${API_BASE}/events`, { headers }));
+    },
+    addEvent: async (event) => {
+        return handleResponse(await apiFetch(`${API_BASE}/events`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(event)
+        }));
+    },
+    updateEvent: async (event) => {
+        return handleResponse(await apiFetch(`${API_BASE}/events/${event.id}`, {
+            method: 'PUT',
+            headers,
+            body: JSON.stringify(event)
+        }));
+    },
+    deleteEvent: async (id) => {
+        return handleResponse(await apiFetch(`${API_BASE}/events/${id}`, {
+            method: 'DELETE',
+            headers
+        }));
+    },
     getAllHolidays: async () => {
-        return handleResponse(await fetch(`${API_BASE}/holidays`, { headers }));
+        return handleResponse(await apiFetch(`${API_BASE}/holidays`, { headers }));
     },
     addHoliday: async (holiday) => {
-        return handleResponse(await fetch(`${API_BASE}/holidays`, {
+        return handleResponse(await apiFetch(`${API_BASE}/holidays`, {
             method: 'POST',
             headers,
             body: JSON.stringify(holiday)
         }));
     },
     updateHoliday: async (holiday) => {
-        return handleResponse(await fetch(`${API_BASE}/holidays/${holiday.id}`, {
+        return handleResponse(await apiFetch(`${API_BASE}/holidays/${holiday.id}`, {
             method: 'PUT',
             headers,
             body: JSON.stringify(holiday)
         }));
     },
     deleteHoliday: async (id) => {
-        return handleResponse(await fetch(`${API_BASE}/holidays/${id}`, {
+        return handleResponse(await apiFetch(`${API_BASE}/holidays/${id}`, {
             method: 'DELETE',
             headers
         }));
     },
     // Leaves
     getAllLeaveRequests: async () => {
-        return handleResponse(await fetch(`${API_BASE}/leaves`, { headers }));
+        return handleResponse(await apiFetch(`${API_BASE}/leaves`, { headers }));
     },
     getUserLeaveRequests: async (userId) => {
         const idStr = typeof userId === 'string' ? userId : (userId?.toText ? userId.toText() : String(userId));
-        return handleResponse(await fetch(`${API_BASE}/leaves/user/${idStr}`, { headers }));
+        return handleResponse(await apiFetch(`${API_BASE}/leaves/user/${idStr}`, { headers }));
     },
     applyLeave: async (leave) => {
         const uid =
@@ -1115,14 +1142,14 @@ export const createHttpActor = (identity) => {
             status: leave.status || 'pending',
             createdAt: leave.createdAt || new Date().toISOString()
         };
-        return handleResponse(await fetch(`${API_BASE}/leaves`, {
+        return handleResponse(await apiFetch(`${API_BASE}/leaves`, {
             method: 'POST',
             headers,
             body: JSON.stringify(payload)
         }));
     },
     updateLeaveRequest: async (id, status) => {
-        return handleResponse(await fetch(`${API_BASE}/leaves/${id}`, {
+        return handleResponse(await apiFetch(`${API_BASE}/leaves/${id}`, {
             method: 'PUT',
             headers,
             body: JSON.stringify({ status })
@@ -1136,14 +1163,14 @@ export const createHttpActor = (identity) => {
 
     isCallerAdmin: async () => {
        // Fetch user profile and check role
-       const users = await handleResponse(await fetch(`${API_BASE}/users`, { headers }));
+       const users = await handleResponse(await apiFetch(`${API_BASE}/users`, { headers }));
        const user = users.find((u) => u.id === principalId);
        return user?.role === 'admin';
     },
 
     // ─── Direct Messages (Private Chat) ─────────────────────────
     getOrCreateConversation: async (recipientId) => {
-        return handleResponse(await fetch(`${API_BASE}/dm/conversations`, {
+        return handleResponse(await apiFetch(`${API_BASE}/dm/conversations`, {
             method: 'POST',
             headers,
             body: JSON.stringify({ recipientId })
@@ -1160,34 +1187,34 @@ export const createHttpActor = (identity) => {
         return fetchJson(`${API_BASE}/dm/conversations/${conversationId}/messages${qs ? '?' + qs : ''}`, []);
     },
     sendDirectMessage: async (conversationId, message) => {
-        return handleResponse(await fetch(`${API_BASE}/dm/conversations/${conversationId}/messages`, {
+        return handleResponse(await apiFetch(`${API_BASE}/dm/conversations/${conversationId}/messages`, {
             method: 'POST',
             headers,
             body: JSON.stringify(message)
         }));
     },
     markConversationRead: async (conversationId) => {
-        return handleResponse(await fetch(`${API_BASE}/dm/conversations/${conversationId}/read`, {
+        return handleResponse(await apiFetch(`${API_BASE}/dm/conversations/${conversationId}/read`, {
             method: 'PUT',
             headers
         }));
     },
     storePublicKey: async (conversationId, publicKey) => {
-        return handleResponse(await fetch(`${API_BASE}/dm/conversations/${conversationId}/keys`, {
+        return handleResponse(await apiFetch(`${API_BASE}/dm/conversations/${conversationId}/keys`, {
             method: 'POST',
             headers,
             body: JSON.stringify({ publicKey: JSON.stringify(publicKey) })
         }));
     },
     editDirectMessage: async (messageId, payload) => {
-        return handleResponse(await fetch(`${API_BASE}/dm/messages/${messageId}`, {
+        return handleResponse(await apiFetch(`${API_BASE}/dm/messages/${messageId}`, {
             method: 'PUT',
             headers,
             body: JSON.stringify(payload)
         }));
     },
     deleteDirectMessage: async (messageId) => {
-        return handleResponse(await fetch(`${API_BASE}/dm/messages/${messageId}`, {
+        return handleResponse(await apiFetch(`${API_BASE}/dm/messages/${messageId}`, {
             method: 'DELETE',
             headers
         }));
@@ -1199,27 +1226,27 @@ export const createHttpActor = (identity) => {
         return fetchJson(`${API_BASE}/notifications/user/${idStr}`, []);
     },
     markNotificationRead: async (id) => {
-        return handleResponse(await fetch(`${API_BASE}/notifications/${id}/read`, {
+        return handleResponse(await apiFetch(`${API_BASE}/notifications/${id}/read`, {
             method: 'PUT',
             headers
         }));
     },
     markAllNotificationsRead: async (userId) => {
         const idStr = typeof userId === 'string' ? userId : (userId?.toText ? userId.toText() : String(userId));
-        return handleResponse(await fetch(`${API_BASE}/notifications/user/${idStr}/read-all`, {
+        return handleResponse(await apiFetch(`${API_BASE}/notifications/user/${idStr}/read-all`, {
             method: 'PUT',
             headers
         }));
     },
     updateNotificationAction: async (id, actionStatus) => {
-        return handleResponse(await fetch(`${API_BASE}/notifications/${id}/action`, {
+        return handleResponse(await apiFetch(`${API_BASE}/notifications/${id}/action`, {
             method: 'PUT',
             headers,
             body: JSON.stringify({ actionStatus })
         }));
     },
     deleteNotification: async (id) => {
-        return handleResponse(await fetch(`${API_BASE}/notifications/${id}`, {
+        return handleResponse(await apiFetch(`${API_BASE}/notifications/${id}`, {
             method: 'DELETE',
             headers
         }));

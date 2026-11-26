@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useGetAllUsers, useCreateUser, useUpdateUser, useDeleteUser } from '../../hooks/useQueries';
 import { authFetch, cn, hasUserRole, getUserRoleKey } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -9,13 +9,30 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Pencil, Trash2, Camera, KeyRound, Filter, Users } from 'lucide-react';
+import { Plus, Pencil, Trash2, Camera, KeyRound, Filter, Users, Calendar, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { useIsMobile } from '../../hooks/use-mobile';
 import { useScrollPagination } from '../../hooks/useScrollPagination';
 import { SafeAvatar } from '../SafeAvatar';
+import EmployeeProfileDialog from './EmployeeProfileDialog';
 
-export default function UsersModule({ userProfile }) {
+export default function UsersModule({ userProfile, selectedYear: propSelectedYear, onYearChange }) {
+  const currentYear = new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState(() => {
+    if (propSelectedYear) return Number(propSelectedYear);
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('regen_selected_year') : null;
+    const parsed = saved ? parseInt(saved, 10) : currentYear;
+    return !isNaN(parsed) ? parsed : currentYear;
+  });
+
+  useEffect(() => {
+    if (propSelectedYear && Number(propSelectedYear) !== selectedYear) {
+      setSelectedYear(Number(propSelectedYear));
+    }
+  }, [propSelectedYear]);
+
+  const [yearFilterMode, setYearFilterMode] = useState('active'); // 'active' | 'specific' | 'all'
+  const [selectedEmployeeForProfile, setSelectedEmployeeForProfile] = useState(null);
   const { data: users = [], isLoading } = useGetAllUsers();
   const createUser = useCreateUser();
   const updateUser = useUpdateUser();
@@ -51,7 +68,7 @@ export default function UsersModule({ userProfile }) {
   const roleBadgeStyles = {
     param:      'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25 font-semibold',
     owner:      'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/25 font-semibold',
-    admin:      'bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] border-[#C9DED1] font-semibold',
+    admin:      'bg-[#0D9488]/10 text-[#0D9488] dark:text-[#14B8A6] border-[#0D9488]/25 font-semibold',
     staff:      'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25 font-semibold',
     intern:     'bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/25 font-semibold',
     freelancer: 'bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-500/25 font-semibold',
@@ -90,20 +107,47 @@ export default function UsersModule({ userProfile }) {
     );
   }
 
-  // Filter users based on access + active filter, then sort
-  const visibleUsers = users
-    .filter(user => {
-      if (isAdmin) return true;
-      if (isOwner) return ['staff','intern','freelancer','admin','owner','param'].some(r => hasUserRole(user, r));
-      return false;
-    })
-    .filter(user => filterRole === 'all' || getRoleKey(user) === filterRole)
-    .sort((a, b) => {
-      const ra = roleOrder[getRoleKey(a)] ?? 99;
-      const rb = roleOrder[getRoleKey(b)] ?? 99;
-      if (ra !== rb) return ra - rb;
-      return (a.name || a.username || '').localeCompare(b.name || b.username || '');
+  // Helper to extract joining/creation year
+  const getEmployeeYear = (u) => {
+    if (!u) return null;
+    if (u.joiningDate) {
+      const d = new Date(u.joiningDate);
+      if (!isNaN(d.getTime())) return d.getFullYear();
+    }
+    if (u.createdAt) {
+      const d = new Date(u.createdAt);
+      if (!isNaN(d.getTime())) return d.getFullYear();
+    }
+    return null;
+  };
+
+  // Filter users by year based on yearFilterMode
+  const usersForYear = useMemo(() => {
+    if (yearFilterMode === 'all') return users;
+    return users.filter(user => {
+      const y = getEmployeeYear(user);
+      if (y === null) return true;
+      if (yearFilterMode === 'active') return y <= selectedYear;
+      return y === selectedYear; // 'specific'
     });
+  }, [users, selectedYear, yearFilterMode]);
+
+  // Filter users based on access + active role filter, then sort
+  const visibleUsers = useMemo(() => {
+    return usersForYear
+      .filter(user => {
+        if (isAdmin) return true;
+        if (isOwner) return ['staff','intern','freelancer','admin','owner','param'].some(r => hasUserRole(user, r));
+        return false;
+      })
+      .filter(user => filterRole === 'all' || getRoleKey(user) === filterRole)
+      .sort((a, b) => {
+        const ra = roleOrder[getRoleKey(a)] ?? 99;
+        const rb = roleOrder[getRoleKey(b)] ?? 99;
+        if (ra !== rb) return ra - rb;
+        return (a.name || a.username || '').localeCompare(b.name || b.username || '');
+      });
+  }, [usersForYear, isAdmin, isOwner, filterRole]);
 
   // Lazy loading pagination: load more on scroll down with sentinel
   const {
@@ -114,18 +158,27 @@ export default function UsersModule({ userProfile }) {
     containerRef: usersContainerRef,
     sentinelRef: usersSentinelRef,
     totalCount: totalUsersCount
-  } = useScrollPagination(visibleUsers, 8, [filterRole]);
+  } = useScrollPagination(visibleUsers, 8, [filterRole, yearFilterMode, selectedYear]);
   const paginatedUsers = Array.isArray(displayedItems) ? displayedItems : [];
 
-  // Count users per role for filter badges
-  const roleCounts = users.reduce((acc, user) => {
-    if (isAdmin || (isOwner && ['staff','intern','freelancer','admin','owner','param'].some(r => hasUserRole(user, r)))) {
-      const rk = getRoleKey(user);
-      acc[rk] = (acc[rk] || 0) + 1;
-      acc.all = (acc.all || 0) + 1;
-    }
-    return acc;
-  }, { all: 0 });
+  // Count users per role for filter badges based on current year view
+  const roleCounts = useMemo(() => {
+    return usersForYear.reduce((acc, user) => {
+      if (isAdmin || (isOwner && ['staff','intern','freelancer','admin','owner','param'].some(r => hasUserRole(user, r)))) {
+        const rk = getRoleKey(user);
+        acc[rk] = (acc[rk] || 0) + 1;
+        acc.all = (acc.all || 0) + 1;
+      }
+      return acc;
+    }, { all: 0 });
+  }, [usersForYear, isAdmin, isOwner]);
+
+  const yearStats = useMemo(() => {
+    const specificCount = users.filter(u => getEmployeeYear(u) === selectedYear).length;
+    const activeCount = users.filter(u => (getEmployeeYear(u) || selectedYear) <= selectedYear).length;
+    const allCount = users.length;
+    return { specificCount, activeCount, allCount };
+  }, [users, selectedYear]);
 
   const filterOptions = [
     { value: 'all', label: 'All' },
@@ -147,13 +200,14 @@ export default function UsersModule({ userProfile }) {
 
   const computeAge = (dateOfBirth) => {
     if (!dateOfBirth) return null;
-    const dob = new Date(`${dateOfBirth}T00:00:00`);
+    const s = String(dateOfBirth).trim();
+    const dob = new Date(s.includes('T') ? s : `${s}T00:00:00`);
     if (Number.isNaN(dob.getTime())) return null;
     const now = new Date();
     let age = now.getFullYear() - dob.getFullYear();
     const m = now.getMonth() - dob.getMonth();
     if (m < 0 || (m === 0 && now.getDate() < dob.getDate())) age -= 1;
-    return age;
+    return age >= 0 ? age : 0;
   };
 
   const formatSalary = (val) => {
@@ -350,6 +404,7 @@ export default function UsersModule({ userProfile }) {
         avatar: formData.avatar,
         joiningDate: formData.joiningDate || undefined,
         dateOfBirth: formData.dateOfBirth || undefined,
+        age: formData.dateOfBirth ? computeAge(formData.dateOfBirth) : undefined,
         gender: formData.gender || undefined,
         address: formData.address || undefined,
         phone: formData.phone || undefined,
@@ -387,15 +442,21 @@ export default function UsersModule({ userProfile }) {
       {/* 1. Staff Management Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-[#DFE8EC] dark:border-[#2A3D48]">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] flex items-center justify-center shrink-0 shadow-2xs">
+          <div className="w-11 h-11 rounded-2xl bg-[#0D9488]/10 text-[#0D9488] dark:text-[#14B8A6] flex items-center justify-center shrink-0 shadow-2xs">
             <Users className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#172B3A] dark:text-[#E8F0F4] leading-snug">
-              {isOwner ? 'Staff & Employee Management' : 'User Management'}
-            </h1>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#172B3A] dark:text-[#E8F0F4] leading-snug">
+                {isOwner ? 'Staff & Employee Management' : 'User Management'}
+              </h1>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold bg-[#0D9488]/10 text-[#0D9488] dark:text-[#14B8A6] border border-[#0D9488]/20 shrink-0">
+                <Calendar className="w-3.5 h-3.5" />
+                Year: {selectedYear}
+              </span>
+            </div>
             <p className="text-xs sm:text-sm text-[#64748B] dark:text-[#A6B5C0] mt-0.5 font-normal">
-              Manage organization team members, roles, and system credentials
+              Showing workforce details and records for year {selectedYear} (Staff, Interns, Freelancers)
             </p>
           </div>
         </div>
@@ -403,7 +464,7 @@ export default function UsersModule({ userProfile }) {
           <DialogTrigger asChild>
             <Button 
               onClick={() => handleOpenDialog()} 
-              className="bg-[#087A4B] hover:bg-[#07563B] text-white font-medium text-xs sm:text-sm rounded-xl px-4 h-9 sm:h-10 shadow-xs transition-all flex items-center justify-center gap-2 w-full sm:w-auto shrink-0"
+              className="bg-[#0D9488] hover:bg-[#0F766E] text-white font-medium text-xs sm:text-sm rounded-xl px-4 h-9 sm:h-10 shadow-xs transition-all flex items-center justify-center gap-2 w-full sm:w-auto shrink-0"
             >
               <Plus className="h-4 w-4" />
               <span>{isOwner ? 'Add Employee' : 'Add User'}</span>
@@ -551,7 +612,14 @@ export default function UsersModule({ userProfile }) {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="dateOfBirth">Date of Birth *</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="dateOfBirth">Date of Birth *</Label>
+                    {formData.dateOfBirth && computeAge(formData.dateOfBirth) !== null && (
+                      <span className="text-xs font-semibold text-[#0D9488] dark:text-[#14B8A6] bg-[#0D9488]/10 px-2 py-0.5 rounded-md">
+                        Age: {computeAge(formData.dateOfBirth)} yrs
+                      </span>
+                    )}
+                  </div>
                   <Input
                     id="dateOfBirth"
                     tabIndex={9}
@@ -647,7 +715,7 @@ export default function UsersModule({ userProfile }) {
                   />
                 </div>
               </div>
-              <Button type="submit" tabIndex={16} className="w-full bg-primary hover:bg-[#07563B] text-white font-semibold rounded-xl h-11 transition-all shadow-sm" disabled={createUser.isPending || updateUser.isPending}>
+              <Button type="submit" tabIndex={16} className="w-full bg-primary hover:bg-[#0F766E] text-white font-semibold rounded-xl h-11 transition-all shadow-sm" disabled={createUser.isPending || updateUser.isPending}>
                 {(createUser.isPending || updateUser.isPending) ? 'Saving...' : 'Save User Profile'}
               </Button>
             </form>
@@ -655,13 +723,59 @@ export default function UsersModule({ userProfile }) {
         </Dialog>
       </div>
 
-      {/* 2. Role Filter Chips */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="flex items-center gap-1.5 text-xs font-semibold text-[#64748B] dark:text-[#A6B5C0] mr-1">
-          <Filter className="h-3.5 w-3.5 text-[#087A4B] dark:text-[#14B8A6]" />
-          <span>Filter:</span>
+      {/* 2. Year Filter Mode Toggle & Role Filter Chips */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-[#F8FAFC] dark:bg-[#15232D]/60 p-3 rounded-xl border border-[#DFE8EC] dark:border-[#2A3D48]">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-[#64748B] dark:text-[#A6B5C0] mr-1">
+            <Calendar className="h-3.5 w-3.5 text-[#0D9488] dark:text-[#14B8A6]" />
+            <span>Year View:</span>
+          </div>
+          <div className="inline-flex rounded-lg border border-[#DFE8EC] dark:border-[#2A3D48] p-0.5 bg-white dark:bg-[#1D303B]">
+            <button
+              type="button"
+              onClick={() => setYearFilterMode('specific')}
+              className={cn(
+                "px-2.5 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer",
+                yearFilterMode === 'specific'
+                  ? "bg-[#0D9488] text-white shadow-xs"
+                  : "text-[#64748B] dark:text-[#A6B5C0] hover:text-[#172B3A] dark:hover:text-[#E8F0F4]"
+              )}
+            >
+              Joined in {selectedYear} ({yearStats.specificCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setYearFilterMode('active')}
+              className={cn(
+                "px-2.5 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer",
+                yearFilterMode === 'active'
+                  ? "bg-[#0D9488] text-white shadow-xs"
+                  : "text-[#64748B] dark:text-[#A6B5C0] hover:text-[#172B3A] dark:hover:text-[#E8F0F4]"
+              )}
+            >
+              Active in {selectedYear} ({yearStats.activeCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setYearFilterMode('all')}
+              className={cn(
+                "px-2.5 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer",
+                yearFilterMode === 'all'
+                  ? "bg-[#0D9488] text-white shadow-xs"
+                  : "text-[#64748B] dark:text-[#A6B5C0] hover:text-[#172B3A] dark:hover:text-[#E8F0F4]"
+              )}
+            >
+              All Years ({yearStats.allCount})
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-1.5 flex-wrap">
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-[#64748B] dark:text-[#A6B5C0]">
+            <Filter className="h-3.5 w-3.5 text-[#0D9488] dark:text-[#14B8A6]" />
+            <span>Role:</span>
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap">
           {filterOptions.map(opt => {
             const active = filterRole === opt.value;
             return (
@@ -671,7 +785,7 @@ export default function UsersModule({ userProfile }) {
                 className={cn(
                   "inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-medium border transition-all cursor-pointer",
                   active
-                    ? "bg-[#087A4B] text-white border-[#087A4B] shadow-xs font-semibold"
+                    ? "bg-[#0D9488] text-white border-[#0D9488] shadow-xs font-semibold"
                     : "bg-white dark:bg-[#15232D] border-[#DFE8EC] dark:border-[#2A3D48] text-[#64748B] dark:text-[#A6B5C0] hover:text-[#172B3A] dark:hover:text-[#E8F0F4] hover:bg-[#F4F8FA] dark:hover:bg-[#1D303B]"
                 )}
               >
@@ -687,6 +801,7 @@ export default function UsersModule({ userProfile }) {
               </button>
             );
           })}
+          </div>
         </div>
       </div>
 
@@ -694,9 +809,9 @@ export default function UsersModule({ userProfile }) {
       <Card className="border border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] text-foreground rounded-2xl shadow-xs overflow-hidden">
         <CardHeader className="border-b border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] px-6 py-4 flex flex-row items-center justify-between">
           <CardTitle className="text-base font-medium flex items-center gap-2.5 text-[#172B3A] dark:text-[#E8F0F4]">
-            <span>{isOwner ? 'Staff Roster' : 'All Registered Users'}</span>
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6]">
-              {totalUsersCount} total
+            <span>{isOwner ? 'Staff & Team Roster' : 'All Registered Users'}</span>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#0D9488]/10 text-[#0D9488] dark:text-[#14B8A6]">
+              {totalUsersCount} found for {yearFilterMode === 'all' ? 'all years' : selectedYear}
             </span>
           </CardTitle>
         </CardHeader>
@@ -750,8 +865,13 @@ export default function UsersModule({ userProfile }) {
                               <span className="text-[#172B3A] dark:text-[#E8F0F4] font-medium">{user.designation || '--'}</span>
                             </div>
                             <div>
-                              <span className="block text-[10px] uppercase font-semibold tracking-wider">DOB</span>
-                              <span className="text-[#172B3A] dark:text-[#E8F0F4] font-medium">{formatDisplayDate(user.dateOfBirth)}</span>
+                              <span className="block text-[10px] uppercase font-semibold tracking-wider">Joining Date</span>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-[#172B3A] dark:text-[#E8F0F4] font-medium">{formatDisplayDate(user.joiningDate || user.createdAt)}</span>
+                                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-[#0D9488]/10 text-[#0D9488] dark:text-[#14B8A6] border border-[#0D9488]/20">
+                                  {getEmployeeYear(user) || '--'}
+                                </span>
+                              </div>
                             </div>
                             <div>
                               <span className="block text-[10px] uppercase font-semibold tracking-wider">Salary</span>
@@ -762,10 +882,20 @@ export default function UsersModule({ userProfile }) {
                             <Button 
                               variant="ghost" 
                               size="icon" 
+                              onClick={() => setSelectedEmployeeForProfile(user)} 
+                              title="View Employee Profile" 
+                              aria-label="View Employee Profile"
+                              className="h-8 w-8 text-[#64748B] hover:text-[#0D9488] dark:hover:text-[#14B8A6] hover:bg-[#0D9488]/10 rounded-lg"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
                               onClick={() => handleGenerateResetLink(user)} 
                               title="Reset Password" 
                               aria-label="Reset Password"
-                              className="h-8 w-8 text-[#64748B] hover:text-[#087A4B] dark:hover:text-[#14B8A6] hover:bg-[#E8F3EC] rounded-lg"
+                              className="h-8 w-8 text-[#64748B] hover:text-[#0D9488] dark:hover:text-[#14B8A6] hover:bg-[#0D9488]/10 rounded-lg"
                             >
                               <KeyRound className="h-4 w-4" />
                             </Button>
@@ -775,7 +905,7 @@ export default function UsersModule({ userProfile }) {
                               onClick={() => handleOpenDialog(user)} 
                               title="Edit Profile"
                               aria-label="Edit Profile"
-                              className="h-8 w-8 text-[#64748B] hover:text-[#087A4B] dark:hover:text-[#14B8A6] hover:bg-[#E8F3EC] rounded-lg"
+                              className="h-8 w-8 text-[#64748B] hover:text-[#0D9488] dark:hover:text-[#14B8A6] hover:bg-[#0D9488]/10 rounded-lg"
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
@@ -827,6 +957,7 @@ export default function UsersModule({ userProfile }) {
                       <TableHead className="py-3.5 font-semibold text-[11px] uppercase tracking-wider text-[#64748B] dark:text-[#A6B5C0]">Username</TableHead>
                       <TableHead className="py-3.5 font-semibold text-[11px] uppercase tracking-wider text-[#64748B] dark:text-[#A6B5C0]">Department</TableHead>
                       <TableHead className="py-3.5 font-semibold text-[11px] uppercase tracking-wider text-[#64748B] dark:text-[#A6B5C0]">Designation</TableHead>
+                      <TableHead className="py-3.5 font-semibold text-[11px] uppercase tracking-wider text-[#64748B] dark:text-[#A6B5C0]">Joining Date</TableHead>
                       <TableHead className="py-3.5 font-semibold text-[11px] uppercase tracking-wider text-[#64748B] dark:text-[#A6B5C0]">Date of Birth</TableHead>
                       <TableHead className="py-3.5 font-semibold text-[11px] uppercase tracking-wider text-[#64748B] dark:text-[#A6B5C0]">Age</TableHead>
                       <TableHead className="py-3.5 font-semibold text-[11px] uppercase tracking-wider text-[#64748B] dark:text-[#A6B5C0]">Role</TableHead>
@@ -861,11 +992,19 @@ export default function UsersModule({ userProfile }) {
                         <TableCell className="text-[#64748B] dark:text-[#A6B5C0] py-3.5 text-xs">
                           {user.designation || '--'}
                         </TableCell>
+                        <TableCell className="text-[#172B3A] dark:text-[#E8F0F4] py-3.5 text-xs">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-medium">{formatDisplayDate(user.joiningDate || user.createdAt)}</span>
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-[#0D9488]/10 text-[#0D9488] dark:text-[#14B8A6] border border-[#0D9488]/20">
+                              {getEmployeeYear(user) || '--'}
+                            </span>
+                          </div>
+                        </TableCell>
                         <TableCell className="text-[#64748B] dark:text-[#A6B5C0] py-3.5 text-xs">
                           {formatDisplayDate(user.dateOfBirth)}
                         </TableCell>
                         <TableCell className="text-[#172B3A] dark:text-[#E8F0F4] py-3.5 text-xs">
-                          {(user.age ?? computeAge(user.dateOfBirth)) ?? '--'}
+                          {(user.dateOfBirth ? computeAge(user.dateOfBirth) : user.age) ?? '--'}
                         </TableCell>
                         <TableCell className="py-3.5">
                           <span className={cn("inline-flex rounded-md border px-2.5 py-0.5 text-[11px] capitalize", getRoleBadge(getRoleKey(user)))}>
@@ -880,10 +1019,20 @@ export default function UsersModule({ userProfile }) {
                             <Button
                               variant="ghost"
                               size="icon"
+                              onClick={() => setSelectedEmployeeForProfile(user)}
+                              title="View Employee Profile"
+                              aria-label="View Employee Profile"
+                              className="hover:bg-[#0D9488]/10 text-[#64748B] hover:text-[#0D9488] dark:hover:text-[#14B8A6] rounded-lg h-7 w-7 transition-colors"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
                               onClick={() => handleGenerateResetLink(user)}
                               title="Reset Password"
                               aria-label="Reset Password"
-                              className="hover:bg-[#E8F3EC] text-[#64748B] hover:text-[#087A4B] dark:hover:text-[#14B8A6] rounded-lg h-7 w-7 transition-colors"
+                              className="hover:bg-[#0D9488]/10 text-[#64748B] hover:text-[#0D9488] dark:hover:text-[#14B8A6] rounded-lg h-7 w-7 transition-colors"
                             >
                               <KeyRound className="h-3.5 w-3.5" />
                             </Button>
@@ -893,7 +1042,7 @@ export default function UsersModule({ userProfile }) {
                               onClick={() => handleOpenDialog(user)}
                               title="Edit User"
                               aria-label="Edit User"
-                              className="hover:bg-[#E8F3EC] text-[#64748B] hover:text-[#087A4B] dark:hover:text-[#14B8A6] rounded-lg h-7 w-7 transition-colors"
+                              className="hover:bg-[#0D9488]/10 text-[#64748B] hover:text-[#0D9488] dark:hover:text-[#14B8A6] rounded-lg h-7 w-7 transition-colors"
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
@@ -937,6 +1086,15 @@ export default function UsersModule({ userProfile }) {
           )}
         </CardContent>
       </Card>
+      {selectedEmployeeForProfile && (
+        <EmployeeProfileDialog
+          employee={selectedEmployeeForProfile}
+          open={!!selectedEmployeeForProfile}
+          onClose={() => setSelectedEmployeeForProfile(null)}
+          userProfile={userProfile}
+          selectedYear={selectedYear}
+        />
+      )}
     </div>
   );
 }

@@ -43,6 +43,18 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 
+const computeEmployeeAge = (dobVal) => {
+  if (!dobVal) return null;
+  const s = String(dobVal).trim();
+  const dob = new Date(s.includes('T') ? s : `${s}T00:00:00`);
+  if (Number.isNaN(dob.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - dob.getFullYear();
+  const m = now.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < dob.getDate())) age--;
+  return age >= 0 ? age : 0;
+};
+
 export default function EmployeeProfileDialog({
   employee,
   open,
@@ -413,7 +425,7 @@ export default function EmployeeProfileDialog({
                 <SafeAvatar
                   src={employee.avatar}
                   name={empName}
-                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl border-2 border-white dark:border-[#203A42] shadow-md ring-2 ring-[#087A4B]/20 dark:ring-[#45CFC0]/30"
+                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl border-2 border-white dark:border-[#203A42] shadow-md ring-2 ring-[#15966A]/20 dark:ring-[#45CFC0]/30"
                 />
                 <span
                   className={cn(
@@ -807,8 +819,10 @@ export default function EmployeeProfileDialog({
                     <span className="font-semibold text-[#1F2937] dark:text-[#E8F0F4] mt-0.5 block">{employee.gender || 'Not specified'}</span>
                   </div>
                   <div>
-                    <span className="text-muted-foreground dark:text-[#A8BAC3] block text-[11px]">Date of Birth</span>
-                    <span className="font-semibold text-[#1F2937] dark:text-[#E8F0F4] mt-0.5 block">{employee.dateOfBirth || 'Not specified'}</span>
+                    <span className="text-muted-foreground dark:text-[#A8BAC3] block text-[11px]">Date of Birth / Age</span>
+                    <span className="font-semibold text-[#1F2937] dark:text-[#E8F0F4] mt-0.5 block">
+                      {employee.dateOfBirth ? `${employee.dateOfBirth}${computeEmployeeAge(employee.dateOfBirth) !== null ? ` (Age: ${computeEmployeeAge(employee.dateOfBirth)} yrs)` : ''}` : (employee.age ? `Age: ${employee.age} yrs` : 'Not specified')}
+                    </span>
                   </div>
                   <div>
                     <span className="text-muted-foreground dark:text-[#A8BAC3] block text-[11px]">Reporting Manager</span>

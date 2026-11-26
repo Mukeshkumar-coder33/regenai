@@ -6,18 +6,20 @@ import environment from 'vite-plugin-environment';
 process.env.STORAGE_GATEWAY_URL =
   process.env.STORAGE_GATEWAY_URL || 'https://blob.caffeine.ai';
 
+const PROXY_TARGET = process.env.VITE_PROXY_TARGET || 'https://regen.krishub.in';
+
 export default defineConfig({
   logLevel: 'info',
 
   server: {
-    host: '::',          // ← listens on both IPv6 (::1/localhost) and IPv4 (127.0.0.1/LAN/Nginx)
+    host: '::',          // listens on IPv6 & IPv4 LAN/Nginx
     port: 2000,
     strictPort: false,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:5006',  // your backend
+        target: PROXY_TARGET,
         changeOrigin: true,
-        secure: false,
+        secure: true,
         timeout: 30000,
         proxyTimeout: 30000,
         configure: (proxy) => {
@@ -30,32 +32,32 @@ export default defineConfig({
         }
       },
       '/ws': {
-        target: 'http://127.0.0.1:5006',
+        target: PROXY_TARGET,
         changeOrigin: true,
-        secure: false,
+        secure: true,
         ws: true,
         configure: (proxy) => {
           proxy.on('error', () => {});
         }
       },
       '/socket.io': {
-        target: 'http://127.0.0.1:5006',
+        target: PROXY_TARGET,
         changeOrigin: true,
-        secure: false,
+        secure: true,
         ws: true
       },
       '/assets': {
-        target: 'http://127.0.0.1:5006',
+        target: PROXY_TARGET,
         changeOrigin: true,
-        secure: false
+        secure: true
       },
       '/uploads': {
-        target: 'http://127.0.0.1:5006',
+        target: PROXY_TARGET,
         changeOrigin: true,
-        secure: false
+        secure: true
       }
     },
-    allowedHosts: true   // ← allow localhost, LAN IPs, and regen.krishub.in
+    allowedHosts: true   // allow regen.krishub.in, subdomains, and LAN hosts
   },
 
   build: {

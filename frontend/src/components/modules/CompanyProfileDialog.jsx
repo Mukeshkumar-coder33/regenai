@@ -260,7 +260,7 @@ export default function CompanyProfileDialog({
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
             {/* Logo & Company Identity */}
             <div className="flex items-start gap-4 min-w-0">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-[#E8F3EC] text-[#087A4B] dark:text-[#45CFC0] border-2 border-white dark:border-[#203A42] shadow-md ring-2 ring-[#087A4B]/20 dark:ring-[#45CFC0]/30 flex items-center justify-center shrink-0">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-teal-500/10 text-teal-600 dark:text-[#45CFC0] border-2 border-white dark:border-[#203A42] shadow-md ring-2 ring-[#15966A]/20 dark:ring-[#45CFC0]/30 flex items-center justify-center shrink-0">
                 {company.logo ? (
                   <img src={company.logo} alt={compName} className="w-full h-full object-cover rounded-2xl" />
                 ) : (

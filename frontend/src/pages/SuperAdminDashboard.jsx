@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef, forwardRef } from 'react';
 import { toast } from 'sonner';
 import { Toaster } from '@/components/ui/sonner';
 import { authFetch, cn, hasUserRole, getUserRoleKey } from '@/lib/utils';
+import { apiFetch } from '@/lib/backendConfig';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -138,6 +139,48 @@ function SuperAdminContent({ isAuthenticated, setIsAuthenticated }) {
   const [dbProjects, setDbProjects] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
 
+  const currentYear = new Date().getFullYear();
+  const availableYears = useMemo(() => {
+    let minYear = currentYear;
+    (dbUsers || []).forEach(u => {
+      if (u.joiningDate) {
+        const y = new Date(u.joiningDate).getFullYear();
+        if (y && !isNaN(y) && y >= 1970 && y <= currentYear + 1) minYear = Math.min(minYear, y);
+      }
+      if (u.createdAt) {
+        const y = new Date(u.createdAt).getFullYear();
+        if (y && !isNaN(y) && y >= 1970 && y <= currentYear + 1) minYear = Math.min(minYear, y);
+      }
+    });
+    (dbCompanies || []).forEach(c => {
+      const est = c.establishmentYear || c.establishedYear || c.startedYear || c.startYear || (c.establishmentDate ? new Date(c.establishmentDate).getFullYear() : null) || (c.startDate ? new Date(c.startDate).getFullYear() : null) || (c.createdAt ? new Date(c.createdAt).getFullYear() : null);
+      if (est && !isNaN(est) && Number(est) >= 1970 && Number(est) <= currentYear + 1) minYear = Math.min(minYear, Number(est));
+    });
+    const years = [];
+    for (let y = minYear; y <= currentYear; y++) {
+      years.push(y);
+    }
+    return years.length > 0 ? years : [currentYear];
+  }, [dbUsers, dbCompanies, currentYear]);
+
+  const [selectedYear, setSelectedYear] = useState(() => {
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('regen_selected_year') : null;
+    const parsed = saved ? parseInt(saved, 10) : currentYear;
+    return !isNaN(parsed) ? parsed : currentYear;
+  });
+
+  useEffect(() => {
+    if (availableYears.length > 0 && !availableYears.includes(selectedYear)) {
+      setSelectedYear(availableYears[availableYears.length - 1]);
+    }
+  }, [availableYears, selectedYear]);
+
+  useEffect(() => {
+    if (selectedYear) {
+      localStorage.setItem('regen_selected_year', String(selectedYear));
+    }
+  }, [selectedYear]);
+
   // Restore session on page load / refresh
   useEffect(() => {
     const restoreSession = async () => {
@@ -228,7 +271,7 @@ function SuperAdminContent({ isAuthenticated, setIsAuthenticated }) {
   const handleLogin = async (e) => {
     e.preventDefault();
     try {
-      const resp = await fetch('/api/auth/login', {
+      const resp = await apiFetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -663,7 +706,7 @@ function SuperAdminContent({ isAuthenticated, setIsAuthenticated }) {
                 const TabIcon = config.icon;
                 return (
                   <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-2xl bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] flex items-center justify-center shrink-0 shadow-2xs">
+                    <div className="w-11 h-11 rounded-2xl bg-[#15966A]/10 text-[#15966A] dark:text-[#14B8A6] flex items-center justify-center shrink-0 shadow-2xs">
                       <TabIcon className="h-5 w-5" />
                     </div>
                     <div className="min-w-0">
@@ -679,6 +722,24 @@ function SuperAdminContent({ isAuthenticated, setIsAuthenticated }) {
               })()}
             </div>
             <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+              {/* Year Selector Dropdown in Navbar */}
+              <div className="flex items-center gap-1 sm:gap-1.5 bg-secondary/80 hover:bg-secondary border border-border px-1.5 sm:px-3 lg:px-3.5 py-1 sm:py-1.5 rounded-lg sm:rounded-xl transition-all shadow-2xs">
+                <Calendar className="w-3 h-3 sm:w-3.5 sm:h-3.5 lg:w-4 lg:h-4 text-[#15966A] dark:text-[#36BEB0] shrink-0" />
+                <span className="text-xs lg:text-sm font-semibold text-muted-foreground hidden sm:inline">Year:</span>
+                <select
+                  id="superadmin-year-selector"
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(Number(e.target.value))}
+                  className="bg-transparent text-[11px] sm:text-xs lg:text-sm font-bold text-foreground focus:outline-none cursor-pointer pr-0.5 sm:pr-1"
+                  aria-label="Select Year"
+                >
+                  {availableYears.map((yr) => (
+                    <option key={yr} value={yr} className="bg-card text-foreground font-semibold">
+                      {yr}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <button
                 type="button"
                 onClick={() => setTheme(isDark ? 'light' : 'dark')}
@@ -764,16 +825,17 @@ function SuperAdminContent({ isAuthenticated, setIsAuthenticated }) {
               profileData={profileData}
               onNavigate={setActiveTab}
               setGlobalSearchTerm={setSearchTerm}
+              selectedYear={selectedYear}
             />
           )}
-          {activeTab === 'companies' && <TabCompanies dbCompanies={dbCompanies} searchTerm={searchTerm} onRefresh={fetchRealData} />}
-          {activeTab === 'users' && <TabUsers dbUsers={dbUsers} dbCompanies={dbCompanies} searchTerm={searchTerm} onRefresh={fetchRealData} />}
+          {activeTab === 'companies' && <TabCompanies dbCompanies={dbCompanies} searchTerm={searchTerm} onRefresh={fetchRealData} selectedYear={selectedYear} />}
+          {activeTab === 'users' && <TabUsers dbUsers={dbUsers} dbCompanies={dbCompanies} searchTerm={searchTerm} onRefresh={fetchRealData} selectedYear={selectedYear} onYearChange={setSelectedYear} profileData={profileData} />}
           {activeTab === 'calendar' && (
             <div className="pb-10">
-              <CalendarModule userProfile={profileData} portalType="superadmin" initialUsers={dbUsers} />
+              <CalendarModule userProfile={profileData} portalType="superadmin" initialUsers={dbUsers} selectedYear={selectedYear} />
             </div>
           )}
-          {activeTab === 'payments' && <TabPayments dbCompanies={dbCompanies} dbUsers={dbUsers} />}
+          {activeTab === 'payments' && <TabPayments dbCompanies={dbCompanies} dbUsers={dbUsers} selectedYear={selectedYear} />}
           {activeTab === 'analytics' && (
             <TabAnalytics 
               dbCompanies={dbCompanies} 
@@ -864,11 +926,12 @@ function TabDashboard({
   dbCompanies = [], 
   dbAttendance = [], 
   dbTasks = [], 
-  dbMessages = [],
+  dbMessages = [], 
   dbProjects = [],
   profileData,
   onNavigate,
-  setGlobalSearchTerm
+  setGlobalSearchTerm,
+  selectedYear
 }) {
   const activeCount = dbUsers.filter(u => u.status === 'active').length;
 
@@ -1048,7 +1111,7 @@ function TabDashboard({
   };
 
   const hasSearchResults = matchingCompanies.length > 0 || matchingUsers.length > 0 || matchingModules.length > 0;
-  const currentYear = new Date().getFullYear();
+  const currentYear = selectedYear || new Date().getFullYear();
 
   // Dynamic Revenue Trends based on active user usage and company subscriptions over the past 6 months
   const revenueTrendsData = useMemo(() => {
@@ -1204,7 +1267,7 @@ function TabDashboard({
         <div className="flex items-center shrink-0 w-full lg:w-auto">
           {/* Search input container */}
           <div ref={searchContainerRef} className="relative w-full sm:w-[420px] md:w-[460px] lg:w-[500px] xl:w-[540px]">
-            <div className="h-11 sm:h-12 flex items-center bg-[#F8FAF9] dark:bg-[#091E24] border border-[#E1E8E4] dark:border-[#203A42] rounded-xl transition-all focus-within:border-[#087A4B] dark:focus-within:border-[#36BEB0] focus-within:ring-1 focus-within:ring-[#087A4B]/25 dark:focus-within:ring-[#36BEB0]/25 shadow-2xs">
+            <div className="h-11 sm:h-12 flex items-center bg-[#F8FAF9] dark:bg-[#091E24] border border-[#D5E5D7] dark:border-[#203A42] rounded-xl transition-all focus-within:border-[#15966A] dark:focus-within:border-[#36BEB0] focus-within:ring-1 focus-within:ring-[#15966A]/25 dark:focus-within:ring-[#36BEB0]/25 shadow-2xs">
               <Search className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-muted-foreground dark:text-[#688A84] shrink-0 ml-3.5 sm:ml-4" />
               <input
                 type="text"
@@ -1467,15 +1530,15 @@ function TabDashboard({
               <AreaChart data={revenueTrendsData}>
                 <defs>
                   <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#087A4B" stopOpacity={0.35}/>
-                    <stop offset="95%" stopColor="#087A4B" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#0D9488" stopOpacity={0.35}/>
+                    <stop offset="95%" stopColor="#0D9488" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#2A3D48" opacity={0.4} vertical={false} />
                 <XAxis dataKey="month" stroke="#A6B5C0" fontSize={12} />
                 <YAxis stroke="#A6B5C0" fontSize={12} tickFormatter={(v) => `$${v}`} />
                 <Tooltip 
-                  cursor={{ stroke: '#087A4B', strokeWidth: 1.5, strokeDasharray: '4 4' }}
+                  cursor={{ stroke: '#0D9488', strokeWidth: 1.5, strokeDasharray: '4 4' }}
                   content={({ active, payload, label }) => {
                     if (active && payload && payload.length) {
                       const item = payload[0].payload;
@@ -1486,7 +1549,7 @@ function TabDashboard({
                             {label}
                             {item?.companies !== undefined ? ` — ${item.companies} Companies, ${item.activeUsers || 0} Users` : ''}
                           </p>
-                          <p style={{ color: '#087A4B', fontWeight: 700, fontSize: '15px', margin: 0 }}>
+                          <p style={{ color: '#0D9488', fontWeight: 700, fontSize: '15px', margin: 0 }}>
                             Monthly Revenue: ${Number(val || 0).toLocaleString()}
                           </p>
                           {item?.growth !== undefined && (
@@ -1500,7 +1563,7 @@ function TabDashboard({
                     return null;
                   }}
                 />
-                <Area type="monotone" dataKey="revenue" stroke="#087A4B" fillOpacity={1} fill="url(#colorRev)" strokeWidth={2.5} />
+                <Area type="monotone" dataKey="revenue" stroke="#0D9488" fillOpacity={1} fill="url(#colorRev)" strokeWidth={2.5} />
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>
@@ -1551,7 +1614,7 @@ function TabDashboard({
                     return null;
                   }}
                 />
-                <Bar dataKey="active" fill="#087A4B" radius={[6, 6, 0, 0]} barSize={24} />
+                <Bar dataKey="active" fill="#0D9488" radius={[6, 6, 0, 0]} barSize={24} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -1581,6 +1644,7 @@ function TabDashboard({
           open={!!selectedEmployee}
           onClose={() => setSelectedEmployee(null)}
           userProfile={profileData}
+          selectedYear={currentYear}
           allAttendance={dbAttendance}
           allTasks={dbTasks}
           allProjects={dbProjects}
@@ -1787,11 +1851,20 @@ function CompanyFormFields({ data, setData }) {
           />
         </div>
       </div>
+      {selectedEmployeeForProfile && (
+        <EmployeeProfileDialog
+          employee={selectedEmployeeForProfile}
+          open={!!selectedEmployeeForProfile}
+          onClose={() => setSelectedEmployeeForProfile(null)}
+          userProfile={profileData}
+          selectedYear={selectedYear}
+        />
+      )}
     </div>
   );
 }
 
-function TabCompanies({ dbCompanies, searchTerm, onRefresh }) {
+function TabCompanies({ dbCompanies, searchTerm, onRefresh, selectedYear }) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingCompany, setEditingCompany] = useState(null);
@@ -2166,7 +2239,7 @@ function TabCompanies({ dbCompanies, searchTerm, onRefresh }) {
           </span>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="h-10 px-4 bg-primary hover:bg-[#07563B] text-white font-medium text-sm rounded-lg shadow-sm shadow-primary/20 flex items-center gap-2 transition-all cursor-pointer">
+              <Button className="h-10 px-4 bg-primary hover:bg-[#0f766e] text-white font-medium text-sm rounded-lg shadow-sm shadow-primary/20 flex items-center gap-2 transition-all cursor-pointer">
                 <Plus className="w-4 h-4" />
                 <span>Add Company</span>
               </Button>
@@ -2190,7 +2263,7 @@ function TabCompanies({ dbCompanies, searchTerm, onRefresh }) {
                   <Button variant="outline" onClick={(e) => handleSubmit(e, true)} className="h-10 border-border/80 bg-background/60 text-foreground font-medium text-sm rounded-lg hover:bg-muted">
                     Add & Continue
                   </Button>
-                  <Button onClick={(e) => handleSubmit(e, false)} className="h-10 px-5 bg-primary text-white hover:bg-[#07563B] font-semibold text-sm rounded-lg shadow-sm shadow-primary/20 transition-all">
+                  <Button onClick={(e) => handleSubmit(e, false)} className="h-10 px-5 bg-primary text-white hover:bg-[#0f766e] font-semibold text-sm rounded-lg shadow-sm shadow-primary/20 transition-all">
                     Register Company
                   </Button>
                 </div>
@@ -2218,7 +2291,7 @@ function TabCompanies({ dbCompanies, searchTerm, onRefresh }) {
               <Button variant="ghost" onClick={() => setEditDialogOpen(false)} className="h-10 rounded-lg text-muted-foreground hover:bg-muted font-medium text-sm">
                 Cancel
               </Button>
-              <Button onClick={handleEditSubmit} className="h-10 px-5 bg-primary text-white hover:bg-[#07563B] font-semibold text-sm rounded-lg shadow-sm shadow-primary/20 transition-all">
+              <Button onClick={handleEditSubmit} className="h-10 px-5 bg-primary text-white hover:bg-[#0f766e] font-semibold text-sm rounded-lg shadow-sm shadow-primary/20 transition-all">
                 Save Changes
               </Button>
             </div>
@@ -2460,7 +2533,7 @@ function TabCompanies({ dbCompanies, searchTerm, onRefresh }) {
                   <span>{credentialResult.emailSent ? `Credentials dispatched to ${credentialResult.email}` : (credentialResult.emailNote || 'Email notification pending')}</span>
                 </div>
                 <p className="text-[10px] text-muted-foreground text-center">The owner must change this initial password upon first sign-in.</p>
-                <Button onClick={() => setCredDialogOpen(false)} className="w-full h-10 bg-primary text-white hover:bg-[#07563B] font-semibold text-sm rounded-lg mt-2 shadow-sm shadow-primary/20">
+                <Button onClick={() => setCredDialogOpen(false)} className="w-full h-10 bg-primary text-white hover:bg-[#0f766e] font-semibold text-sm rounded-lg mt-2 shadow-sm shadow-primary/20">
                   Dismiss
                 </Button>
               </div>
@@ -2505,7 +2578,7 @@ function TabCompanies({ dbCompanies, searchTerm, onRefresh }) {
               <Button
                 onClick={handleToggleStatus}
                 disabled={otpLoading || otpCode.length !== 6}
-                className={`h-10 font-semibold text-sm rounded-lg ${otpTarget?.status === 'blocked' ? 'bg-primary hover:bg-[#07563B] text-white shadow-sm shadow-primary/20' : 'bg-amber-600 hover:bg-amber-700 text-white'}`}
+                className={`h-10 font-semibold text-sm rounded-lg ${otpTarget?.status === 'blocked' ? 'bg-primary hover:bg-[#0f766e] text-white shadow-sm shadow-primary/20' : 'bg-amber-600 hover:bg-amber-700 text-white'}`}
               >
                 {otpLoading ? 'Verifying…' : otpTarget?.status === 'blocked' ? 'Unblock' : 'Confirm Block'}
               </Button>
@@ -2579,7 +2652,7 @@ function TabCompanies({ dbCompanies, searchTerm, onRefresh }) {
                       ))}
                     </div>
                   )}
-                  <Button onClick={() => { setDeleteDialogOpen(false); setDeleteResult(null); }} className="w-full h-10 bg-primary text-white hover:bg-[#07563B] font-semibold text-sm rounded-lg mt-2 shadow-sm shadow-primary/20">
+                  <Button onClick={() => { setDeleteDialogOpen(false); setDeleteResult(null); }} className="w-full h-10 bg-primary text-white hover:bg-[#0f766e] font-semibold text-sm rounded-lg mt-2 shadow-sm shadow-primary/20">
                     Done
                   </Button>
                 </div>
@@ -2725,7 +2798,7 @@ function TabCompanies({ dbCompanies, searchTerm, onRefresh }) {
                 disabled={backupActionLoading || backupActionOtp.length !== 6}
                 className={`h-10 font-semibold text-sm rounded-lg text-white ${
                   backupActionType === 'download' ? 'bg-sky-600 hover:bg-sky-700' :
-                  backupActionType === 'restore' ? 'bg-primary hover:bg-[#07563B] shadow-sm shadow-primary/20' :
+                  backupActionType === 'restore' ? 'bg-primary hover:bg-[#0f766e] shadow-sm shadow-primary/20' :
                   'bg-rose-600 hover:bg-rose-700'
                 }`}
               >
@@ -2793,13 +2866,28 @@ function renderRoleBadge(role) {
   }
 }
 
-function TabUsers({ dbUsers = [], dbCompanies = [], searchTerm = '', onRefresh }) {
+function TabUsers({ dbUsers = [], dbCompanies = [], searchTerm = '', onRefresh, selectedYear = new Date().getFullYear(), onYearChange, profileData }) {
   const [selectedCompanyId, setSelectedCompanyId] = useState(() => {
     if (typeof window === 'undefined') return null;
     return new URLSearchParams(window.location.search).get('companyId') || null;
   });
   const [localSearch, setLocalSearch] = useState(searchTerm || '');
   const [togglingId, setTogglingId] = useState(null);
+  const [yearFilterMode, setYearFilterMode] = useState('active'); // 'active' | 'specific' | 'all'
+  const [selectedEmployeeForProfile, setSelectedEmployeeForProfile] = useState(null);
+
+  const getEmployeeYear = (u) => {
+    if (!u) return null;
+    if (u.joiningDate) {
+      const d = new Date(u.joiningDate);
+      if (!isNaN(d.getTime())) return d.getFullYear();
+    }
+    if (u.createdAt) {
+      const d = new Date(u.createdAt);
+      if (!isNaN(d.getTime())) return d.getFullYear();
+    }
+    return null;
+  };
 
   const handleSelectCompany = (cid) => {
     setSelectedCompanyId(cid);
@@ -3179,14 +3267,36 @@ function TabUsers({ dbUsers = [], dbCompanies = [], searchTerm = '', onRefresh }
       });
     }
 
+    groupsList.forEach(g => {
+      g.allEmployees = g.employees;
+      g.employeesInYear = g.employees.filter(u => {
+        const y = getEmployeeYear(u);
+        if (y === null) return true;
+        if (yearFilterMode === 'active') return y <= selectedYear;
+        if (yearFilterMode === 'specific') return y === selectedYear;
+        return true;
+      });
+    });
+
     return groupsList;
-  }, [dbCompanies, dbUsers]);
+  }, [dbCompanies, dbUsers, selectedYear, yearFilterMode]);
 
   // Find currently selected company
   const selectedCompany = useMemo(() => {
     if (!selectedCompanyId) return null;
     return companyGroups.find(g => g.id === selectedCompanyId) || null;
   }, [companyGroups, selectedCompanyId]);
+
+  const activeCompanyEmployees = useMemo(() => {
+    if (!selectedCompany) return [];
+    if (yearFilterMode === 'all') return selectedCompany.employees;
+    return selectedCompany.employees.filter(u => {
+      const y = getEmployeeYear(u);
+      if (y === null) return true;
+      if (yearFilterMode === 'active') return y <= selectedYear;
+      return y === selectedYear;
+    });
+  }, [selectedCompany, yearFilterMode, selectedYear]);
 
   // Overall system metrics
   const activeCount = useMemo(() => dbUsers.filter(u => u.status === 'active').length, [dbUsers]);
@@ -3217,8 +3327,8 @@ function TabUsers({ dbUsers = [], dbCompanies = [], searchTerm = '', onRefresh }
   const filteredEmployees = useMemo(() => {
     if (!selectedCompany) return [];
     const term = (localSearch || '').toLowerCase().trim();
-    if (!term) return selectedCompany.employees;
-    return selectedCompany.employees.filter(u => {
+    if (!term) return activeCompanyEmployees;
+    return activeCompanyEmployees.filter(u => {
       return (
         u.name?.toLowerCase().includes(term) || 
         u.username?.toLowerCase().includes(term) ||
@@ -3228,7 +3338,7 @@ function TabUsers({ dbUsers = [], dbCompanies = [], searchTerm = '', onRefresh }
         u.role?.toLowerCase().includes(term)
       );
     });
-  }, [selectedCompany, localSearch]);
+  }, [selectedCompany, activeCompanyEmployees, localSearch]);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300 pb-10">
@@ -3268,8 +3378,8 @@ function TabUsers({ dbUsers = [], dbCompanies = [], searchTerm = '', onRefresh }
       {/* VIEW 1: COMPANY LIST (Default View) */}
       {!selectedCompany ? (
         <div className="space-y-4">
-          {/* Search Toolbar */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-card/70 backdrop-blur-xs p-3 sm:p-3.5 rounded-xl border border-border/80 shadow-xs">
+          {/* Search Toolbar with Year Filter Toggle */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-card/70 backdrop-blur-xs p-3 sm:p-3.5 rounded-xl border border-border/80 shadow-xs">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/70 pointer-events-none" />
               <Input 
@@ -3279,7 +3389,45 @@ function TabUsers({ dbUsers = [], dbCompanies = [], searchTerm = '', onRefresh }
                 onChange={(e) => setLocalSearch(e.target.value)}
               />
             </div>
-            <div className="flex items-center gap-3 shrink-0">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <div className="inline-flex rounded-lg border border-border p-0.5 bg-background">
+                <button
+                  type="button"
+                  onClick={() => setYearFilterMode('specific')}
+                  className={cn(
+                    "px-2.5 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer",
+                    yearFilterMode === 'specific'
+                      ? "bg-[#15966A] text-white shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Joined in {selectedYear}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setYearFilterMode('active')}
+                  className={cn(
+                    "px-2.5 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer",
+                    yearFilterMode === 'active'
+                      ? "bg-[#15966A] text-white shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Active in {selectedYear}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setYearFilterMode('all')}
+                  className={cn(
+                    "px-2.5 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer",
+                    yearFilterMode === 'all'
+                      ? "bg-[#15966A] text-white shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  All Years
+                </button>
+              </div>
               <span className="text-xs text-muted-foreground">
                 Showing <strong className="text-foreground font-semibold">{filteredCompanyGroups.length}</strong> {filteredCompanyGroups.length === 1 ? 'company' : 'companies'}
               </span>
@@ -3364,14 +3512,15 @@ function TabUsers({ dbUsers = [], dbCompanies = [], searchTerm = '', onRefresh }
                     <div className="text-right hidden sm:flex flex-col items-end gap-1">
                       <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-teal-50 dark:bg-primary/10 text-teal-800 dark:text-primary border border-teal-200 dark:border-primary/20">
                         <Users className="w-3.5 h-3.5 text-teal-600 dark:text-primary" />
-                        <span>{empCount} {empCount === 1 ? 'employee' : 'employees'}</span>
+                        <span>{group.employeesInYear ? group.employeesInYear.length : empCount} in {selectedYear}</span>
                       </div>
-                      {empCount > 0 && (
-                        <div className="text-[11px] text-slate-600 dark:text-muted-foreground flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 shrink-0" />
-                          <span>{activeEmps} active</span>
-                        </div>
-                      )}
+                      <div className="text-[11px] text-slate-600 dark:text-muted-foreground flex items-center gap-1.5 flex-wrap justify-end">
+                        <span>Staff: {group.employeesInYear?.filter(u => u.role === 'staff' || u.role === 'admin').length || 0}</span>
+                        <span>•</span>
+                        <span>Intern: {group.employeesInYear?.filter(u => u.role === 'intern').length || 0}</span>
+                        <span>•</span>
+                        <span>Freelance: {group.employeesInYear?.filter(u => u.role === 'freelancer').length || 0}</span>
+                      </div>
                     </div>
                     <div className="sm:hidden">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-teal-50 dark:bg-primary/10 text-teal-800 dark:text-primary border border-teal-200 dark:border-primary/20">
@@ -3514,7 +3663,7 @@ function TabUsers({ dbUsers = [], dbCompanies = [], searchTerm = '', onRefresh }
                   )}
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-teal-50 dark:bg-primary/10 text-teal-800 dark:text-primary border border-teal-200 dark:border-primary/20 shrink-0">
                     <Users className="w-3.5 h-3.5 text-teal-600 dark:text-primary" />
-                    {selectedCompany.employees.length} {selectedCompany.employees.length === 1 ? 'employee' : 'employees'}
+                    {activeCompanyEmployees.length} in {selectedYear} ({selectedCompany.employees.length} all-time)
                   </span>
                 </div>
                 <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 truncate">
@@ -3559,6 +3708,7 @@ function TabUsers({ dbUsers = [], dbCompanies = [], searchTerm = '', onRefresh }
                     <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/90 h-11">Affiliated Company</TableHead>
                     <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/90 h-11">Department</TableHead>
                     <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/90 h-11">Role</TableHead>
+                    <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/90 h-11">Joining Date</TableHead>
                     <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/90 h-11">Status</TableHead>
                     <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/90 h-11 text-right pr-5">Actions</TableHead>
                   </TableRow>
@@ -3616,6 +3766,16 @@ function TabUsers({ dbUsers = [], dbCompanies = [], searchTerm = '', onRefresh }
                           {renderRoleBadge(user.role)}
                         </TableCell>
 
+                        {/* Joining Date */}
+                        <TableCell className="py-3.5 text-xs">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-medium text-foreground">{user.joiningDate ? new Date(user.joiningDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : (user.createdAt ? new Date(user.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '--')}</span>
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-primary/10 text-primary border border-primary/20">
+                              {getEmployeeYear(user) || '--'}
+                            </span>
+                          </div>
+                        </TableCell>
+
                         {/* Status Indicator */}
                         <TableCell className="py-3.5">
                           {user.status === 'active' ? (
@@ -3634,6 +3794,16 @@ function TabUsers({ dbUsers = [], dbCompanies = [], searchTerm = '', onRefresh }
                         {/* Actions Column */}
                         <TableCell className="py-3.5 pr-5 text-right">
                           <div className="flex items-center justify-end gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setSelectedEmployeeForProfile(user)}
+                              className="h-8 px-2.5 rounded-xl border-border/80 bg-card hover:bg-muted text-foreground text-xs font-semibold"
+                              title="View Employee Profile"
+                            >
+                              <Eye className="w-3.5 h-3.5 mr-1 text-primary" />
+                              View
+                            </Button>
                             {!hasUserRole(user, 'param') && (
                               user.status === 'active' ? (
                                 <Button
@@ -3816,7 +3986,7 @@ function TabUsers({ dbUsers = [], dbCompanies = [], searchTerm = '', onRefresh }
                 <Button
                   type="submit"
                   disabled={editSaving}
-                  className="h-10 px-5 bg-primary hover:bg-[#07563B] text-white font-semibold text-xs rounded-lg shadow-sm shadow-primary/20 transition-all flex items-center gap-2"
+                  className="h-10 px-5 bg-primary hover:bg-[#0f766e] text-white font-semibold text-xs rounded-lg shadow-sm shadow-primary/20 transition-all flex items-center gap-2"
                 >
                   {editSaving ? 'Saving Changes…' : 'Save Changes'}
                 </Button>
@@ -3977,7 +4147,7 @@ function TabUsers({ dbUsers = [], dbCompanies = [], searchTerm = '', onRefresh }
                   type="button"
                   onClick={handleSaveReplace}
                   disabled={replaceSaving}
-                  className="h-10 px-5 bg-primary hover:bg-[#07563B] text-white font-semibold text-xs rounded-lg shadow-sm shadow-primary/20 transition-all flex items-center gap-2"
+                  className="h-10 px-5 bg-primary hover:bg-[#0f766e] text-white font-semibold text-xs rounded-lg shadow-sm shadow-primary/20 transition-all flex items-center gap-2"
                 >
                   {replaceSaving ? 'Processing Replace…' : 'Confirm Replacement'}
                 </Button>
@@ -4508,7 +4678,7 @@ function ManageUserDialog({ user, dbCompanies = [], onRefresh }) {
 }
 
 
-function TabPayments({ dbCompanies = [], dbUsers = [] }) {
+function TabPayments({ dbCompanies = [], dbUsers = [], selectedYear }) {
   // Real billing calculations: pull amount from actual company records; if not set or 0, real value is 0
   const billingStats = useMemo(() => {
     const activeCompanies = dbCompanies.filter(c => c.status !== 'blocked');
@@ -4934,7 +5104,7 @@ function TabAnalytics({ dbCompanies = [], dbUsers = [], dbAttendance = [], dbTas
                 Growth Metrics (Companies & Users)
               </CardTitle>
               <div className="flex items-center gap-3 text-xs">
-                <span className="flex items-center gap-1.5 text-muted-foreground"><span className="w-2.5 h-2.5 rounded-full bg-[#087A4B]"></span> Companies</span>
+                <span className="flex items-center gap-1.5 text-muted-foreground"><span className="w-2.5 h-2.5 rounded-full bg-[#0D9488]"></span> Companies</span>
                 <span className="flex items-center gap-1.5 text-muted-foreground"><span className="w-2.5 h-2.5 rounded-full bg-[#0284c7]"></span> Users</span>
               </div>
             </div>
@@ -4962,7 +5132,7 @@ function TabAnalytics({ dbCompanies = [], dbUsers = [], dbAttendance = [], dbTas
                           <div className="space-y-2">
                             <div className="flex items-center justify-between gap-4">
                               <div className="flex items-center gap-2">
-                                <span className="w-2.5 h-2.5 rounded-full bg-[#087A4B] shrink-0" />
+                                <span className="w-2.5 h-2.5 rounded-full bg-[#0D9488] shrink-0" />
                                 <span className="text-slate-300 font-medium">Companies:</span>
                               </div>
                               <span className="font-bold text-slate-100 font-mono text-sm">
@@ -4985,7 +5155,7 @@ function TabAnalytics({ dbCompanies = [], dbUsers = [], dbAttendance = [], dbTas
                     return null;
                   }}
                 />
-                <Line type="monotone" dataKey="companies" stroke="#087A4B" strokeWidth={3} dot={{ r: 4, fill: '#087A4B' }} />
+                <Line type="monotone" dataKey="companies" stroke="#0D9488" strokeWidth={3} dot={{ r: 4, fill: '#0D9488' }} />
                 <Line type="monotone" dataKey="users" stroke="#0284c7" strokeWidth={3} dot={{ r: 4, fill: '#0284c7' }} />
               </LineChart>
             </ResponsiveContainer>
@@ -5007,8 +5177,8 @@ function TabAnalytics({ dbCompanies = [], dbUsers = [], dbAttendance = [], dbTas
               <AreaChart data={operationalIntensityData}>
                 <defs>
                   <linearGradient id="colorIntensity" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#087A4B" stopOpacity={0.4}/>
-                    <stop offset="95%" stopColor="#087A4B" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#0D9488" stopOpacity={0.4}/>
+                    <stop offset="95%" stopColor="#0D9488" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#2A3D48" opacity={0.4} vertical={false} />
@@ -5052,7 +5222,7 @@ function TabAnalytics({ dbCompanies = [], dbUsers = [], dbAttendance = [], dbTas
                     return null;
                   }}
                 />
-                <Area type="monotone" dataKey="intensity" stroke="#087A4B" fillOpacity={1} fill="url(#colorIntensity)" strokeWidth={2.5} />
+                <Area type="monotone" dataKey="intensity" stroke="#0D9488" fillOpacity={1} fill="url(#colorIntensity)" strokeWidth={2.5} />
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>

@@ -29,7 +29,7 @@ function SelectTrigger({
             data-slot="select-trigger"
             data-size={size}
             className={cn(
-                "border-[#E1E8E4] data-[placeholder]:text-[#829089] [&_svg:not([class*='text-'])]:text-[#829089] focus-visible:border-[#087A4B] focus-visible:ring-2 focus-visible:ring-[#087A4B]/20 aria-invalid:ring-[#DC4C4C]/20 aria-invalid:border-[#DC4C4C] bg-white text-[#17231F] flex w-full items-center justify-between gap-2 rounded-xl border px-3.5 py-2 text-sm whitespace-nowrap shadow-2xs transition-all outline-none disabled:cursor-not-allowed disabled:opacity-50 data-[size=default]:h-10 data-[size=sm]:h-8.5 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-2 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 cursor-pointer",
+                "border-border/80 data-[placeholder]:text-muted-foreground/70 [&_svg:not([class*='text-'])]:text-muted-foreground focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/25 aria-invalid:ring-rose-500/20 aria-invalid:border-rose-500 bg-background/80 flex w-full items-center justify-between gap-2 rounded-xl border px-3.5 py-2 text-sm whitespace-nowrap shadow-2xs transition-all outline-none disabled:cursor-not-allowed disabled:opacity-50 data-[size=default]:h-10 data-[size=sm]:h-8.5 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-2 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 cursor-pointer",
                 className
             )}
             {...props}
@@ -92,7 +92,7 @@ function SelectItem({ className, children, ...props }) {
         <SelectPrimitive.Item
             data-slot="select-item"
             className={cn(
-                "focus:bg-[#E8F3EC] focus:text-[#087A4B] text-[#17231F] [&_svg:not([class*='text-'])]:text-[#829089] relative flex w-full cursor-pointer items-center gap-2 rounded-lg py-2 pr-8 pl-2.5 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 transition-colors *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
+                "focus:bg-teal-50/70 dark:focus:bg-teal-950/40 focus:text-teal-700 dark:focus:text-teal-300 [&_svg:not([class*='text-'])]:text-muted-foreground relative flex w-full cursor-pointer items-center gap-2 rounded-lg py-2 pr-8 pl-2.5 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 transition-colors *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
                 className
             )}
             {...props}

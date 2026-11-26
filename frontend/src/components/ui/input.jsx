@@ -81,9 +81,9 @@ const Input = React.forwardRef(function Input({
                 title={hasError ? activeError : props.title}
                 data-slot="input"
                 className={cn(
-                    'file:text-foreground placeholder:text-[#829089] selection:bg-[#087A4B] selection:text-white border-[#E1E8E4] flex h-9.5 sm:h-10 lg:h-10.5 w-full min-w-0 rounded-lg sm:rounded-xl border bg-[#F8FAF9] px-3 sm:px-3.5 lg:px-4 py-1.5 sm:py-2 text-xs sm:text-sm text-[#17231F] shadow-2xs transition-all outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-xs file:font-semibold disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
-                    'focus-visible:border-[#087A4B] focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-[#087A4B]/20',
-                    hasError && 'border-[#DC4C4C] focus-visible:border-[#DC4C4C] focus-visible:ring-[#DC4C4C]/20 text-[#DC4C4C]',
+                    'file:text-foreground placeholder:text-muted-foreground/70 selection:bg-primary selection:text-white border-border/80 flex h-9.5 sm:h-10 lg:h-10.5 w-full min-w-0 rounded-lg sm:rounded-xl border bg-background/80 px-3 sm:px-3.5 lg:px-4 py-1.5 sm:py-2 text-xs sm:text-sm shadow-2xs transition-all outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-xs file:font-semibold disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
+                    'focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/25',
+                    hasError && 'border-rose-500 focus-visible:border-rose-500 focus-visible:ring-rose-500/20 text-rose-500',
                     className
                 )}
                 {...props}

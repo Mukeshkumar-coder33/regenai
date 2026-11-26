@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { getSocket } from '../../hooks/useSocket';
 import {
   useGetAllUsers,
   useGetMyConversations,
@@ -19,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { resolveMediaUrl } from '@/lib/backendConfig';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   Send, Paperclip, X, ArrowLeft, Search, ShieldCheck, Lock, Pencil, Trash2, Check,
@@ -28,7 +28,7 @@ import {
 import { toast } from 'sonner';
 import {
   generateKeyPair, hasKeyPair, deriveSharedKey,
-  encryptMessage, decryptMessage, getStoredPrivateKey, storeImportedPrivateKey
+  encryptMessage, decryptMessage, getStoredPrivateKey
 } from '../../utils/e2e';
 import { stopMediaStream, parseMediaError } from '../../lib/mediaUtils';
 import EmojiPicker from '../EmojiPicker';
@@ -470,12 +470,7 @@ export default function PrivateChatModule({ userProfile }) {
 
   const normalizeAvatar = (avatar) => {
     if (!avatar) return '';
-    const s = String(avatar).trim();
-    if (!s) return '';
-    if (s.startsWith('data:') || s.startsWith('http://') || s.startsWith('https://') || s.startsWith('/uploads/') || s.startsWith('/assets/')) {
-      return s.replace(/^\/uploads\/assets\//, '/assets/');
-    }
-    return `/assets/profiles/${s.replace(/^\/+/, '')}`;
+    return resolveMediaUrl(avatar);
   };
 
   // ─── E2E Key Exchange ──────────────────────────────────────────
@@ -488,62 +483,18 @@ export default function PrivateChatModule({ userProfile }) {
 
     const setupE2E = async () => {
       try {
-        // 1. Fetch persistent key from server or generate our key pair
+        // 1. Generate our key pair if we don't have one
         if (!hasKeyPair(activeConvoId)) {
-          const token = localStorage.getItem('token');
-          let gotServerKey = false;
-          try {
-            const res = await fetch(`/api/dm/conversations/${activeConvoId}/my-key`, {
-              headers: { Authorization: `Bearer ${token}` }
-            });
-            if (res.ok) {
-              const keyData = await res.json();
-              if (keyData.privateKey) {
-                storeImportedPrivateKey(activeConvoId, keyData.privateKey);
-                gotServerKey = true;
-              }
-            }
-          } catch (_) {}
-
-          if (!gotServerKey) {
-            const pubKey = await generateKeyPair(activeConvoId);
-            const privKey = getStoredPrivateKey(activeConvoId);
-            try {
-              await fetch(`/api/dm/conversations/${activeConvoId}/my-key`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ privateKey: privKey, publicKey: pubKey })
-              });
-            } catch (_) {
-              await storeKey.mutateAsync({ conversationId: activeConvoId, publicKey: pubKey });
-            }
-          }
+          const pubKey = await generateKeyPair(activeConvoId);
+          // storeKey mutation automatically invalidates dm-conversations, so no need to refetch manually
+          await storeKey.mutateAsync({ conversationId: activeConvoId, publicKey: pubKey });
         }
 
         // 2. Check if peer has published their key
         const peerId = getConvoPeerId(activeConvo, myId);
-        let peerKeyStr = activeConvo.publicKeys?.[peerId];
-        if (!peerKeyStr) {
-          try {
-            const token = localStorage.getItem('auth_token') || localStorage.getItem('sa_auth_token') || localStorage.getItem('token');
-            const res = await fetch(`/api/dm/conversations/${activeConvoId}/keys`, {
-              headers: { Authorization: `Bearer ${token}` }
-            });
-            if (res.ok) {
-              const freshKeys = await res.json();
-              peerKeyStr = freshKeys?.[peerId];
-            }
-          } catch (_) {}
-        }
-
+        const peerKeyStr = activeConvo.publicKeys?.[peerId];
         if (peerKeyStr) {
-          let peerPubJwk = peerKeyStr;
-          if (typeof peerPubJwk === 'string') {
-            try { peerPubJwk = JSON.parse(peerPubJwk); } catch {}
-            if (typeof peerPubJwk === 'string') {
-              try { peerPubJwk = JSON.parse(peerPubJwk); } catch {}
-            }
-          }
+          const peerPubJwk = JSON.parse(peerKeyStr);
           const derived = await deriveSharedKey(activeConvoId, peerPubJwk);
           setSharedKey(derived);
           setE2eReady(true);
@@ -560,20 +511,6 @@ export default function PrivateChatModule({ userProfile }) {
     };
     setupE2E();
   }, [activeConvoId, activeConvo?.publicKeys]);
-
-  // Active conversation tracking for real-time presence, read receipts, and notification suppression
-  useEffect(() => {
-    if (!activeConvoId) return;
-    const socket = getSocket();
-    if (socket) {
-      socket.emit('dm:join-conversation', { conversationId: activeConvoId });
-    }
-    return () => {
-      if (socket) {
-        socket.emit('dm:leave-conversation', { conversationId: activeConvoId });
-      }
-    };
-  }, [activeConvoId]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -743,12 +680,12 @@ export default function PrivateChatModule({ userProfile }) {
   const toPublicPath = (p) => {
     if (!p) return '';
     if (typeof p !== 'string') return '';
-    if (p.startsWith('data:') || p.startsWith('blob:') || p.startsWith('http://') || p.startsWith('https://')) return p;
-    if (p.startsWith('/assets/')) return p;
-    const marker = '/assets/';
-    const idx = p.lastIndexOf(marker);
-    if (idx >= 0) return `/assets/${p.slice(idx + marker.length)}`;
-    return p;
+    if (p.includes('/assets/') && !/^https?:\/\//i.test(p)) {
+      const marker = '/assets/';
+      const idx = p.lastIndexOf(marker);
+      if (idx >= 0) return resolveMediaUrl(`/assets/${p.slice(idx + marker.length)}`);
+    }
+    return resolveMediaUrl(p);
   };
 
   const getAttachmentSrc = (att) => {
@@ -1172,7 +1109,7 @@ export default function PrivateChatModule({ userProfile }) {
                   className="h-8.5 w-8.5 sm:h-10 sm:w-10 lg:h-11 lg:w-11 text-muted-foreground hover:text-emerald-500 rounded-xl"
                   title="Voice Call"
                   onClick={() => {
-                    const peerId = (peer?._id || peer?.id || peer?.userId || '')?.toString();
+                    const peerId = (peer?.userId || peer?.username || peer?.id || peer?._id || '')?.toString();
                     if (!peerId) return;
                     window.dispatchEvent(
                       new CustomEvent('start-direct-call', {
@@ -1193,7 +1130,7 @@ export default function PrivateChatModule({ userProfile }) {
                   className="h-8.5 w-8.5 sm:h-10 sm:w-10 lg:h-11 lg:w-11 text-muted-foreground hover:text-indigo-500 rounded-xl"
                   title="Video Call"
                   onClick={() => {
-                    const peerId = (peer?._id || peer?.id || peer?.userId || '')?.toString();
+                    const peerId = (peer?.userId || peer?.username || peer?.id || peer?._id || '')?.toString();
                     if (!peerId) return;
                     window.dispatchEvent(
                       new CustomEvent('start-direct-call', {
@@ -1268,7 +1205,7 @@ export default function PrivateChatModule({ userProfile }) {
                   >
                     <div className={`max-w-[85%] sm:max-w-[75%] md:max-w-[68%] rounded-2xl p-2.5 sm:p-3.5 relative shadow-xs transition-all ${
                       own
-                        ? 'bg-[#087A4B] text-white rounded-br-xs'
+                        ? 'bg-[#0D9488] text-white rounded-br-xs'
                         : 'bg-card border border-border text-foreground rounded-bl-xs'
                     }`}>
                       {/* Hover Actions */}
@@ -1306,7 +1243,7 @@ export default function PrivateChatModule({ userProfile }) {
                         </div>
                       ) : (
                         <p className="text-sm break-words whitespace-pre-wrap leading-relaxed">
-                          {highlightText(msg._decrypted ? msg._decrypted : (msg.encrypted ? '🔒 Encrypted message' : (msg.content || '')), msgIdx)}
+                          {highlightText(msg._decrypted || msg.content || '', msgIdx)}
                         </p>
                       )}
 
@@ -1495,7 +1432,7 @@ export default function PrivateChatModule({ userProfile }) {
                     <Button
                       type="submit"
                       size="icon"
-                      className="h-8.5 w-8.5 sm:h-10 sm:w-10 rounded-lg sm:rounded-xl bg-[#087A4B] hover:bg-[#07563B] text-white shrink-0 shadow-xs"
+                      className="h-8.5 w-8.5 sm:h-10 sm:w-10 rounded-lg sm:rounded-xl bg-[#0D9488] hover:bg-[#0F766E] text-white shrink-0 shadow-xs"
                       disabled={sendDM.isPending || (!content.trim() && files.length === 0)}
                     >
                       <Send className="h-3.5 w-3.5 sm:h-4 sm:w-4" />

@@ -59,8 +59,22 @@ export default function StaffProfileModule({ userProfile }) {
   useEffect(() => {
     if (userProfile.name !== undefined) setName(userProfile.name || '');
     if (userProfile.gender !== undefined) setGender(userProfile.gender || 'Male');
-    if (userProfile.dateOfBirth !== undefined) setDateOfBirth(normalizeDateForInput(userProfile.dateOfBirth));
-    if (userProfile.age !== undefined) setAge(userProfile.age?.toString() || '');
+    if (userProfile.dateOfBirth !== undefined) {
+      const normalizedDob = normalizeDateForInput(userProfile.dateOfBirth);
+      setDateOfBirth(normalizedDob);
+      if (normalizedDob) {
+        const dob = new Date(normalizedDob.includes('T') ? normalizedDob : `${normalizedDob}T00:00:00`);
+        if (!Number.isNaN(dob.getTime())) {
+          const now = new Date();
+          let a = now.getFullYear() - dob.getFullYear();
+          const m = now.getMonth() - dob.getMonth();
+          if (m < 0 || (m === 0 && now.getDate() < dob.getDate())) a--;
+          setAge(String(Math.max(0, a)));
+        }
+      }
+    } else if (userProfile.age !== undefined) {
+      setAge(userProfile.age?.toString() || '');
+    }
   }, [userProfile.name, userProfile.gender, userProfile.dateOfBirth, userProfile.age]);
 
   useEffect(() => {
@@ -255,7 +269,7 @@ export default function StaffProfileModule({ userProfile }) {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="absolute -bottom-1 -right-1 h-7 w-7 rounded-xl bg-primary text-white flex items-center justify-center shadow-md hover:bg-[#07563B] transition-colors border-2 border-card"
+              className="absolute -bottom-1 -right-1 h-7 w-7 rounded-xl bg-primary text-white flex items-center justify-center shadow-md hover:bg-[#0F766E] transition-colors border-2 border-card"
               title="Upload Photo"
             >
               <Upload className="h-3.5 w-3.5" />
@@ -548,7 +562,7 @@ export default function StaffProfileModule({ userProfile }) {
                 <div className="pt-2 flex justify-end">
                   <Button 
                     type="submit" 
-                    className="h-10 px-6 rounded-xl bg-[#087A4B] hover:bg-[#07563B] text-white font-semibold shadow-xs transition-all w-full sm:w-auto" 
+                    className="h-10 px-6 rounded-xl bg-[#0D9488] hover:bg-[#0F766E] text-white font-semibold shadow-xs transition-all w-full sm:w-auto" 
                     disabled={saveProfile.isPending}
                   >
                     {saveProfile.isPending ? (

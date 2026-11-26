@@ -1,13 +1,14 @@
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { apiFetch } from './backendConfig';
 
 export function cn(...inputs) {
     return twMerge(clsx(inputs));
 }
 
 /**
- * Wrapper around fetch that automatically injects the JWT Bearer token.
- * Use this for all authenticated API calls.
+ * Wrapper around fetch that automatically injects the JWT Bearer token
+ * and routes through the active local/public backend with failover.
  */
 export function authFetch(url, options = {}) {
     const isSuperAdminPath = typeof window !== 'undefined' && window.location.pathname.startsWith('/superadmin');
@@ -19,7 +20,7 @@ export function authFetch(url, options = {}) {
     if (token) {
         headers['Authorization'] = `Bearer ${token}`;
     }
-    return fetch(url, { ...options, headers })
+    return apiFetch(url, { ...options, headers })
       .then((res) => {
         if (res.status === 503) {
           if (typeof window !== 'undefined') {

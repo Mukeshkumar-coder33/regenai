@@ -35,7 +35,7 @@ function TableRow({ className, ...props }) {
         <tr
             data-slot="table-row"
             className={cn(
-                'border-b border-[#E1E8E4] transition-colors hover:bg-[#F1F7F3] data-[state=selected]:bg-[#E8F3EC]',
+                'border-b border-border/60 transition-colors hover:bg-teal-500/[0.04] dark:hover:bg-teal-400/[0.06] data-[state=selected]:bg-teal-500/10 dark:data-[state=selected]:bg-teal-500/15',
                 className
             )}
             {...props}
@@ -48,7 +48,7 @@ function TableHead({ className, ...props }) {
         <th
             data-slot="table-head"
             className={cn(
-                'text-[#17231F] font-semibold uppercase tracking-wider text-[12px] h-10 px-3 text-left align-middle whitespace-nowrap bg-[#EFF3F1] [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]',
+                'text-muted-foreground font-semibold uppercase tracking-wider text-[13px] h-10 px-3 text-left align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]',
                 className
             )}
             {...props}

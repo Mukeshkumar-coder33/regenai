@@ -203,7 +203,7 @@ export default function NotificationsModule({ userProfile, onNavigate }) {
           <span className="flex items-center gap-2">
             <span>Notifications</span>
             {unreadCount > 0 ? (
-              <Badge variant="default" className="text-xs bg-[#087A4B] text-white">
+              <Badge variant="default" className="text-xs bg-[#15966A] text-white">
                 {unreadCount} unread
               </Badge>
             ) : (
@@ -224,7 +224,7 @@ export default function NotificationsModule({ userProfile, onNavigate }) {
                 disabled={markAllRead.isPending}
                 className="flex items-center gap-1.5 text-xs font-medium cursor-pointer"
               >
-                <CheckCheck className="h-4 w-4 text-[#087A4B]" />
+                <CheckCheck className="h-4 w-4 text-[#15966A]" />
                 <span>Mark all read</span>
               </Button>
             )}

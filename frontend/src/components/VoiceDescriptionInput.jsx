@@ -273,7 +273,7 @@ export default function VoiceDescriptionInput({
               "h-7 px-2.5 text-xs font-medium rounded-lg border transition-all flex items-center gap-1.5 shadow-2xs",
               isTranscribing
                 ? "bg-rose-50 dark:bg-rose-950/40 border-rose-400 text-rose-600 dark:text-rose-400 animate-pulse"
-                : "border-[#DFE8EC] dark:border-[#2A3D48] text-[#172B3A] dark:text-[#E8F0F4] hover:text-[#087A4B] dark:hover:text-[#14B8A6] hover:bg-[#F4F8FA] dark:hover:bg-[#1D303B]"
+                : "border-[#DFE8EC] dark:border-[#2A3D48] text-[#172B3A] dark:text-[#E8F0F4] hover:text-[#0D9488] dark:hover:text-[#14B8A6] hover:bg-[#F4F8FA] dark:hover:bg-[#1D303B]"
             )}
             title={isTranscribing ? "Click to stop voice dictation" : "Dictate text via speech-to-text"}
           >
@@ -284,7 +284,7 @@ export default function VoiceDescriptionInput({
               </>
             ) : (
               <>
-                <Mic className="w-3.5 h-3.5 text-[#087A4B] dark:text-[#14B8A6]" />
+                <Mic className="w-3.5 h-3.5 text-[#0D9488] dark:text-[#14B8A6]" />
                 <span className="text-[11px]">Voice to Text</span>
               </>
             )}
@@ -297,10 +297,10 @@ export default function VoiceDescriptionInput({
               size="sm"
               variant="outline"
               onClick={startVoiceNoteRecording}
-              className="h-7 px-2.5 text-xs font-medium rounded-lg border border-[#DFE8EC] dark:border-[#2A3D48] text-[#172B3A] dark:text-[#E8F0F4] hover:text-[#087A4B] dark:hover:text-[#14B8A6] hover:bg-[#F4F8FA] dark:hover:bg-[#1D303B] transition-all flex items-center gap-1.5 shadow-2xs"
+              className="h-7 px-2.5 text-xs font-medium rounded-lg border border-[#DFE8EC] dark:border-[#2A3D48] text-[#172B3A] dark:text-[#E8F0F4] hover:text-[#0D9488] dark:hover:text-[#14B8A6] hover:bg-[#F4F8FA] dark:hover:bg-[#1D303B] transition-all flex items-center gap-1.5 shadow-2xs"
               title="Record an audio voice note"
             >
-              <Volume2 className="w-3.5 h-3.5 text-[#087A4B] dark:text-[#14B8A6]" />
+              <Volume2 className="w-3.5 h-3.5 text-[#0D9488] dark:text-[#14B8A6]" />
               <span className="text-[11px]">Voice Note</span>
             </Button>
           ) : (
@@ -334,7 +334,7 @@ export default function VoiceDescriptionInput({
           placeholder={placeholder}
           rows={rows}
           className={cn(
-            "bg-[#F4F8FA] dark:bg-[#1D303B] border-[#DFE8EC] dark:border-[#2A3D48] text-xs sm:text-sm rounded-xl focus-visible:ring-1 focus-visible:ring-[#087A4B] transition-all",
+            "bg-[#F4F8FA] dark:bg-[#1D303B] border-[#DFE8EC] dark:border-[#2A3D48] text-xs sm:text-sm rounded-xl focus-visible:ring-1 focus-visible:ring-[#0D9488] transition-all",
             isTranscribing && "border-rose-400 dark:border-rose-500 ring-1 ring-rose-400/50"
           )}
         />
@@ -362,7 +362,7 @@ export default function VoiceDescriptionInput({
               size="icon"
               variant="outline"
               onClick={togglePlayAudio}
-              className="h-8 w-8 rounded-lg border-[#C9DED1] bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] hover:bg-[#087A4B] hover:text-white shrink-0 transition-all"
+              className="h-8 w-8 rounded-lg border-[#0D9488]/30 bg-[#0D9488]/10 text-[#0D9488] dark:text-[#14B8A6] hover:bg-[#0D9488] hover:text-white shrink-0 transition-all"
               title={isPlayingNote ? "Pause voice note" : "Play voice note"}
             >
               {isPlayingNote ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
@@ -371,7 +371,7 @@ export default function VoiceDescriptionInput({
               <p className="text-xs font-semibold text-[#172B3A] dark:text-[#E8F0F4] flex items-center gap-1.5 truncate">
                 <span>🎙️ Voice Note Attached</span>
                 {isPlayingNote && (
-                  <span className="inline-block text-[10px] text-[#087A4B] font-normal animate-pulse">
+                  <span className="inline-block text-[10px] text-[#0D9488] font-normal animate-pulse">
                     Playing...
                   </span>
                 )}

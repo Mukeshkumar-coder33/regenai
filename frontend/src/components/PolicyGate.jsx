@@ -102,7 +102,7 @@ export default function PolicyGate({ userProfile }) {
           <div className="p-4 rounded-2xl bg-[#F4F8FA] dark:bg-[#1D303B] border border-[#DFE8EC] dark:border-[#2A3D48] space-y-2.5">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-[#172B3A] dark:text-[#E8F0F4] flex items-center gap-2">
-                <FileText className="w-4 h-4 text-[#087A4B]" />
+                <FileText className="w-4 h-4 text-[#0D9488]" />
                 <span>{currentBlocked.title}</span>
               </h3>
               {currentBlocked.effectiveDate && (
@@ -138,7 +138,7 @@ export default function PolicyGate({ userProfile }) {
             <Button
               onClick={() => handleAccept(currentBlocked.policyId)}
               disabled={acceptMutation.isPending}
-              className="w-full sm:w-auto bg-[#087A4B] hover:bg-[#07563B] text-white font-semibold text-xs h-9 rounded-xl shadow-sm px-4 gap-1.5 shrink-0"
+              className="w-full sm:w-auto bg-[#0D9488] hover:bg-[#0B7A70] text-white font-semibold text-xs h-9 rounded-xl shadow-sm px-4 gap-1.5 shrink-0"
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
               <span>{acceptMutation.isPending ? 'Accepting...' : 'Accept Policy Now'}</span>
@@ -156,7 +156,7 @@ export default function PolicyGate({ userProfile }) {
         <DialogContent className="w-[95vw] max-w-lg bg-white dark:bg-[#15232D] border-[#DFE8EC] dark:border-[#2A3D48] rounded-3xl p-6 sm:p-7 shadow-2xl">
           <DialogHeader className="pb-3 border-b border-[#DFE8EC] dark:border-[#2A3D48]">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] flex items-center justify-center shrink-0 border border-[#C9DED1]">
+              <div className="w-10 h-10 rounded-2xl bg-[#0D9488]/10 text-[#0D9488] dark:text-[#14B8A6] flex items-center justify-center shrink-0 border border-[#0D9488]/20">
                 <FileText className="w-5 h-5" />
               </div>
               <div>
@@ -223,7 +223,7 @@ export default function PolicyGate({ userProfile }) {
                     type="button"
                     onClick={() => handleAccept(currentPending.policyId)}
                     disabled={acceptMutation.isPending}
-                    className="w-full sm:w-auto text-xs h-9 rounded-xl bg-[#087A4B] hover:bg-[#07563B] text-white font-semibold gap-1.5 shadow-sm"
+                    className="w-full sm:w-auto text-xs h-9 rounded-xl bg-[#0D9488] hover:bg-[#0B7A70] text-white font-semibold gap-1.5 shadow-sm"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     <span>{acceptMutation.isPending ? 'Accepting...' : 'Accept & Work Normal'}</span>

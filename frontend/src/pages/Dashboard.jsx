@@ -27,7 +27,8 @@ import {
   useMarkAllNotificationsRead, 
   useClearAllNotifications,
   useUpdateNotificationAction,
-  useGetCompanyInfo
+  useGetCompanyInfo,
+  useGetAllUsers
 } from '../hooks/useQueries';
 import { toast } from 'sonner';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -100,25 +101,53 @@ export default function Dashboard({ userProfile }) {
     userProfile?.role?.param
   );
 
+  const { data: allUsers = [] } = useGetAllUsers();
+
   const availableYears = useMemo(() => {
-    let startYear = currentYear;
+    let minYear = currentYear;
     if (isCompanyLogin) {
+      // Company Login:
+      // Year starts from the company started year
       const estYear = companyInfo?.establishmentYear ||
+        companyInfo?.establishedYear ||
+        companyInfo?.startedYear ||
+        companyInfo?.startYear ||
         (companyInfo?.establishmentDate ? new Date(companyInfo.establishmentDate).getFullYear() : null) ||
+        (companyInfo?.startDate ? new Date(companyInfo.startDate).getFullYear() : null) ||
         (companyInfo?.createdAt ? new Date(companyInfo.createdAt).getFullYear() : null);
-      startYear = estYear && !isNaN(estYear) ? Math.min(Number(estYear), currentYear) : 2025;
+      if (estYear && !isNaN(estYear) && Number(estYear) >= 1970 && Number(estYear) <= currentYear + 1) {
+        minYear = Math.min(minYear, Number(estYear));
+      }
+
+      // Check if any employee in the company has an earlier joining date
+      (allUsers || []).forEach(u => {
+        if (u.joiningDate) {
+          const y = new Date(u.joiningDate).getFullYear();
+          if (y && !isNaN(y) && y >= 1970 && y <= currentYear + 1) minYear = Math.min(minYear, y);
+        }
+        if (u.createdAt) {
+          const y = new Date(u.createdAt).getFullYear();
+          if (y && !isNaN(y) && y >= 1970 && y <= currentYear + 1) minYear = Math.min(minYear, y);
+        }
+      });
     } else {
+      // Employee Login (Staff, Intern, Freelance):
+      // Year starts strictly from when he joined the company!
       const joinYear = (userProfile?.joiningDate ? new Date(userProfile.joiningDate).getFullYear() : null) ||
         (userProfile?.createdAt ? new Date(userProfile.createdAt).getFullYear() : null);
-      startYear = joinYear && !isNaN(joinYear) ? Math.min(Number(joinYear), currentYear) : currentYear;
+      if (joinYear && !isNaN(joinYear) && Number(joinYear) >= 1970 && Number(joinYear) <= currentYear + 1) {
+        minYear = Number(joinYear);
+      } else {
+        minYear = currentYear;
+      }
     }
 
     const years = [];
-    for (let y = startYear; y <= currentYear; y++) {
+    for (let y = minYear; y <= currentYear; y++) {
       years.push(y);
     }
     return years.length > 0 ? years : [currentYear];
-  }, [isCompanyLogin, companyInfo, userProfile, currentYear]);
+  }, [isCompanyLogin, companyInfo, userProfile, allUsers, currentYear]);
 
   const [selectedYear, setSelectedYear] = useState(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('regen_selected_year') : null;
@@ -232,6 +261,30 @@ export default function Dashboard({ userProfile }) {
           action: {
             label: 'View',
             onClick: () => setActiveModule('payments'),
+          },
+        });
+      } else if (n.type === 'voice_call' || n.type === 'video_call') {
+        toast.info(n.title || 'Incoming Call', {
+          description: n.message,
+          duration: 20000,
+          action: {
+            label: 'Answer',
+            onClick: () => window.dispatchEvent(new CustomEvent('accept-incoming-call', { detail: n })),
+          },
+        });
+      } else if (n.type === 'team_meeting' || n.type?.includes('meeting')) {
+        toast.info(n.title || 'Team Meeting Started', {
+          description: n.message,
+          duration: 20000,
+          action: {
+            label: 'Join Meeting',
+            onClick: () => window.dispatchEvent(new CustomEvent('join-team-meeting', {
+              detail: {
+                meetingId: n.meetingId || n.metadata?.meetingId,
+                title: n.metadata?.title || n.message,
+                mediaType: n.metadata?.mediaType || 'video'
+              }
+            })),
           },
         });
       } else {
@@ -444,50 +497,14 @@ export default function Dashboard({ userProfile }) {
     { id: 'superadmin_console', label: 'Super Admin Console', icon: ShieldCheck, show: isSuperAdminUser, onClick: handleSwitchToSuperAdmin },
   ];
 
-  const sortedMenuItems = useMemo(() => {
-    let activeSlots = (userProfile?.navSlots && Array.isArray(userProfile.navSlots) && userProfile.navSlots.length > 0)
-      ? userProfile.navSlots
-      : null;
-
-    if (!activeSlots) {
-      try {
-        const stored = localStorage.getItem('user_nav_slots');
-        if (stored) activeSlots = JSON.parse(stored);
-      } catch (_) {}
-    }
-
-    if (!Array.isArray(activeSlots) || activeSlots.length === 0) {
-      return menuItems;
-    }
-
-    const slotMap = {
-      'tasks': 'schedules',
-      'employees': 'users',
-      'payroll': 'payments',
-      'settings': 'profile',
-      'calender': 'calendar'
-    };
-
-    const prioritizedIds = activeSlots.map(s => slotMap[s] || s);
-
-    return [...menuItems].sort((a, b) => {
-      const idxA = prioritizedIds.indexOf(a.id);
-      const idxB = prioritizedIds.indexOf(b.id);
-      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-      if (idxA !== -1) return -1;
-      if (idxB !== -1) return 1;
-      return 0;
-    });
-  }, [userProfile?.navSlots, menuItems]);
-
   const renderModule = () => {
     switch (activeModule) {
       case 'home':
         return <DashboardHome userProfile={userProfile} onNavigate={navigateToModule} selectedYear={selectedYear} setSelectedYear={setSelectedYear} />;
       case 'users':
-        return <UsersModule userProfile={userProfile} />;
+        return <UsersModule userProfile={userProfile} selectedYear={selectedYear} onYearChange={setSelectedYear} />;
       case 'attendance':
-        return <AttendanceModule userProfile={userProfile} />;
+        return <AttendanceModule userProfile={userProfile} selectedYear={selectedYear} />;
       case 'schedules':
         return <SchedulesModule userProfile={userProfile} />;
       case 'messenger':
@@ -495,11 +512,11 @@ export default function Dashboard({ userProfile }) {
       case 'scrum':
         return <ScrumModule userProfile={userProfile} />;
       case 'calendar':
-        return <CalendarModule userProfile={userProfile} />;
+        return <CalendarModule userProfile={userProfile} selectedYear={selectedYear} />;
       case 'payments':
-        return <PaymentsModule userProfile={userProfile} />;
+        return <PaymentsModule userProfile={userProfile} selectedYear={selectedYear} />;
       case 'reports':
-        return <ReportsModule userProfile={userProfile} />;
+        return <ReportsModule userProfile={userProfile} selectedYear={selectedYear} />;
       case 'company':
         return <CompanyModule userProfile={userProfile} />;
       case 'profile':
@@ -521,7 +538,7 @@ export default function Dashboard({ userProfile }) {
         className={cn(
           "hidden md:flex flex-col sticky top-0 h-screen shrink-0 z-20 border-r",
           "transition-[width] duration-300 ease-in-out overflow-x-hidden",
-          "bg-[#FFFFFF] dark:bg-[#0D2028] border-[#E1E8E4] dark:border-[#203A42]",
+          "bg-[#FFFFFF] dark:bg-[#0D2028] border-[#D5E5D7] dark:border-[#203A42]",
           isSidebarExpanded
             ? "w-[260px] shadow-sm"
             : "w-20"
@@ -530,7 +547,7 @@ export default function Dashboard({ userProfile }) {
       >
         {/* Brand Logo & Header */}
         <div className={cn(
-          "h-16 flex items-center border-b border-[#E1E8E4] dark:border-[#203A42] bg-[#FFFFFF] dark:bg-[#10252D] transition-all duration-300 px-3",
+          "h-16 flex items-center border-b border-[#D5E5D7] dark:border-[#203A42] bg-[#F8FAF9] dark:bg-[#10252D] transition-all duration-300 px-3",
           isSidebarExpanded ? "justify-between" : "justify-center"
         )}>
           <div
@@ -548,7 +565,7 @@ export default function Dashboard({ userProfile }) {
                 className="w-8 h-8 rounded-xl shrink-0 object-contain shadow-xs border border-border/40"
               />
             ) : (
-              <div className="w-8 h-8 rounded-xl bg-[#E8F3EC] dark:bg-[#142E35] text-[#087A4B] dark:text-[#45CFC0] flex items-center justify-center font-bold text-sm shrink-0 border border-[#C9DED1] dark:border-[#203A42]">
+              <div className="w-8 h-8 rounded-xl bg-teal-500/10 dark:bg-[#142E35] text-teal-600 dark:text-[#45CFC0] flex items-center justify-center font-bold text-sm shrink-0 border border-teal-500/30 dark:border-[#203A42]">
                 R
               </div>
             )}
@@ -559,7 +576,7 @@ export default function Dashboard({ userProfile }) {
               <span className="text-lg font-bold tracking-tight text-foreground dark:text-white truncate">
                 {companyDisplayName}
               </span>
-              <span className="w-2 h-2 rounded-full bg-[#087A4B] dark:bg-[#36BEB0] shrink-0" />
+              <span className="w-2 h-2 rounded-full bg-primary dark:bg-[#36BEB0] shrink-0" />
             </div>
           </div>
 
@@ -570,7 +587,7 @@ export default function Dashboard({ userProfile }) {
               onClick={() => setSidebarPinned(prev => !prev)}
               className={cn(
                 "p-1.5 rounded-lg text-muted-foreground hover:text-foreground dark:text-[#A8BAC3] dark:hover:text-[#45CFC0] hover:bg-secondary/80 dark:hover:bg-[#142E35] transition-colors cursor-pointer",
-                sidebarPinned && "text-[#087A4B] dark:text-[#45CFC0] bg-[#E8F3EC] dark:bg-[#123A3C]"
+                sidebarPinned && "text-teal-600 dark:text-[#45CFC0] bg-teal-500/10 dark:bg-[#123A3C]"
               )}
               title={sidebarPinned ? "Unpin sidebar (collapse on mouse leave)" : "Pin sidebar expanded"}
               aria-label={sidebarPinned ? "Unpin sidebar" : "Pin sidebar expanded"}
@@ -583,7 +600,7 @@ export default function Dashboard({ userProfile }) {
 
         {/* Sidebar Nav Items */}
         <nav className="flex-1 px-2.5 py-4 space-y-1.5 overflow-y-auto overflow-x-hidden">
-          {sortedMenuItems.filter(item => item.show).map((item) => {
+          {menuItems.filter(item => item.show).map((item) => {
             const isActive = activeModule === item.id || (item.id === 'profile' && activeModule === 'settings');
             const navButton = (
               <button
@@ -600,14 +617,14 @@ export default function Dashboard({ userProfile }) {
                   "w-full h-11 flex items-center rounded-xl text-sm font-medium transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-primary/40 select-none cursor-pointer border relative group",
                   isSidebarExpanded ? "px-3.5 gap-3.5" : "justify-center px-0",
                   isActive
-                    ? "bg-[#E8F3EC] dark:bg-[#123A3C] text-[#087A4B] dark:text-[#45CFC0] font-semibold border-[#C9DED1] dark:border-[#176B68]"
-                    : "text-[#52615B] dark:text-[#B6C4CC] border-transparent hover:bg-[#F1F7F3] dark:hover:bg-[#142E35] hover:text-[#087A4B] dark:hover:text-[#45CFC0]"
+                    ? "bg-[#DDF1E2] dark:bg-[#123A3C] text-[#087A57] dark:text-[#45CFC0] font-semibold border-[rgba(8,122,87,0.35)] dark:border-[#176B68]"
+                    : "text-[#40574A] dark:text-[#B6C4CC] border-transparent hover:bg-[#E3F1E5] dark:hover:bg-[#142E35] hover:text-[#087A57] dark:hover:text-[#45CFC0]"
                 )}
                 aria-current={isActive ? 'page' : undefined}
               >
                 {/* Narrow Vertical Active Indicator */}
                 {isActive && (
-                  <span className="absolute left-1 top-2.5 bottom-2.5 w-1 rounded-full bg-[#087A4B] dark:bg-[#36BEB0]" />
+                  <span className="absolute left-1 top-2.5 bottom-2.5 w-1 rounded-full bg-[#087A57] dark:bg-[#36BEB0]" />
                 )}
 
                 {/* Navigation Icon */}
@@ -615,8 +632,8 @@ export default function Dashboard({ userProfile }) {
                   className={cn(
                     "w-5 h-5 shrink-0 transition-colors duration-150",
                     isActive
-                      ? "text-[#087A4B] dark:text-[#45CFC0]"
-                      : "text-[#52615B] dark:text-[#A8BAC3] group-hover:text-[#087A4B] dark:group-hover:text-[#45CFC0]"
+                      ? "text-[#087A57] dark:text-[#45CFC0]"
+                      : "text-[#40574A] dark:text-[#A8BAC3] group-hover:text-[#087A57] dark:group-hover:text-[#45CFC0]"
                   )}
                 />
 
@@ -720,7 +737,7 @@ export default function Dashboard({ userProfile }) {
               >
                 <Bell className="w-4 h-4 lg:w-4.5 lg:h-4.5 text-muted-foreground" />
                 {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 h-4 min-w-[16px] px-1 rounded-full bg-[#DC4C4C] text-white text-[10px] font-bold flex items-center justify-center animate-pulse">
+                  <span className="absolute -top-1 -right-1 h-4 min-w-[16px] px-1 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center animate-pulse">
                     {unreadCount > 9 ? '9+' : unreadCount}
                   </span>
                 )}
@@ -1016,7 +1033,7 @@ export default function Dashboard({ userProfile }) {
               </SheetTitle>
             </SheetHeader>
             <div className="flex-1 overflow-y-auto px-3.5 py-4 space-y-1.5">
-              {sortedMenuItems.filter(item => item.show).map((item) => {
+              {menuItems.filter(item => item.show).map((item) => {
                 const isActive = activeModule === item.id || (item.id === 'profile' && activeModule === 'settings');
                 return (
                   <button
@@ -1033,15 +1050,15 @@ export default function Dashboard({ userProfile }) {
                     className={cn(
                       "w-full h-11 flex items-center gap-3.5 px-3.5 rounded-xl text-sm font-medium transition-colors duration-150 outline-none select-none cursor-pointer border relative",
                       isActive
-                        ? "bg-[#E8F3EC] dark:bg-[#123A3C] text-[#087A4B] dark:text-[#45CFC0] font-semibold border-[#C9DED1] dark:border-[#176B68]"
-                        : "text-[#52615B] dark:text-[#B6C4CC] border-transparent hover:bg-[#F1F7F3] dark:hover:bg-[#142E35] hover:text-[#087A4B] dark:hover:text-[#45CFC0]"
+                        ? "bg-[#DDF1E2] dark:bg-[#123A3C] text-[#087A57] dark:text-[#45CFC0] font-semibold border-[rgba(8,122,87,0.35)] dark:border-[#176B68]"
+                        : "text-[#40574A] dark:text-[#B6C4CC] border-transparent hover:bg-[#E3F1E5] dark:hover:bg-[#142E35] hover:text-[#087A57] dark:hover:text-[#45CFC0]"
                     )}
                     aria-current={isActive ? 'page' : undefined}
                   >
                     {isActive && (
-                      <span className="absolute left-1 top-2.5 bottom-2.5 w-1 rounded-full bg-[#087A4B] dark:bg-[#36BEB0]" />
+                      <span className="absolute left-1 top-2.5 bottom-2.5 w-1 rounded-full bg-[#087A57] dark:bg-[#36BEB0]" />
                     )}
-                    <item.icon className={cn("w-5 h-5 shrink-0 transition-colors", isActive ? "text-[#087A4B] dark:text-[#45CFC0]" : "text-[#52615B] dark:text-[#A8BAC3]")} />
+                    <item.icon className={cn("w-5 h-5 shrink-0 transition-colors", isActive ? "text-[#087A57] dark:text-[#45CFC0]" : "text-[#40574A] dark:text-[#A8BAC3]")} />
                     <span className="truncate">{item.label}</span>
                   </button>
                 );

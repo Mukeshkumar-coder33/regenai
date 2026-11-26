@@ -14,6 +14,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { io } from 'socket.io-client';
+import {
+  getActiveBackendMode,
+  getActiveBackendUrl,
+  probeAndSelectBackend,
+  subscribeBackendChange,
+} from '../lib/backendConfig';
 
 /** Map server event → React Query key(s) to invalidate */
 const EVENT_TO_QUERY_KEYS = {
@@ -45,8 +51,7 @@ export function getSocket() {
  * - In dev (Vite proxy) the `/ws` path is proxied to the backend on port 5006.
  */
 function getSocketUrl() {
-  if (typeof window === 'undefined') return '';
-  return window.location.origin;
+  return getActiveBackendUrl();
 }
 
 /**
@@ -64,6 +69,7 @@ function getAuthToken() {
 // Module-level singleton instance to prevent duplicate connections across React renders/remounts
 let activeSocket = null;
 let activeToken = null;
+let activeUrl = null;
 let isBfCached = false;
 let currentQueryClient = null;
 
@@ -105,6 +111,15 @@ function setupEventListeners(socket) {
     }
   });
 
+  socket.on('meeting:started', (data) => {
+    if (currentQueryClient) {
+      currentQueryClient.invalidateQueries({ queryKey: ['notifications'] });
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('meeting:started', { detail: data }));
+    }
+  });
+
   // Force logout when company is blocked by SuperAdmin
   socket.on('company:blocked', (payload) => {
     localStorage.removeItem('current_user');
@@ -119,6 +134,12 @@ function setupEventListeners(socket) {
     console.log('[WS] connected');
   });
 
+  socket.on('connect_error', () => {
+    if (getActiveBackendMode() === 'local') {
+      probeAndSelectBackend({ force: true });
+    }
+  });
+
   socket.on('disconnect', (reason) => {
     // Only log if not intentional BFCache transition
     if (!isBfCached) {
@@ -129,18 +150,20 @@ function setupEventListeners(socket) {
 }
 
 function getOrCreateSocket(token) {
+  const targetUrl = getSocketUrl();
   if (!token) {
     if (activeSocket) {
       activeSocket.disconnect();
       activeSocket = null;
       globalSocket = null;
       activeToken = null;
+      activeUrl = null;
     }
     return null;
   }
 
-  // If existing socket is valid with the same token, reuse it
-  if (activeSocket && activeToken === token) {
+  // If existing socket is valid with the same token AND backend URL, reuse it
+  if (activeSocket && activeToken === token && activeUrl === targetUrl) {
     globalSocket = activeSocket;
     if (!activeSocket.connected && !isBfCached) {
       activeSocket.connect();
@@ -148,7 +171,7 @@ function getOrCreateSocket(token) {
     return activeSocket;
   }
 
-  // If token changed, tear down old socket
+  // If token or backend URL changed, tear down old socket cleanly
   if (activeSocket) {
     activeSocket.disconnect();
     activeSocket = null;
@@ -156,7 +179,8 @@ function getOrCreateSocket(token) {
   }
 
   activeToken = token;
-  const socket = io(getSocketUrl(), {
+  activeUrl = targetUrl;
+  const socket = io(targetUrl, {
     path: '/ws',
     transports: ['websocket', 'polling'],
     auth: { token },
@@ -177,11 +201,18 @@ function getOrCreateSocket(token) {
 export function useSocket() {
   const queryClient = useQueryClient();
   const [token, setToken] = useState(getAuthToken);
+  const [backendUrl, setBackendUrl] = useState(getActiveBackendUrl);
 
   // Keep queryClient reference updated for event callbacks
   useEffect(() => {
     currentQueryClient = queryClient;
   }, [queryClient]);
+
+  useEffect(() => {
+    return subscribeBackendChange(({ baseUrl }) => {
+      setBackendUrl((prev) => (prev !== baseUrl ? baseUrl : prev));
+    });
+  }, []);
 
   // Monitor localStorage for token changes (login, logout, account switch)
   useEffect(() => {
@@ -253,6 +284,6 @@ export function useSocket() {
       window.removeEventListener('pageshow', handlePageShow);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [token]);
+  }, [token, backendUrl]);
 }
 

@@ -25,7 +25,7 @@ export default function VoiceNoteBadgePlayer({ src, className = '' }) {
   };
 
   return (
-    <div className={cn("inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] border border-[#C9DED1] text-xs font-medium shadow-2xs", className)}>
+    <div className={cn("inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[#0D9488]/10 text-[#0D9488] dark:text-[#14B8A6] border border-[#0D9488]/20 text-xs font-medium shadow-2xs", className)}>
       <audio
         ref={audioRef}
         src={src}
@@ -38,7 +38,7 @@ export default function VoiceNoteBadgePlayer({ src, className = '' }) {
         size="icon"
         variant="ghost"
         onClick={togglePlay}
-        className="h-5 w-5 p-0 hover:bg-[#087A4B]/20 text-inherit rounded shrink-0"
+        className="h-5 w-5 p-0 hover:bg-[#0D9488]/20 text-inherit rounded shrink-0"
         title={isPlaying ? "Pause voice note" : "Play voice note"}
       >
         {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 ml-0.5" />}

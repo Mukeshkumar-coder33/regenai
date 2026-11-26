@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { useGetAllHolidays, useAddHoliday, useUpdateHoliday, useDeleteHoliday, useGetAllLeaveRequests, useGetUserLeaveRequests, useApplyLeave, useUpdateLeaveRequest, useGetAllUsers } from '../../hooks/useQueries';
+import { useGetAllHolidays, useAddHoliday, useUpdateHoliday, useDeleteHoliday, useGetAllLeaveRequests, useGetUserLeaveRequests, useApplyLeave, useUpdateLeaveRequest, useGetAllUsers, useGetAllEvents, useAddEvent, useUpdateEvent, useDeleteEvent } from '../../hooks/useQueries';
 import { useCustomAuth } from '../../hooks/useCustomAuth';
 import { useIsMobile } from '../../hooks/use-mobile';
 import { Button } from '@/components/ui/button';
@@ -41,20 +41,29 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
   const users = useMemo(() => {
     return (usersQuery && usersQuery.length > 0) ? usersQuery : (initialUsers || []);
   }, [usersQuery, initialUsers]);
+  const { data: events = [], isLoading: eventsLoading } = useGetAllEvents();
   const addHoliday = useAddHoliday();
   const updateHoliday = useUpdateHoliday();
   const deleteHoliday = useDeleteHoliday();
   const applyLeave = useApplyLeave();
   const updateLeaveReq = useUpdateLeaveRequest();
+  const addEvent = useAddEvent();
+  const updateEvent = useUpdateEvent();
+  const deleteEvent = useDeleteEvent();
 
   const [isHolidayDialogOpen, setIsHolidayDialogOpen] = useState(false);
+  const [isEventDialogOpen, setIsEventDialogOpen] = useState(false);
   const [isLeaveDialogOpen, setIsLeaveDialogOpen] = useState(false);
   const [isCellDialogOpen, setIsCellDialogOpen] = useState(false);
   const [selectedCell, setSelectedCell] = useState(null);
   const [editingHoliday, setEditingHoliday] = useState(null);
-  const [leaveCardTab, setLeaveCardTab] = useState('leaves'); // 'leaves' | 'holidays'
+  const [editingEvent, setEditingEvent] = useState(null);
+  const [leaveCardTab, setLeaveCardTab] = useState('events'); // 'events' | 'leaves' | 'holidays'
   const [holidayForm, setHolidayForm] = useState({ name: '', date: '' });
+  const [eventForm, setEventForm] = useState({ title: '', date: '', description: '', deductSalary: false });
   const [leaveForm, setLeaveForm] = useState({ type: 'casual', startDate: '', endDate: '', reason: '', targetUserId: '' });
+  const [eventPage, setEventPage] = useState(1);
+  const EVENT_PAGE_SIZE = 5;
   const [monthDate, setMonthDate] = useState(new Date());
   const [agendaFilter, setAgendaFilter] = useState('all');
   const [agendaPage, setAgendaPage] = useState(1);
@@ -131,6 +140,17 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
     () => visibleHolidays.filter(h => String(h.name || '').toLowerCase() !== 'sunday'),
     [visibleHolidays]
   );
+  const eventMap = useMemo(() => {
+    const map = new Map();
+    events.forEach(e => {
+      if (e.date) {
+        const list = map.get(e.date) || [];
+        list.push(e);
+        map.set(e.date, list);
+      }
+    });
+    return map;
+  }, [events]);
   const approvedLeaveDays = useMemo(() => {
     const list = (isAdmin ? leaveRequests : myLeaves).filter(l => l.status === 'approved');
     const map = new Map();
@@ -270,6 +290,9 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
       const birthdayLabel = birthdaysList.length > 0 ? birthdaysList.map(b => b.name).join(', ') : '';
       const leaveName = approvedLeavesList.length > 0 ? approvedLeavesList.map(l => l.name).join(', ') : '';
       const pendingLeaveName = pendingLeavesList.length > 0 ? pendingLeavesList.map(l => l.name).join(', ') : '';
+      const eventsList = eventMap.get(iso) || [];
+      const hasEvent = eventsList.length > 0;
+      const eventName = eventsList.map(e => e.title).join(', ');
 
       days.push({
         date: d,
@@ -277,6 +300,9 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
         inMonth,
         isHoliday: !!holidayName,
         holidayName,
+        hasEvent,
+        eventsList,
+        eventName,
         leaveName,
         pendingLeaveName,
         birthdayLabel,
@@ -519,6 +545,58 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
     }
   }, [leaveForm.startDate, leaveForm.endDate, visibleHolidays, myLeaves]);
 
+  const handleOpenEventDialog = (event = null) => {
+    if (event) {
+      setEditingEvent(event);
+      setEventForm({
+        title: event.title || '',
+        date: event.date || format(new Date(), 'yyyy-MM-dd'),
+        description: event.description || '',
+        deductSalary: Boolean(event.deductSalary),
+      });
+    } else {
+      setEditingEvent(null);
+      setEventForm({
+        title: '',
+        date: format(new Date(), 'yyyy-MM-dd'),
+        description: '',
+        deductSalary: false,
+      });
+    }
+    setIsEventDialogOpen(true);
+  };
+
+  const handleEventSubmit = async (e) => {
+    e.preventDefault();
+    if (!eventForm.title.trim()) {
+      toast.error('Event title is required');
+      return;
+    }
+    if (!eventForm.date) {
+      toast.error('Event date is required');
+      return;
+    }
+    try {
+      if (editingEvent) {
+        await updateEvent.mutateAsync({
+          ...eventForm,
+          id: editingEvent.id,
+        });
+        toast.success('Event updated successfully');
+      } else {
+        await addEvent.mutateAsync({
+          ...eventForm,
+          id: 'event-' + safeRandomUUID(),
+        });
+        toast.success('Event scheduled successfully');
+      }
+      setIsEventDialogOpen(false);
+      setEditingEvent(null);
+    } catch (err) {
+      toast.error(err.message || 'Failed to save event');
+    }
+  };
+
   const handleOpenHolidayDialog = (holiday) => {
     if (holiday) {
       setEditingHoliday(holiday);
@@ -671,17 +749,17 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
   return (
     <div className="space-y-4 sm:space-y-5">
       {/* 1. Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-[#E1E8E4] dark:border-[#2A3D48]">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-[#D5E5D7] dark:border-[#2A3D48]">
         {portalType !== 'superadmin' ? (
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] flex items-center justify-center shrink-0 shadow-2xs">
+            <div className="w-11 h-11 rounded-2xl bg-[#15966A]/10 text-[#15966A] dark:text-[#14B8A6] flex items-center justify-center shrink-0 shadow-2xs">
               <CalendarDays className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#17231F] dark:text-[#E8F0F4] leading-snug">
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#183B2B] dark:text-[#E8F0F4] leading-snug">
                 Office Calendar
               </h1>
-              <p className="text-xs sm:text-sm text-[#52615B] dark:text-[#A6B5C0] mt-0.5 font-normal">
+              <p className="text-xs sm:text-sm text-[#687C70] dark:text-[#A6B5C0] mt-0.5 font-normal">
                 Your team's schedule, celebrations, and time off.
               </p>
             </div>
@@ -755,7 +833,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
           <div className="flex flex-wrap items-center justify-between gap-2.5 p-3 sm:p-4 border-b border-[#DFE8EC] dark:border-[#2A3D48] bg-[#F4F8FA]/60 dark:bg-[#1D303B]/50 shrink-0">
             <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               <div className="flex items-center gap-2">
-                <CalendarIcon className="w-4 h-4 text-[#087A4B] dark:text-[#14B8A6]" />
+                <CalendarIcon className="w-4 h-4 text-[#0D9488] dark:text-[#14B8A6]" />
                 <span className="text-sm font-semibold text-[#172B3A] dark:text-[#E8F0F4]">Monthly Schedule</span>
               </div>
 
@@ -765,7 +843,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                   variant="outline"
                   size="sm"
                   onClick={() => setMonthDate(new Date())}
-                  className="h-7 px-2 text-xs font-semibold border-[#DFE8EC] dark:border-[#2A3D48] text-[#172B3A] dark:text-[#E8F0F4] hover:text-[#087A4B] dark:hover:text-[#14B8A6] hover:bg-[#F4F8FA] dark:hover:bg-[#1D303B] rounded-lg"
+                  className="h-7 px-2 text-xs font-semibold border-[#DFE8EC] dark:border-[#2A3D48] text-[#172B3A] dark:text-[#E8F0F4] hover:text-[#0D9488] dark:hover:text-[#14B8A6] hover:bg-[#F4F8FA] dark:hover:bg-[#1D303B] rounded-lg"
                   title="Jump to current date"
                 >
                   Today
@@ -774,7 +852,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 w-7 p-0 rounded-lg text-[#172B3A] dark:text-[#E8F0F4] hover:text-[#087A4B] dark:hover:text-[#14B8A6] hover:bg-[#F4F8FA] dark:hover:bg-[#1D303B]"
+                  className="h-7 w-7 p-0 rounded-lg text-[#172B3A] dark:text-[#E8F0F4] hover:text-[#0D9488] dark:hover:text-[#14B8A6] hover:bg-[#F4F8FA] dark:hover:bg-[#1D303B]"
                   onClick={() => setMonthDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
                   title="Previous Month"
                 >
@@ -786,7 +864,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 w-7 p-0 rounded-lg text-[#172B3A] dark:text-[#E8F0F4] hover:text-[#087A4B] dark:hover:text-[#14B8A6] hover:bg-[#F4F8FA] dark:hover:bg-[#1D303B]"
+                  className="h-7 w-7 p-0 rounded-lg text-[#172B3A] dark:text-[#E8F0F4] hover:text-[#0D9488] dark:hover:text-[#14B8A6] hover:bg-[#F4F8FA] dark:hover:bg-[#1D303B]"
                   onClick={() => setMonthDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
                   title="Next Month"
                 >
@@ -797,6 +875,10 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
 
             {/* Event Legend */}
             <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[#FFEDD5] text-[#C2410C] border border-[#F97316]/50 dark:bg-[#7C2D12]/40 dark:text-[#FB923C] dark:border-[#F97316]/60 font-semibold text-[11px] shadow-2xs">
+                <span>📅</span>
+                <span>Event</span>
+              </div>
               <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[#FFFBEB] text-[#854D0E] border border-[#D4AF37]/60 dark:bg-[#78350F]/25 dark:text-[#FFD700] dark:border-[#D4AF37]/70 font-semibold text-[11px] shadow-2xs">
                 <span>🎂</span>
                 <span>Birthday</span>
@@ -862,6 +944,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                   const isToday = format(cell.date, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
                   const hasBirthday = Boolean(cell.birthdayLabel);
                   const hasHoliday = Boolean(cell.isHoliday);
+                  const hasEvent = Boolean(cell.hasEvent);
                   const hasApprovedLeave = Boolean(cell.leaveName);
                   const hasPendingLeave = Boolean(cell.pendingLeaveName);
                   const dayOfWeek = cell.date.getDay();
@@ -869,6 +952,17 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
 
                   // Build event badges list
                   const events = [];
+                  if (hasEvent) {
+                    cell.eventsList?.forEach(e => {
+                      events.push({
+                        type: 'event',
+                        label: `Event: ${e.title}`,
+                        title: `${e.title}${e.deductSalary ? ' (Deduct 1-Day Salary if Absent)' : ' (No Deduction)'}`,
+                        icon: '📅',
+                        className: 'bg-[#FFEDD5] text-[#C2410C] border-[#F97316]/50 dark:bg-[#7C2D12]/70 dark:text-orange-200 dark:border-orange-500/60 font-semibold shadow-2xs'
+                      });
+                    });
+                  }
                   if (hasBirthday) {
                     events.push({
                       type: 'birthday',
@@ -919,20 +1013,21 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                       className={cn(
                         "rounded-xl p-1 sm:p-1.5 lg:p-2 min-h-[56px] sm:min-h-[64px] lg:min-h-[70px] xl:min-h-[74px] flex flex-col justify-between overflow-hidden relative cursor-pointer border transition-all text-left group",
                         !cell.inMonth && "opacity-30 bg-muted/10 border-[#DFE8EC]/40 dark:border-[#2A3D48]/40",
-                        cell.inMonth && "bg-white dark:bg-[#15232D] border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#C9DED1] hover:shadow-xs",
+                        cell.inMonth && "bg-white dark:bg-[#15232D] border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#0D9488]/50 hover:shadow-xs",
                         isWeekend && cell.inMonth && !hasBirthday && "bg-[#F4F8FA]/50 dark:bg-[#1D303B]/30",
                         hasBirthday && cell.inMonth && "border-[#D4AF37] dark:border-[#FFD700]/70 bg-gradient-to-b from-[#FFFDF0] to-[#FFF9DB]/80 dark:from-[#242010]/90 dark:to-[#181508] shadow-[0_0_12px_rgba(255,215,0,0.18)] dark:shadow-[0_0_16px_rgba(255,215,0,0.14)]",
-                        hasHoliday && !hasBirthday && cell.inMonth && "border-blue-300 dark:border-blue-500/50 bg-blue-50/20 dark:bg-blue-950/15",
+                        hasEvent && !hasBirthday && cell.inMonth && "border-orange-400 dark:border-orange-500/70 bg-orange-50/35 dark:bg-[#2C1808]/40 shadow-[0_0_10px_rgba(249,115,22,0.15)]",
+                        hasHoliday && !hasBirthday && !hasEvent && cell.inMonth && "border-blue-300 dark:border-blue-500/50 bg-blue-50/20 dark:bg-blue-950/15",
                         hasApprovedLeave && !hasBirthday && !hasHoliday && cell.inMonth && "border-emerald-300 dark:border-emerald-500/50 bg-emerald-50/20 dark:bg-emerald-950/15",
                         hasPendingLeave && !hasBirthday && !hasHoliday && !hasApprovedLeave && cell.inMonth && "border-amber-300 dark:border-amber-500/50 bg-amber-50/20 dark:bg-amber-950/15",
-                        isToday && "ring-2 ring-[#087A4B] ring-offset-1 ring-offset-background"
+                        isToday && "ring-2 ring-[#0D9488] ring-offset-1 ring-offset-background"
                       )}
                     >
                       <div className="w-full flex items-center justify-between">
                         <span className={cn(
                           "text-[11px] sm:text-xs font-semibold inline-flex items-center justify-center transition-all",
                           isToday 
-                            ? "h-5 w-5 sm:h-6 sm:w-6 rounded-md sm:rounded-lg bg-[#087A4B] text-white font-bold shadow-xs" 
+                            ? "h-5 w-5 sm:h-6 sm:w-6 rounded-md sm:rounded-lg bg-[#0D9488] text-white font-bold shadow-xs" 
                             : hasBirthday && cell.inMonth
                             ? "h-5 w-5 sm:h-6 sm:w-6 rounded-md sm:rounded-lg bg-[#FEF9C3] dark:bg-[#78350F]/40 text-[#854D0E] dark:text-[#FFD700] font-black border border-[#D4AF37]/50 shadow-2xs group-hover:scale-105"
                             : cell.inMonth 
@@ -946,7 +1041,9 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                             "w-1.5 h-1.5 rounded-full shrink-0",
                             hasBirthday && cell.inMonth 
                               ? "bg-[#D4AF37] dark:bg-[#FFD700] shadow-[0_0_6px_#FFD700]" 
-                              : "bg-[#087A4B]"
+                              : hasEvent && cell.inMonth
+                              ? "bg-orange-500 shadow-[0_0_6px_#F97316]"
+                              : "bg-[#0D9488]"
                           )} />
                         )}
                       </div>
@@ -966,7 +1063,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                           </div>
                         ))}
                         {overflowCount > 0 && (
-                          <span className="text-[9px] font-medium text-[#087A4B] dark:text-[#14B8A6] px-1 bg-[#E8F3EC] rounded leading-tight">
+                          <span className="text-[9px] font-medium text-[#0D9488] dark:text-[#14B8A6] px-1 bg-[#0D9488]/10 rounded leading-tight">
                             +{overflowCount} more
                           </span>
                         )}
@@ -986,7 +1083,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
           <Card className="border border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] text-foreground rounded-2xl shadow-sm p-3.5 sm:p-4 flex flex-col lg:flex-1 lg:min-h-0 overflow-hidden">
             <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-[#DFE8EC] dark:border-[#2A3D48] shrink-0">
               <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-[#087A4B] dark:text-[#14B8A6]" />
+                <Clock className="w-4 h-4 text-[#0D9488] dark:text-[#14B8A6]" />
                 <h3 className="text-sm sm:text-base font-semibold text-[#172B3A] dark:text-[#E8F0F4]">Monthly Agenda</h3>
               </div>
               <Badge variant="outline" className="text-[10px] sm:text-[11px] px-2 font-medium bg-[#F4F8FA] dark:bg-[#1D303B] border-[#DFE8EC] dark:border-[#2A3D48]">
@@ -1003,7 +1100,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                   className={cn(
                     "px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all capitalize shrink-0",
                     agendaFilter === type 
-                      ? "bg-[#087A4B] text-white shadow-xs" 
+                      ? "bg-[#0D9488] text-white shadow-xs" 
                       : "bg-[#F4F8FA] dark:bg-[#1D303B] text-[#64748B] dark:text-[#A6B5C0] hover:text-[#172B3A] dark:hover:text-[#E8F0F4] hover:bg-[#E8F1F4] dark:hover:bg-[#253945]"
                   )}
                 >
@@ -1027,12 +1124,12 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                       const matchingCell = monthMatrix.flat().find(c => c.iso === evt.iso);
                       if (matchingCell) handleCellClick(matchingCell);
                     }}
-                    className="p-2.5 rounded-xl border border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#C9DED1] bg-[#F4F8FA]/60 dark:bg-[#1D303B]/60 hover:bg-white dark:hover:bg-[#1A2C38] transition-all cursor-pointer flex items-center justify-between gap-2.5 group shadow-2xs"
+                    className="p-2.5 rounded-xl border border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#0D9488]/50 bg-[#F4F8FA]/60 dark:bg-[#1D303B]/60 hover:bg-white dark:hover:bg-[#1A2C38] transition-all cursor-pointer flex items-center justify-between gap-2.5 group shadow-2xs"
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-sm shrink-0">{evt.icon}</span>
                       <div className="min-w-0">
-                        <p className="text-xs font-semibold text-[#172B3A] dark:text-[#E8F0F4] group-hover:text-[#087A4B] dark:group-hover:text-[#14B8A6] truncate transition-colors">
+                        <p className="text-xs font-semibold text-[#172B3A] dark:text-[#E8F0F4] group-hover:text-[#0D9488] dark:group-hover:text-[#14B8A6] truncate transition-colors">
                           {evt.title}
                         </p>
                         <p className="text-[10px] text-[#64748B] dark:text-[#A6B5C0]">
@@ -1085,43 +1182,68 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
 
           {/* Right Bottom: Leave Requests / Management Card */}
           <Card className="border border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] text-foreground rounded-2xl shadow-sm p-3.5 sm:p-4 flex flex-col lg:flex-1 lg:min-h-0 overflow-hidden">
-            {/* Header: Title, Description, and Dynamic Action Button */}
+            {/* Header: Dynamic Title & Action Button based on active tab */}
             <div className="flex items-center justify-between gap-2 pb-2.5 mb-2.5 border-b border-[#DFE8EC] dark:border-[#2A3D48] shrink-0">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <Palmtree className="w-4 h-4 text-[#087A4B] dark:text-[#14B8A6] shrink-0" />
+                  {isAdmin && leaveCardTab === 'events' ? (
+                    <CalendarIcon className="w-4 h-4 text-orange-600 dark:text-orange-400 shrink-0" />
+                  ) : (
+                    <Palmtree className="w-4 h-4 text-[#0D9488] dark:text-[#14B8A6] shrink-0" />
+                  )}
                   <h3 className="text-sm sm:text-base font-semibold text-[#172B3A] dark:text-[#E8F0F4] truncate">
-                    {isAdmin ? (leaveCardTab === 'holidays' ? 'Company Holidays' : 'Leave Requests') : 'Leave Requests'}
+                    {isAdmin
+                      ? (leaveCardTab === 'events'
+                          ? 'Events...'
+                          : leaveCardTab === 'holidays'
+                          ? 'Company Holidays'
+                          : 'Leave Requests')
+                      : 'Leave Requests'}
                   </h3>
                 </div>
                 <p className="text-[11px] text-[#64748B] dark:text-[#A6B5C0] mt-0.5 line-clamp-1">
                   {isAdmin
-                    ? (leaveCardTab === 'holidays' ? 'Manage official company holiday dates.' : 'Review employee leaves or record approved time off.')
+                    ? (leaveCardTab === 'events'
+                        ? 'Schedule company events and configure salary deduction rules.'
+                        : leaveCardTab === 'holidays'
+                        ? 'Manage official company holiday dates.'
+                        : 'Review employee leave requests.')
                     : 'Track your leave status or submit a new leave request.'}
                 </p>
               </div>
 
-              {/* Dynamic Action Button: Shows 'Add Leave' when leaves tab is active, or 'Add Holiday' when holidays tab is active */}
+              {/* Action Button: 'Add Event' only in Events tab, 'Add Holiday' in Holidays tab, NO Add Event in Leave Requests */}
               <div className="flex items-center gap-1.5 shrink-0">
-                {isAdmin && leaveCardTab === 'holidays' ? (
-                  canManageHolidays && (
+                {isAdmin ? (
+                  leaveCardTab === 'events' ? (
                     <Button 
                       size="sm"
-                      onClick={() => handleOpenHolidayDialog()}
-                      className="bg-[#087A4B] hover:bg-[#07563B] text-white text-xs h-8 px-3 font-semibold shadow-xs rounded-xl flex items-center gap-1.5"
+                      onClick={() => handleOpenEventDialog()}
+                      className="bg-orange-600 hover:bg-orange-700 text-white text-xs h-8 px-3 font-semibold shadow-xs rounded-xl flex items-center gap-1.5"
                     >
                       <Plus className="h-3.5 w-3.5" />
-                      <span>Add Holiday</span>
+                      <span>Add Event</span>
                     </Button>
-                  )
+                  ) : leaveCardTab === 'holidays' ? (
+                    canManageHolidays && (
+                      <Button 
+                        size="sm"
+                        onClick={() => handleOpenHolidayDialog()}
+                        className="bg-[#0D9488] hover:bg-[#0F766E] text-white text-xs h-8 px-3 font-semibold shadow-xs rounded-xl flex items-center gap-1.5"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        <span>Add Holiday</span>
+                      </Button>
+                    )
+                  ) : null
                 ) : (
                   <Button 
                     size="sm"
                     onClick={() => setIsLeaveDialogOpen(true)}
-                    className="bg-[#087A4B] hover:bg-[#07563B] text-white text-xs h-8 px-3 font-semibold shadow-xs rounded-xl flex items-center gap-1.5"
+                    className="bg-[#0D9488] hover:bg-[#0F766E] text-white text-xs h-8 px-3 font-semibold shadow-xs rounded-xl flex items-center gap-1.5"
                   >
                     <Plus className="h-3.5 w-3.5" />
-                    <span>Add Leave</span>
+                    <span>Apply for Leave</span>
                   </Button>
                 )}
               </div>
@@ -1132,25 +1254,140 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
               <Tabs value={leaveCardTab} onValueChange={(val) => { setLeaveCardTab(val); setLeavePage(1); }} className="w-full lg:flex-1 lg:min-h-0 flex flex-col space-y-2.5">
                 <TabsList className="bg-[#F4F8FA] dark:bg-[#1D303B] border border-[#DFE8EC] dark:border-[#2A3D48] p-1 rounded-xl h-auto flex w-full shrink-0">
                   <TabsTrigger 
+                    value="events" 
+                    className="flex-1 text-xs font-semibold px-2 py-1.5 rounded-lg data-[state=active]:bg-white dark:data-[state=active]:bg-[#15232D] data-[state=active]:text-orange-600 dark:data-[state=active]:text-orange-400 data-[state=active]:shadow-xs transition-all"
+                  >
+                    Events ({events.length})
+                  </TabsTrigger>
+                  <TabsTrigger 
                     value="leaves" 
-                    className="flex-1 text-xs font-semibold px-2 py-1.5 rounded-lg data-[state=active]:bg-white dark:data-[state=active]:bg-[#15232D] data-[state=active]:text-[#087A4B] dark:data-[state=active]:text-[#14B8A6] data-[state=active]:shadow-xs transition-all"
+                    className="flex-1 text-xs font-semibold px-2 py-1.5 rounded-lg data-[state=active]:bg-white dark:data-[state=active]:bg-[#15232D] data-[state=active]:text-[#0D9488] dark:data-[state=active]:text-[#14B8A6] data-[state=active]:shadow-xs transition-all"
                   >
                     Leaves ({leaveRequests.length})
                   </TabsTrigger>
                   <TabsTrigger 
                     value="holidays" 
-                    className="flex-1 text-xs font-semibold px-2 py-1.5 rounded-lg data-[state=active]:bg-white dark:data-[state=active]:bg-[#15232D] data-[state=active]:text-[#087A4B] dark:data-[state=active]:text-[#14B8A6] data-[state=active]:shadow-xs transition-all"
+                    className="flex-1 text-xs font-semibold px-2 py-1.5 rounded-lg data-[state=active]:bg-white dark:data-[state=active]:bg-[#15232D] data-[state=active]:text-[#0D9488] dark:data-[state=active]:text-[#14B8A6] data-[state=active]:shadow-xs transition-all"
                   >
                     Holidays ({holidayList.length})
                   </TabsTrigger>
                 </TabsList>
 
+                                <TabsContent value="events" className="lg:flex-1 lg:min-h-0 flex flex-col mt-2.5 data-[state=inactive]:hidden">
+                  {eventsLoading ? (
+                    <div className="flex-1 flex items-center justify-center py-6 text-muted-foreground text-xs">Loading events...</div>
+                  ) : events.length === 0 ? (
+                    <div className="flex-1 min-h-[140px] flex flex-col items-center justify-center bg-[#F4F8FA]/60 dark:bg-[#1D303B]/50 border border-dashed border-[#DFE8EC] dark:border-[#2A3D48] rounded-xl p-4 text-center space-y-2">
+                      <div className="w-10 h-10 mx-auto rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-400 flex items-center justify-center">
+                        <CalendarIcon className="w-5 h-5" />
+                      </div>
+                      <div className="space-y-1">
+                        <h4 className="text-sm font-semibold text-[#172B3A] dark:text-[#E8F0F4]">No events scheduled</h4>
+                        <p className="text-xs text-[#64748B] dark:text-[#A6B5C0] leading-relaxed">
+                          Click "Add Event" above to schedule company events with payment deduction rules.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="space-y-2.5 max-h-[260px] sm:max-h-[280px] lg:max-h-[300px] overflow-y-auto custom-scrollbar pr-1.5">
+                        {events.slice((eventPage - 1) * EVENT_PAGE_SIZE, eventPage * EVENT_PAGE_SIZE).map((evt) => (
+                          <div 
+                            key={evt.id} 
+                            className="bg-white dark:bg-[#15232D] border border-orange-200/60 dark:border-orange-500/30 hover:border-orange-400 rounded-xl p-3 shadow-xs transition-all space-y-2"
+                          >
+                            <div className="flex items-center justify-between gap-1.5">
+                              <span className="font-bold text-xs text-[#172B3A] dark:text-[#E8F0F4] truncate">
+                                {evt.title}
+                              </span>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleOpenEventDialog(evt)}
+                                  className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                                  title="Edit Event"
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={async () => {
+                                    if (confirm('Delete this event?')) {
+                                      await deleteEvent.mutateAsync(evt.id);
+                                      toast.success('Event deleted');
+                                    }
+                                  }}
+                                  className="h-6 w-6 p-0 text-rose-500 hover:text-rose-700 hover:bg-rose-50"
+                                  title="Delete Event"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-xs text-[#64748B] dark:text-[#A6B5C0]">
+                              <CalendarDays className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
+                              <span className="font-semibold text-xs text-[#172B3A] dark:text-[#E8F0F4]">
+                                {formatFriendlyDate(evt.date)}
+                              </span>
+                            </div>
+                            {evt.description && (
+                              <p className="text-xs text-[#64748B] dark:text-[#A6B5C0] line-clamp-2">
+                                {evt.description}
+                              </p>
+                            )}
+                            <div className="pt-1.5 border-t border-[#DFE8EC]/60 dark:border-[#2A3D48]/60 flex items-center justify-between">
+                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
+                                evt.deductSalary 
+                                  ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30' 
+                                  : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
+                              }`}>
+                                {evt.deductSalary ? '⚠️ Deduct 1-Day Salary if Absent' : '✓ No Salary Deduction'}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {events.length > EVENT_PAGE_SIZE && (
+                        <div className="flex items-center justify-between pt-2 mt-auto border-t border-[#DFE8EC] dark:border-[#2A3D48] text-xs text-[#64748B] dark:text-[#A6B5C0] shrink-0">
+                          <span className="text-[11px]">
+                            {Math.min((eventPage - 1) * EVENT_PAGE_SIZE + 1, events.length)} - {Math.min(eventPage * EVENT_PAGE_SIZE, events.length)} of {events.length}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setEventPage(p => Math.max(1, p - 1))}
+                              disabled={eventPage <= 1}
+                              className="h-6 w-6 p-0 rounded border-[#DFE8EC] dark:border-[#2A3D48]"
+                            >
+                              <ChevronLeft className="h-3 w-3" />
+                            </Button>
+                            <span className="text-[11px] px-1 font-medium text-foreground">
+                              {eventPage}/{Math.ceil(events.length / EVENT_PAGE_SIZE)}
+                            </span>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setEventPage(p => Math.min(Math.ceil(events.length / EVENT_PAGE_SIZE), p + 1))}
+                              disabled={eventPage >= Math.ceil(events.length / EVENT_PAGE_SIZE)}
+                              className="h-6 w-6 p-0 rounded border-[#DFE8EC] dark:border-[#2A3D48]"
+                            >
+                              <ChevronRight className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </TabsContent>
                 <TabsContent value="leaves" className="lg:flex-1 lg:min-h-0 flex flex-col mt-2.5 data-[state=inactive]:hidden">
                   {leavesLoading ? (
                     <div className="flex-1 flex items-center justify-center py-6 text-muted-foreground text-xs">Loading leave requests...</div>
                   ) : leaveRequests.length === 0 ? (
                     <div className="flex-1 min-h-[140px] flex flex-col items-center justify-center bg-[#F4F8FA]/60 dark:bg-[#1D303B]/50 border border-dashed border-[#DFE8EC] dark:border-[#2A3D48] rounded-xl p-4 text-center space-y-2">
-                      <div className="w-10 h-10 mx-auto rounded-full bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] flex items-center justify-center">
+                      <div className="w-10 h-10 mx-auto rounded-full bg-[#0D9488]/10 text-[#0D9488] dark:text-[#14B8A6] flex items-center justify-center">
                         <CalendarDays className="w-5 h-5" />
                       </div>
                       <div className="space-y-1">
@@ -1171,7 +1408,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                         return (
                           <div 
                             key={leave.id} 
-                            className="bg-white dark:bg-[#15232D] border border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#C9DED1] dark:hover:border-[#14B8A6]/40 rounded-xl p-3 shadow-xs transition-all space-y-2"
+                            className="bg-white dark:bg-[#15232D] border border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#0D9488]/40 dark:hover:border-[#14B8A6]/40 rounded-xl p-3 shadow-xs transition-all space-y-2"
                           >
                             <div className="flex flex-wrap items-center justify-between gap-1.5">
                               <div className="flex flex-wrap items-center gap-1.5">
@@ -1219,7 +1456,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
 
                             <div className="space-y-1 pt-0.5 text-xs">
                               <div className="flex items-center gap-1.5 text-xs text-[#64748B] dark:text-[#A6B5C0]">
-                                <CalendarDays className="w-3.5 h-3.5 text-[#087A4B] dark:text-[#14B8A6]" />
+                                <CalendarDays className="w-3.5 h-3.5 text-[#0D9488] dark:text-[#14B8A6]" />
                                 <span className="font-semibold text-[#172B3A] dark:text-[#E8F0F4] text-xs">
                                   {formatFriendlyDate(leave.startDate)} — {formatFriendlyDate(leave.endDate)}
                                 </span>
@@ -1234,7 +1471,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
 
                             <div className="pt-2 border-t border-[#DFE8EC]/70 dark:border-[#2A3D48]/70 flex items-center justify-between text-[11px] text-[#64748B] dark:text-[#A6B5C0]">
                               <div className="flex items-center gap-1.5 min-w-0">
-                                <span className="w-4 h-4 rounded-full bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] flex items-center justify-center font-bold text-[9px] shrink-0">
+                                <span className="w-4 h-4 rounded-full bg-[#0D9488]/15 text-[#0D9488] dark:text-[#14B8A6] flex items-center justify-center font-bold text-[9px] shrink-0">
                                   {requesterName.slice(0, 2).toUpperCase()}
                                 </span>
                                 <span className="truncate">
@@ -1320,7 +1557,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-7 w-7 text-[#64748B] hover:text-[#087A4B] dark:hover:text-[#14B8A6] rounded-lg"
+                                className="h-7 w-7 text-[#64748B] hover:text-[#0D9488] dark:hover:text-[#14B8A6] rounded-lg"
                                 onClick={() => handleOpenHolidayDialog(holiday)}
                                 title="Edit Holiday"
                               >
@@ -1347,7 +1584,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
               <div className="w-full lg:flex-1 lg:min-h-0 flex flex-col space-y-2.5">
                 {myLeaves.length === 0 ? (
                   <div className="flex-1 min-h-[140px] flex flex-col items-center justify-center bg-[#F4F8FA]/60 dark:bg-[#1D303B]/50 border border-dashed border-[#DFE8EC] dark:border-[#2A3D48] rounded-xl p-4 text-center space-y-2">
-                    <div className="w-10 h-10 mx-auto rounded-full bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] flex items-center justify-center">
+                    <div className="w-10 h-10 mx-auto rounded-full bg-[#0D9488]/10 text-[#0D9488] dark:text-[#14B8A6] flex items-center justify-center">
                       <CalendarDays className="w-5 h-5" />
                     </div>
                     <div className="space-y-1">
@@ -1368,7 +1605,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                       return (
                         <div 
                           key={leave.id} 
-                          className="bg-white dark:bg-[#15232D] border border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#C9DED1] dark:hover:border-[#14B8A6]/40 rounded-xl p-3 shadow-xs transition-all space-y-2"
+                          className="bg-white dark:bg-[#15232D] border border-[#DFE8EC] dark:border-[#2A3D48] hover:border-[#0D9488]/40 dark:hover:border-[#14B8A6]/40 rounded-xl p-3 shadow-xs transition-all space-y-2"
                         >
                           <div className="flex flex-wrap items-center justify-between gap-1.5">
                             <div className="flex flex-wrap items-center gap-1.5">
@@ -1392,7 +1629,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
 
                           <div className="space-y-1 pt-0.5 text-xs">
                             <div className="flex items-center gap-1.5 text-xs text-[#64748B] dark:text-[#A6B5C0]">
-                              <CalendarDays className="w-3.5 h-3.5 text-[#087A4B] dark:text-[#14B8A6]" />
+                              <CalendarDays className="w-3.5 h-3.5 text-[#0D9488] dark:text-[#14B8A6]" />
                               <span className="font-semibold text-[#172B3A] dark:text-[#E8F0F4] text-xs">
                                 {formatFriendlyDate(leave.startDate)} — {formatFriendlyDate(leave.endDate)}
                               </span>
@@ -1407,7 +1644,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
 
                           <div className="pt-2 border-t border-[#DFE8EC]/70 dark:border-[#2A3D48]/70 flex items-center justify-between text-[11px] text-[#64748B] dark:text-[#A6B5C0]">
                             <div className="flex items-center gap-1.5 min-w-0">
-                              <span className="w-4 h-4 rounded-full bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] flex items-center justify-center font-bold text-[9px] shrink-0">
+                              <span className="w-4 h-4 rounded-full bg-[#0D9488]/15 text-[#0D9488] dark:text-[#14B8A6] flex items-center justify-center font-bold text-[9px] shrink-0">
                                 {requesterName.slice(0, 2).toUpperCase()}
                               </span>
                               <span className="truncate">
@@ -1464,6 +1701,105 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
             )}
           </Card>
 
+                    {/* Add / Edit Event Dialog */}
+          <Dialog open={isEventDialogOpen} onOpenChange={setIsEventDialogOpen}>
+            <DialogContent className="rounded-2xl border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] max-w-lg">
+              <DialogHeader>
+                <DialogTitle className="text-lg font-bold text-[#172B3A] dark:text-[#E8F0F4] flex items-center gap-2">
+                  <span className="p-1.5 rounded-lg bg-orange-500/10 text-orange-600 dark:text-orange-400">
+                    <CalendarIcon className="w-5 h-5" />
+                  </span>
+                  <span>{editingEvent ? 'Edit Company Event' : 'Add Company Event'}</span>
+                </DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleEventSubmit} className="space-y-4 pt-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="eventTitle" className="text-xs font-semibold">Event Title *</Label>
+                  <Input
+                    id="eventTitle"
+                    value={eventForm.title}
+                    onChange={(e) => setEventForm({ ...eventForm, title: e.target.value })}
+                    placeholder="e.g. Annual Company Meet, Town Hall"
+                    className="bg-[#F4F8FA] dark:bg-[#1D303B] border-[#DFE8EC] dark:border-[#2A3D48] text-xs sm:text-sm"
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="eventDate" className="text-xs font-semibold">Date *</Label>
+                  <Input
+                    id="eventDate"
+                    type="date"
+                    value={eventForm.date}
+                    onChange={(e) => setEventForm({ ...eventForm, date: e.target.value })}
+                    className="bg-[#F4F8FA] dark:bg-[#1D303B] border-[#DFE8EC] dark:border-[#2A3D48] text-xs sm:text-sm"
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="eventDescription" className="text-xs font-semibold">Description</Label>
+                  <Textarea
+                    id="eventDescription"
+                    value={eventForm.description}
+                    onChange={(e) => setEventForm({ ...eventForm, description: e.target.value })}
+                    placeholder="Details about this event, agenda, venue..."
+                    rows={3}
+                    className="bg-[#F4F8FA] dark:bg-[#1D303B] border-[#DFE8EC] dark:border-[#2A3D48] text-xs sm:text-sm resize-none"
+                  />
+                </div>
+                <div className="space-y-2 p-3 rounded-xl border border-[#DFE8EC] dark:border-[#2A3D48] bg-[#F4F8FA]/60 dark:bg-[#1D303B]/40">
+                  <Label className="text-xs font-bold text-[#172B3A] dark:text-[#E8F0F4] block">
+                    Detect Payment / Salary if Employee is Absent? *
+                  </Label>
+                  <p className="text-[11px] text-[#64748B] dark:text-[#A6B5C0] leading-snug">
+                    Specify whether to deduct 1 day's salary from their total monthly salary if an employee is absent on this event day.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setEventForm({ ...eventForm, deductSalary: true })}
+                      className={cn(
+                        "p-2.5 rounded-xl border text-left transition-all text-xs flex flex-col justify-between gap-1",
+                        eventForm.deductSalary 
+                          ? "border-orange-500 bg-orange-500/10 text-orange-950 dark:text-orange-200 font-bold ring-1 ring-orange-500"
+                          : "border-[#DFE8EC] dark:border-[#2A3D48] hover:bg-muted/30 text-foreground"
+                      )}
+                    >
+                      <span className="flex items-center gap-1.5 font-bold text-orange-600 dark:text-orange-400">
+                        ⚠️ Yes — Deduct 1 Day Salary
+                      </span>
+                      <span className="text-[10px] text-muted-foreground font-normal leading-tight">
+                        Deducts 1 day salary if absent. If employee takes leave with owner's approval before the event, salary is NOT deducted.
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEventForm({ ...eventForm, deductSalary: false })}
+                      className={cn(
+                        "p-2.5 rounded-xl border text-left transition-all text-xs flex flex-col justify-between gap-1",
+                        !eventForm.deductSalary 
+                          ? "border-emerald-500 bg-emerald-500/10 text-emerald-950 dark:text-emerald-200 font-bold ring-1 ring-emerald-500"
+                          : "border-[#DFE8EC] dark:border-[#2A3D48] hover:bg-muted/30 text-foreground"
+                      )}
+                    >
+                      <span className="flex items-center gap-1.5 font-bold text-emerald-600 dark:text-emerald-400">
+                        ✓ No — Do Not Deduct Salary
+                      </span>
+                      <span className="text-[10px] text-muted-foreground font-normal leading-tight">
+                        Paid / excused event. Salary will NOT be deducted even if an employee is absent on this day.
+                      </span>
+                    </button>
+                  </div>
+                </div>
+                <Button 
+                  type="submit" 
+                  className="w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold" 
+                  disabled={addEvent.isPending || updateEvent.isPending}
+                >
+                  {(addEvent.isPending || updateEvent.isPending) ? 'Saving...' : (editingEvent ? 'Update Event' : 'Schedule Event')}
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
           {/* Holiday Dialog */}
           <Dialog open={isHolidayDialogOpen} onOpenChange={setIsHolidayDialogOpen}>
             <DialogContent className="rounded-2xl border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D]">
@@ -1495,7 +1831,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                     required
                   />
                 </div>
-                <Button type="submit" className="w-full bg-[#087A4B] hover:bg-[#07563B] text-white" disabled={addHoliday.isPending || updateHoliday.isPending}>
+                <Button type="submit" className="w-full bg-[#0D9488] hover:bg-[#0F766E] text-white" disabled={addHoliday.isPending || updateHoliday.isPending}>
                   {(addHoliday.isPending || updateHoliday.isPending) ? 'Saving...' : 'Save Holiday'}
                 </Button>
               </form>
@@ -1582,7 +1918,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                     rows={3}
                   />
                 </div>
-                <Button type="submit" className="w-full bg-[#087A4B] hover:bg-[#07563B] text-white" disabled={applyLeave.isPending}>
+                <Button type="submit" className="w-full bg-[#0D9488] hover:bg-[#0F766E] text-white" disabled={applyLeave.isPending}>
                   {applyLeave.isPending ? 'Submitting...' : (isAdmin ? 'Submit / Record Leave' : 'Submit Request')}
                 </Button>
               </form>
@@ -1597,7 +1933,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
           <DialogHeader className="pb-3 border-b border-[#DFE8EC] dark:border-[#2A3D48]">
             <div className="flex items-center justify-between gap-2">
               <DialogTitle className="text-lg font-bold text-[#172B3A] dark:text-[#E8F0F4] flex items-center gap-2">
-                <CalendarIcon className="w-5 h-5 text-[#087A4B] dark:text-[#14B8A6]" />
+                <CalendarIcon className="w-5 h-5 text-[#0D9488] dark:text-[#14B8A6]" />
                 <span>{selectedCell ? format(selectedCell.date, 'EEEE, MMMM d, yyyy') : 'Day Breakdown'}</span>
               </DialogTitle>
             </div>
@@ -1636,6 +1972,79 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                 </div>
               )}
 
+                            {/* Company Events Section */}
+              {selectedCell.eventsList?.length > 0 && (
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-[#C2410C] dark:text-[#FB923C] flex items-center gap-1.5">
+                      <span>📅 Company Events on this day</span>
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-[#FFEDD5] text-[#C2410C] dark:bg-[#7C2D12]/60 dark:text-orange-200 border-[#F97316]/50">
+                        {selectedCell.eventsList.length}
+                      </Badge>
+                    </h4>
+                  </div>
+                  <div className="grid gap-2">
+                    {selectedCell.eventsList.map((evt, idx) => (
+                      <div
+                        key={evt.id || idx}
+                        className="p-3.5 rounded-xl border border-orange-300 dark:border-orange-500/50 bg-gradient-to-r from-orange-50/70 to-amber-50/50 dark:from-[#2C1808] dark:to-[#1F1206] shadow-2xs space-y-2"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="font-bold text-sm text-[#172B3A] dark:text-[#E8F0F4]">{evt.title}</p>
+                            {evt.description && (
+                              <p className="text-xs text-[#64748B] dark:text-[#A6B5C0] mt-0.5">{evt.description}</p>
+                            )}
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider border shrink-0 ${
+                            evt.deductSalary 
+                              ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30' 
+                              : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
+                          }`}>
+                            {evt.deductSalary ? '⚠️ Deduct 1-Day Salary if Absent' : '✓ No Salary Deduction'}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-[#78350F] dark:text-amber-300/80 bg-amber-500/10 p-2 rounded-lg leading-relaxed">
+                          {evt.deductSalary 
+                            ? 'Policy: 1-day salary is deducted if absent. If employee takes leave with owner approval before the event, salary is NOT deducted.' 
+                            : 'Policy: Non-deductible paid event. No salary will be deducted even if absent.'}
+                        </div>
+                        {isAdmin && (
+                          <div className="flex items-center justify-end gap-2 pt-1 border-t border-orange-200/50 dark:border-orange-500/20">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6 text-[11px] px-2 text-orange-700 border-orange-300 hover:bg-orange-100"
+                              onClick={() => {
+                                setIsCellDialogOpen(false);
+                                handleOpenEventDialog(evt);
+                              }}
+                            >
+                              <Pencil className="w-3 h-3 mr-1" />
+                              Edit
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6 text-[11px] px-2 text-rose-600 border-rose-300 hover:bg-rose-50"
+                              onClick={async () => {
+                                if (confirm('Delete this company event?')) {
+                                  await deleteEvent.mutateAsync(evt.id);
+                                  toast.success('Event deleted');
+                                  setIsCellDialogOpen(false);
+                                }
+                              }}
+                            >
+                              <Trash2 className="w-3 h-3 mr-1" />
+                              Delete
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {/* Birthdays Section */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -1716,7 +2125,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                       return (
                         <div
                           key={l.id || idx}
-                          className="p-3.5 rounded-xl border border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] shadow-2xs space-y-2 hover:border-[#C9DED1] transition-colors"
+                          className="p-3.5 rounded-xl border border-[#DFE8EC] dark:border-[#2A3D48] bg-white dark:bg-[#15232D] shadow-2xs space-y-2 hover:border-[#0D9488]/40 transition-colors"
                         >
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex items-center gap-3 min-w-0">
@@ -1727,7 +2136,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                                   className="w-10 h-10 rounded-full object-cover border border-[#DFE8EC] dark:border-[#2A3D48] shrink-0"
                                 />
                               ) : (
-                                <div className="w-10 h-10 rounded-full bg-[#E8F3EC] text-[#087A4B] dark:text-[#14B8A6] font-bold flex items-center justify-center text-sm shrink-0">
+                                <div className="w-10 h-10 rounded-full bg-[#0D9488]/15 text-[#0D9488] dark:text-[#14B8A6] font-bold flex items-center justify-center text-sm shrink-0">
                                   {(l.name || 'U').slice(0, 2).toUpperCase()}
                                 </div>
                               )}
@@ -1762,7 +2171,7 @@ export default function CalendarModule({ userProfile = {}, portalType, initialUs
                           </div>
 
                           <div className="flex items-center gap-1.5 text-xs text-[#64748B] dark:text-[#A6B5C0] pt-1 border-t border-[#DFE8EC]/60 dark:border-[#2A3D48]/60">
-                            <CalendarDays className="w-3.5 h-3.5 text-[#087A4B] dark:text-[#14B8A6] shrink-0" />
+                            <CalendarDays className="w-3.5 h-3.5 text-[#0D9488] dark:text-[#14B8A6] shrink-0" />
                             <span className="font-medium text-[#172B3A] dark:text-[#E8F0F4]">
                               {formatFriendlyDate(l.startDate)} — {formatFriendlyDate(l.endDate)}
                             </span>

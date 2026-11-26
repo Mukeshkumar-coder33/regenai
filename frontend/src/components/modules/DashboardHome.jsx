@@ -774,8 +774,8 @@ export default function DashboardHome({ userProfile, onNavigate, selectedYear = 
           <div className="flex items-center shrink-0 w-full lg:w-auto">
             {/* Search input container */}
             <div ref={searchContainerRef} className="relative w-full sm:w-[420px] md:w-[460px] lg:w-[500px] xl:w-[540px]">
-              <div className="h-11 sm:h-12 flex items-center bg-[#F8FAF9] dark:bg-[#091E24] border border-[#E1E8E4] dark:border-[#203A42] rounded-xl transition-all focus-within:border-[#087A4B] dark:focus-within:border-[#36BEB0] focus-within:ring-1 focus-within:ring-[#087A4B]/20 dark:focus-within:ring-[#36BEB0]/25 shadow-2xs">
-                <Search className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-[#829089] dark:text-[#688A84] shrink-0 ml-3.5 sm:ml-4" />
+              <div className="h-11 sm:h-12 flex items-center bg-[#F8FAF9] dark:bg-[#091E24] border border-[#D5E5D7] dark:border-[#203A42] rounded-xl transition-all focus-within:border-[#15966A] dark:focus-within:border-[#36BEB0] focus-within:ring-1 focus-within:ring-[#15966A]/25 dark:focus-within:ring-[#36BEB0]/25 shadow-2xs">
+                <Search className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-muted-foreground dark:text-[#688A84] shrink-0 ml-3.5 sm:ml-4" />
                 <input
                   type="text"
                   value={searchQuery}
@@ -806,7 +806,7 @@ export default function DashboardHome({ userProfile, onNavigate, selectedYear = 
                   }}
                   onFocus={() => setSearchOpen(true)}
                   placeholder="Search by employee name, ID, department..."
-                  className="w-full bg-transparent px-3 text-xs sm:text-sm text-[#17231F] dark:text-[#E8F0F4] placeholder:text-[#829089] dark:placeholder:text-[#688A84] outline-none font-medium h-full"
+                  className="w-full bg-transparent px-3 text-xs sm:text-sm text-foreground dark:text-[#E8F0F4] placeholder:text-muted-foreground dark:placeholder:text-[#688A84] outline-none font-medium h-full"
                 />
                 {searchQuery && (
                   <button
@@ -1283,23 +1283,23 @@ export default function DashboardHome({ userProfile, onNavigate, selectedYear = 
             <AreaChart data={currentTrendData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
               <defs>
                 <linearGradient id="emeraldGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#087A4B" stopOpacity={0.35} />
-                  <stop offset="95%" stopColor="#087A4B" stopOpacity={0.0} />
+                  <stop offset="5%" stopColor="#0D9488" stopOpacity={0.4} />
+                  <stop offset="95%" stopColor="#0D9488" stopOpacity={0.0} />
                 </linearGradient>
               </defs>
-              <XAxis dataKey="name" stroke="#829089" fontSize={10} tickLine={false} axisLine={false} />
-              <YAxis stroke="#829089" fontSize={10} tickLine={false} axisLine={false} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+              <XAxis dataKey="name" stroke="#64748B" fontSize={10} tickLine={false} axisLine={false} />
+              <YAxis stroke="#64748B" fontSize={10} tickLine={false} axisLine={false} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
               <Tooltip 
                 contentStyle={{ 
-                  backgroundColor: '#FFFFFF', 
-                  borderColor: '#E1E8E4', 
+                  backgroundColor: 'var(--card)', 
+                  borderColor: 'var(--border)', 
                   borderRadius: '0.75rem', 
                   fontSize: '11px',
-                  color: '#17231F'
+                  color: 'var(--foreground)'
                 }}
                 formatter={(val) => [`${val}%`, 'Attendance Rate']}
               />
-              <Area type="monotone" dataKey="rate" stroke="#087A4B" strokeWidth={2.5} fillOpacity={1} fill="url(#emeraldGradient)" />
+              <Area type="monotone" dataKey="rate" stroke="#0D9488" strokeWidth={2.5} fillOpacity={1} fill="url(#emeraldGradient)" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -1351,7 +1351,7 @@ export default function DashboardHome({ userProfile, onNavigate, selectedYear = 
                 <Button
                   onClick={() => onNavigate('users')}
                   size="sm"
-                  className="h-8 bg-primary hover:bg-[#07563B] text-white font-semibold rounded-xl text-xs px-3 shadow-xs w-full sm:w-auto"
+                  className="h-8 bg-primary hover:bg-[#0F766E] text-white font-semibold rounded-xl text-xs px-3 shadow-xs w-full sm:w-auto"
                 >
                   + Add Employee
                 </Button>

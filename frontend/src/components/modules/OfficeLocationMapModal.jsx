@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { MapPin, Navigation, Save, Search, CheckCircle2, ShieldCheck, Loader2 } from 'lucide-react';
+import { MapPin, Navigation, Save, Search, CheckCircle2, ShieldCheck, Loader2, AlertTriangle, Info } from 'lucide-react';
 import { useUpdateCompanyOfficeLocation } from '../../hooks/useQueries';
 
 // Create a modern SVG pin divIcon for Leaflet
@@ -51,10 +51,15 @@ export default function OfficeLocationMapModal({
   const [isSearching, setIsSearching] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [gpsAccuracy, setGpsAccuracy] = useState(null);
+  const [locationStatus, setLocationStatus] = useState('idle'); // 'idle' | 'tracking' | 'active' | 'denied' | 'error'
+  const [errorMessage, setErrorMessage] = useState('');
 
   // Sync state when initialLocation changes or dialog opens
   useEffect(() => {
     if (isOpen) {
+      setLocationStatus('idle');
+      setErrorMessage('');
+      setGpsAccuracy(null);
       if (initialLocation?.latitude != null && initialLocation?.longitude != null) {
         setSelectedLat(Number(initialLocation.latitude));
         setSelectedLng(Number(initialLocation.longitude));
@@ -80,6 +85,22 @@ export default function OfficeLocationMapModal({
       setTimeout(() => {
         mapInstanceRef.current?.invalidateSize();
       }, 150);
+    }
+  };
+
+  // Reverse geocode to auto-fill address given coordinates
+  const reverseGeocode = async (lat, lng) => {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+        { headers: { 'Accept-Language': 'en' } }
+      );
+      const data = await res.json();
+      if (data && data.display_name) {
+        setOfficeAddress(data.display_name);
+      }
+    } catch (err) {
+      console.warn('Reverse geocode error:', err);
     }
   };
 
@@ -142,6 +163,7 @@ export default function OfficeLocationMapModal({
         setSelectedLat(position.lat);
         setSelectedLng(position.lng);
         circle.setLatLng(position);
+        reverseGeocode(position.lat, position.lng);
       });
 
       // Handle map click to place/move marker
@@ -151,6 +173,7 @@ export default function OfficeLocationMapModal({
         circle.setLatLng([lat, lng]);
         setSelectedLat(lat);
         setSelectedLng(lng);
+        reverseGeocode(lat, lng);
       });
 
       // Invalidate size to guarantee full tile rendering inside modal
@@ -170,90 +193,96 @@ export default function OfficeLocationMapModal({
     };
   }, [isOpen]);
 
-  // Robust device geolocation with fallback
-  const handleLocateCurrentPosition = () => {
+  // Track live GPS / device location
+  const handleTrackCurrentLocation = () => {
     // 1. Check secure context (HTTPS or localhost)
     if (typeof window !== 'undefined' && window.isSecureContext === false && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      toast.error('Geolocation requires a secure connection (HTTPS or localhost). You are currently connected via an insecure HTTP connection.');
+      setLocationStatus('error');
+      setErrorMessage('Geolocation requires a secure connection (HTTPS or localhost). Please click directly on the map or type your address.');
+      toast.error('Geolocation requires HTTPS or localhost.');
       return;
     }
 
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setLocationStatus('error');
+      setErrorMessage('Geolocation is not supported by your browser. Please search address or click on the map.');
       toast.error('Geolocation is not supported by your browser.');
       return;
     }
 
     setIsLocating(true);
-    const loadingToast = toast.loading('Detecting your current location...');
+    setLocationStatus('tracking');
+    setErrorMessage('');
+    const loadingToast = toast.loading('Tracking your current physical location...');
 
-    const onPositionSuccess = async (position, isFallback = false) => {
+    const onPositionSuccess = async (position) => {
       setIsLocating(false);
       toast.dismiss(loadingToast);
       const { latitude, longitude, accuracy } = position.coords;
-      setGpsAccuracy(Math.round(accuracy));
+      const accRounded = Math.round(accuracy);
+      setGpsAccuracy(accRounded);
+      setLocationStatus('active');
+      setErrorMessage('');
 
       panToCoords(latitude, longitude, 19);
 
       toast.success(
-        `Location found! Accuracy: ±${Math.round(accuracy)}m${isFallback ? ' (network estimated)' : ''}`
+        `Current location tracked! Accuracy: ±${accRounded}m`
       );
 
-      // Attempt reverse geocoding to auto-fill address if empty
-      try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
-          { headers: { 'Accept-Language': 'en' } }
+      reverseGeocode(latitude, longitude);
+    };
+
+    const onPositionError = (error) => {
+      console.warn('[Geolocation error]:', error.code, error.message);
+      setIsLocating(false);
+      toast.dismiss(loadingToast);
+
+      if (error.code === 1) { // PERMISSION_DENIED
+        setLocationStatus('denied');
+        setErrorMessage(
+          'Location is turned OFF or blocked. To turn ON location: 1) Click the lock icon 🔒 near your browser URL bar and set Location to "Allow". 2) On Windows, open Windows Settings > Privacy & security > Location and turn ON "Location services". Then click "Track My Current Location" again.'
         );
-        const data = await res.json();
-        if (data && data.display_name) {
-          setOfficeAddress((prev) => prev.trim() ? prev : data.display_name);
-        }
-      } catch (err) {
-        console.warn('Reverse geocode failed:', err);
+        toast.error(
+          'Location is turned OFF. Please allow location in browser and Windows Settings, then click Track My Current Location.',
+          { duration: 7000 }
+        );
+      } else if (error.code === 2) { // POSITION_UNAVAILABLE
+        // Attempt low-accuracy network fallback before failing
+        navigator.geolocation.getCurrentPosition(
+          onPositionSuccess,
+          (fallbackErr) => {
+            setLocationStatus('error');
+            setErrorMessage('Device GPS / location is unavailable. Please ensure location services are enabled on your device, or search your address/click on the map.');
+            toast.error('Device location is unavailable. Please turn on device location services or search your address.');
+          },
+          { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+        );
+      } else if (error.code === 3) { // TIMEOUT
+        navigator.geolocation.getCurrentPosition(
+          onPositionSuccess,
+          (fallbackErr) => {
+            setLocationStatus('error');
+            setErrorMessage('Location request timed out. Please check your GPS signal and retry, or search your address/click on the map.');
+            toast.error('Location request timed out. Please retry or click on the map.');
+          },
+          { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+        );
+      } else {
+        setLocationStatus('error');
+        setErrorMessage(error.message || 'Unable to retrieve location.');
+        toast.error(error.message || 'Unable to retrieve location.');
       }
     };
 
-    // Primary attempt: High accuracy GPS
     navigator.geolocation.getCurrentPosition(
-      (pos) => onPositionSuccess(pos, false),
-      (error) => {
-        // If permission is denied, do not fallback; guide user to allow permission
-        if (error.code === 1) { // PERMISSION_DENIED
-          setIsLocating(false);
-          toast.dismiss(loadingToast);
-          toast.error(
-            'Location permission was denied. Please allow location access for this site in your browser settings (click the lock/tune icon near the address bar) and retry.'
-          );
-          return;
-        }
-
-        // If error is position unavailable (2) or timeout (3), fallback to network/Wi-Fi positioning (just like Google Maps does)
-        console.warn('High accuracy geolocation timed out or unavailable, attempting network fallback:', error.message);
-        navigator.geolocation.getCurrentPosition(
-          (pos) => onPositionSuccess(pos, true),
-          (fallbackErr) => {
-            setIsLocating(false);
-            toast.dismiss(loadingToast);
-            if (fallbackErr.code === 2) {
-              toast.error(
-                'Position unavailable. Your device could not determine its location. Please ensure location services are enabled on your device or click directly on the map to place the marker.'
-              );
-            } else if (fallbackErr.code === 3) {
-              toast.error(
-                'Location request timed out. Please click "Use My Current Location" to retry, or tap your office location directly on the map.'
-              );
-            } else {
-              toast.error(`Unable to retrieve your location: ${fallbackErr.message || 'Please retry.'}`);
-            }
-          },
-          { enableHighAccuracy: false, timeout: 12000, maximumAge: 60000 }
-        );
-      },
+      onPositionSuccess,
+      onPositionError,
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
   };
 
-  // Search address using OpenStreetMap Nominatim free geocoding
+  // Search address using OpenStreetMap Nominatim geocoding
   const handleSearchAddress = async (e) => {
     e?.preventDefault?.();
     if (!searchQuery.trim()) return;
@@ -270,12 +299,12 @@ export default function OfficeLocationMapModal({
         const lon = parseFloat(data[0].lon);
         panToCoords(lat, lon, 18);
         setOfficeAddress(data[0].display_name || searchQuery);
-        toast.success('Location found on map');
+        toast.success('Location found and pinned on map!');
       } else {
-        toast.info('No matching location found. Try searching with landmark or street name.');
+        toast.info('No matching location found. Please try a different landmark or street name, or click directly on the map.');
       }
     } catch {
-      toast.error('Address search failed. You can click directly on the map to place the pin.');
+      toast.error('Address search failed. Please click directly on the map to place the pin.');
     } finally {
       setIsSearching(false);
     }
@@ -334,7 +363,7 @@ export default function OfficeLocationMapModal({
                   Set Office Location & 5-Metre Geofence
                 </DialogTitle>
                 <DialogDescription className="text-xs text-muted-foreground">
-                  {companyName} — Click anywhere on the map or drag the pin to set the exact office center.
+                  {companyName} — Track current location, search an address, or click/drag on the map.
                 </DialogDescription>
               </div>
             </div>
@@ -344,7 +373,45 @@ export default function OfficeLocationMapModal({
           </div>
         </DialogHeader>
 
-        {/* Map Controls: Search + Use My Current Location */}
+        {/* Location Status Notifications & Indications */}
+        {locationStatus === 'denied' && (
+          <div className="p-3 mx-3 sm:mx-4 mt-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs flex items-start gap-2.5">
+            <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div className="flex-1 space-y-1">
+              <p className="font-bold text-xs text-amber-800 dark:text-amber-300">
+                Location is Turned OFF / Access Denied
+              </p>
+              <p className="text-[11px] leading-relaxed opacity-95">
+                To track your current location, please turn ON location:
+                <br />1. Click the <strong>lock icon 🔒</strong> in your browser address bar &gt; set <strong>Location to Allow</strong>.
+                <br />2. On Windows: Open <strong>Settings &gt; Privacy &amp; security &gt; Location</strong> &gt; turn <strong>ON</strong> "Location services".
+                <br />Once turned ON, click <strong>"Track My Current Location"</strong> again. You can also search your street address or click directly on the map.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {locationStatus === 'error' && errorMessage && (
+          <div className="p-3 mx-3 sm:mx-4 mt-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-900 dark:text-rose-200 text-xs flex items-start gap-2.5">
+            <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-bold text-xs">Location Notice</p>
+              <p className="text-[11px] opacity-90">{errorMessage}</p>
+            </div>
+          </div>
+        )}
+
+        {locationStatus === 'active' && (
+          <div className="p-2.5 mx-3 sm:mx-4 mt-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-200 text-xs flex items-center justify-between">
+            <span className="flex items-center gap-1.5 font-semibold text-[11px]">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              Current Physical Location Tracked (±{gpsAccuracy}m)
+            </span>
+            <span className="text-[10px] text-muted-foreground">Live Pin Placed</span>
+          </div>
+        )}
+
+        {/* Map Controls: Search + Track My Current Location */}
         <div className="p-3 sm:p-4 bg-muted/30 border-b border-border flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center justify-between">
           <form onSubmit={handleSearchAddress} className="flex-1 flex gap-2">
             <div className="relative flex-1">
@@ -352,7 +419,7 @@ export default function OfficeLocationMapModal({
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search landmark, street, city or postal code..."
+                placeholder="Search office building, landmark, street, city..."
                 className="pl-9 h-9 text-xs rounded-xl bg-background border-border"
               />
             </div>
@@ -367,11 +434,11 @@ export default function OfficeLocationMapModal({
             </Button>
           </form>
 
-          {/* Primary Use My Current Location Button */}
+          {/* Track My Current Location Button */}
           <Button
             type="button"
             size="sm"
-            onClick={handleLocateCurrentPosition}
+            onClick={handleTrackCurrentLocation}
             disabled={isLocating}
             className="h-9 px-3.5 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm shrink-0 flex items-center gap-1.5 cursor-pointer"
           >
@@ -380,7 +447,7 @@ export default function OfficeLocationMapModal({
             ) : (
               <Navigation className="w-3.5 h-3.5 fill-white" />
             )}
-            <span>{isLocating ? 'Detecting Location...' : 'Use My Current Location'}</span>
+            <span>{isLocating ? 'Tracking Location...' : 'Track My Current Location'}</span>
           </Button>
         </div>
 
@@ -422,30 +489,31 @@ export default function OfficeLocationMapModal({
 
             <div className="space-y-1">
               <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                Office Label / Address
+                Physical Office Address
               </Label>
               <Input
                 value={officeAddress}
                 onChange={(e) => setOfficeAddress(e.target.value)}
-                placeholder="e.g. Main Headquarters, Floor 2"
-                className="h-8.5 text-xs rounded-xl bg-background border-border"
+                placeholder="Click map or type verified street address..."
+                className="h-9 text-xs rounded-xl bg-background border-border"
               />
             </div>
           </div>
 
-          <div className="flex items-center justify-between pt-1">
-            <div className="text-[11px] text-muted-foreground flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Tap or drag marker to update location when company moves.</span>
-            </div>
+          {/* Action Buttons */}
+          <div className="flex items-center justify-between pt-2 border-t border-border">
+            <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+              <Info className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              Click anywhere on the map or drag the pin to adjust.
+            </p>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={onClose}
-                className="rounded-xl text-xs h-9 font-semibold cursor-pointer"
+                className="h-9 px-4 text-xs font-semibold rounded-xl"
               >
                 Cancel
               </Button>
@@ -454,19 +522,10 @@ export default function OfficeLocationMapModal({
                 size="sm"
                 onClick={handleSaveLocation}
                 disabled={updateOfficeLocationMutation.isPending}
-                className="rounded-xl text-xs h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 shadow-md px-4 cursor-pointer"
+                className="h-9 px-4 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs flex items-center gap-1.5"
               >
-                {updateOfficeLocationMutation.isPending ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Saving Location...</span>
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-3.5 h-3.5" />
-                    <span>Confirm & Save Location</span>
-                  </>
-                )}
+                <Save className="w-3.5 h-3.5" />
+                <span>{updateOfficeLocationMutation.isPending ? 'Saving...' : 'Save Office Location'}</span>
               </Button>
             </div>
           </div>

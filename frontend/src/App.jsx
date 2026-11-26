@@ -4,6 +4,7 @@ import { useCustomAuth } from './hooks/useCustomAuth';
 import { useGetCallerUserProfile } from './hooks/useQueries';
 import { useSocket } from './hooks/useSocket';
 import MaintenancePage from './components/MaintenancePage';
+import { apiFetch } from './lib/backendConfig';
 import { ThemeProvider } from 'next-themes';
 import { Toaster } from '@/components/ui/sonner';
 
@@ -40,7 +41,7 @@ export default function App() {
     const onMaintenanceEvent = async () => {
       if (!active) return;
       try {
-        const resp = await fetch('/api/system/maintenance', { cache: 'no-store' });
+        const resp = await apiFetch('/api/system/maintenance', { cache: 'no-store' });
         const data = await resp.json().catch(() => ({}));
         if (resp.status === 503 || data?.maintenance === true) {
           if (active) setIsMaintenance(true);
@@ -58,7 +59,7 @@ export default function App() {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 4000);
-        const resp = await fetch('/api/system/maintenance', {
+        const resp = await apiFetch('/api/system/maintenance', {
           cache: 'no-store',
           signal: controller.signal
         });
@@ -155,7 +156,7 @@ export default function App() {
   // Show loading state while initializing
   if (isInitializing) {
     return (
-      <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+      <ThemeProvider attribute="class" forcedTheme={!hasToken ? 'dark' : undefined} defaultTheme="system" enableSystem>
         <div className="flex h-screen items-center justify-center bg-background">
           <div className="text-center">
             <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" />
@@ -169,7 +170,7 @@ export default function App() {
 
   if (resetToken) {
     return (
-      <ThemeProvider attribute="class" defaultTheme="light">
+      <ThemeProvider attribute="class" forcedTheme="dark">
         <Suspense fallback={<PageLoader message="Loading..." />}>
           <LoginPage resetToken={resetToken} />
         </Suspense>
@@ -178,10 +179,10 @@ export default function App() {
     );
   }
 
-  // Show login page if not authenticated
+  // Show login page if not authenticated (always in dark theme)
   if (!isAuthenticated) {
     return (
-      <ThemeProvider attribute="class" defaultTheme="light">
+      <ThemeProvider attribute="class" forcedTheme="dark">
         <Suspense fallback={<PageLoader message="Loading..." />}>
           <LoginPage />
         </Suspense>

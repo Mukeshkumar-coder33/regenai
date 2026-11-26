@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Ed25519KeyIdentity } from '@dfinity/identity';
+import { apiFetch } from '../lib/backendConfig';
 
 const CustomAuthContext = createContext(undefined);
 
@@ -70,7 +71,7 @@ export const CustomAuthProvider = ({ children }) => {
 
     const db = getAuthDb();
     try {
-        const response = await fetch(`/api/users`);
+        const response = await apiFetch(`/api/users`);
         if (response.ok) {
             const users = await response.json();
             const exists = users.some(u => u.username === username || u.userId === username || u.id === username);
@@ -111,7 +112,7 @@ export const CustomAuthProvider = ({ children }) => {
     const db = getAuthDb();
     let sessionKey = username;
     try {
-      const response = await fetch(`/api/auth/login`, {
+      const response = await apiFetch(`/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identifier: username, password, portal: 'company' })

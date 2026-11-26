@@ -24,4 +24,6 @@ const leaveSchema = new mongoose.Schema({
   createdAt: { type: String, default: () => new Date().toISOString() }
 }, { timestamps: true });
 
+leaveSchema.index({ companyId: 1, userId: 1, startDate: 1 });
+
 export default mongoose.model('Leave', leaveSchema);

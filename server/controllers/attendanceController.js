@@ -1,13 +1,33 @@
 import Attendance from '../models/Attendance.js';
 import User from '../models/User.js';
 import Company from '../models/Company.js';
+import Leave from '../models/Leave.js';
+import Holiday from '../models/Holiday.js';
+import Payroll from '../models/Payroll.js';
 import PayrollSetting from '../models/PayrollSetting.js';
 import mongoose from 'mongoose';
 import { resolveCompanyId } from '../utils/resolveCompanyId.js';
 import { emitToCompany, emitToUser, getIO } from '../socket.js';
-import { calculateWorkedHours, round2 } from '../utils/payrollCalculator.js';
+import {
+  calculateWorkedHours,
+  computeBreakDelayDeductionAmount,
+  parseTimeToMinutes,
+  round2,
+} from '../utils/payrollCalculator.js';
+import { createAndSendNotification } from './notificationController.js';
 import { sendReportEmail } from '../utils/mailer.js';
 import { calculateHaversineDistance, GEOFENCE_RADIUS_METRES } from '../utils/geofence.js';
+import {
+  assertCompanyReportAccess,
+  resolveReportWindow,
+  isDateInWindow,
+  parseDateBreakdown,
+  normalizeDateOnly,
+  buildCompanyUserLookup,
+  matchesEmployeeFilter,
+  paginateItems,
+  buildCsvDocument,
+} from '../utils/reportHelpers.js';
 
 export const verifyGeofenceOrThrow = async (companyId, coords) => {
   if (!companyId) {
@@ -78,18 +98,8 @@ export const calculateBreakDelayDeduction = async (companyId, userId, delayMinut
       ] 
     }).select('salary').lean();
     const monthlySalary = Number(user?.salary) || 0;
-    if (monthlySalary <= 0) return 0;
-
-    const settings = await PayrollSetting.findOne({ companyId }).lean();
-    const workingHoursPerDay = Number(settings?.workingHoursPerDay) || 8;
-    const workingDaysPerWeek = Number(settings?.workingDaysPerWeek) || 5;
-    const hourlyDeductionPct = Number(settings?.hourlyDeductionPct) >= 0 ? Number(settings.hourlyDeductionPct) : 50;
-    
-    // Scheduled monthly hours = workingDaysPerWeek * 4.33 * workingHoursPerDay
-    const scheduledHours = Math.max(1, workingDaysPerWeek * 4.33 * workingHoursPerDay);
-    const hourlyDeductionRate = (monthlySalary * (hourlyDeductionPct / 100)) / scheduledHours;
-    const minuteRate = hourlyDeductionRate / 60;
-    return round2(delayMinutes * minuteRate);
+    const settings = await PayrollSetting.findOne({ companyId }).lean() || {};
+    return computeBreakDelayDeductionAmount(delayMinutes, monthlySalary, settings);
   } catch (err) {
     console.error('calculateBreakDelayDeduction error:', err.message);
     return 0;
@@ -109,6 +119,20 @@ export const recordAttendance = async (req, res) => {
     }
     body.companyId = await resolveCompanyId(req, body);
 
+    // Prevent modifying/creating attendance inside a finalized/closed payroll month
+    if (body.companyId && body.userId && body.date) {
+      const targetMonth = String(body.date).slice(0, 7);
+      const lockedPayroll = await Payroll.findOne({
+        companyId: body.companyId,
+        userId: body.userId,
+        month: targetMonth,
+        $or: [{ status: 'finalized' }, { isClosed: true }, { paymentStatus: { $in: ['paid', 'partially_paid'] } }],
+      }).lean();
+      if (lockedPayroll) {
+        return res.status(400).json({ message: `Payroll for ${targetMonth} is finalized/closed. Cannot record or alter attendance.` });
+      }
+    }
+
     // Resolve employee name for direct persistence
     if (!body.employeeName && !body.userName && body.userId) {
       try {
@@ -122,18 +146,19 @@ export const recordAttendance = async (req, res) => {
       } catch (_) {}
     }
 
-    // Evaluate Late status against company's work schedule
+    // Evaluate Late status against company's work schedule (honoring graceMinutes)
     try {
       const settings = await PayrollSetting.findOne({ companyId: body.companyId }).lean();
       const checkInTargetStr = settings?.checkInTime || '09:30';
+      const graceMins = Number(settings?.graceMinutes) >= 0 ? Number(settings.graceMinutes) : 0;
       const parts = checkInTargetStr.split(':').map(Number);
       const tH = parts[0] || 9;
       const tM = parts.length > 1 ? parts[1] : 30;
+      const targetTotal = (tH * 60) + tM + graceMins;
       if (body.checkIn) {
         const cDate = new Date(body.checkIn);
-        const cH = cDate.getHours();
-        const cM = cDate.getMinutes();
-        if (cH > tH || (cH === tH && cM > tM)) {
+        const actualTotal = (cDate.getHours() * 60) + cDate.getMinutes();
+        if (actualTotal > targetTotal) {
           body.status = 'late';
         }
       }
@@ -215,6 +240,20 @@ export const updateAttendance = async (req, res) => {
 
     const companyId = existing.companyId || req.companyId;
     const userId = existing.userId || updateData.userId;
+
+    // Lock check: prevent modifying attendance inside a finalized/closed payroll month
+    const existingMonth = existing.date ? String(existing.date).slice(0, 7) : null;
+    if (companyId && userId && existingMonth) {
+      const lockedPayroll = await Payroll.findOne({
+        companyId,
+        userId,
+        month: existingMonth,
+        $or: [{ status: 'finalized' }, { isClosed: true }, { paymentStatus: { $in: ['paid', 'partially_paid'] } }],
+      }).lean();
+      if (lockedPayroll) {
+        return res.status(400).json({ message: `Payroll for ${existingMonth} is finalized/closed and attendance cannot be modified.` });
+      }
+    }
     const settings = companyId ? await PayrollSetting.findOne({ companyId }).lean() : null;
 
     // Detect restricted attendance actions requiring 15-metre geofence validation:
@@ -263,7 +302,7 @@ export const updateAttendance = async (req, res) => {
     if (bStart && bEnd && new Date(bEnd).getTime() >= new Date(bStart).getTime()) {
       const bMin = Math.max(0, Math.round((new Date(bEnd).getTime() - new Date(bStart).getTime()) / 60000));
       updateData.breakMinutes = bMin;
-      const allowedBreak = Number(settings?.breakTime) || 60;
+      const allowedBreak = settings?.breakTime !== undefined ? Number(settings.breakTime) : 60;
       updateData.breakDelayMinutes = Math.max(0, bMin - allowedBreak);
     }
 
@@ -273,7 +312,7 @@ export const updateAttendance = async (req, res) => {
     if (cbStart && cbEnd && new Date(cbEnd).getTime() >= new Date(cbStart).getTime()) {
       const cbMin = Math.max(0, Math.round((new Date(cbEnd).getTime() - new Date(cbStart).getTime()) / 60000));
       updateData.casualBreakMinutes = cbMin;
-      const allowedCasual = Number(settings?.casualBreakTime) || 15;
+      const allowedCasual = settings?.casualBreakTime !== undefined ? Number(settings.casualBreakTime) : 15;
       updateData.casualBreakDelayMinutes = Math.max(0, cbMin - allowedCasual);
     }
 
@@ -323,6 +362,49 @@ export const updateAttendance = async (req, res) => {
     emitToCompany('payroll:change', attendance.companyId, { action: 'attendance_updated', userId: attendance.userId });
     if (attendance.userId) {
       emitToUser(attendance.userId, 'attendance:change', { action: 'update', id: attendance.id, attendance });
+
+      // Notify employee on new break delay deduction or overtime earned
+      try {
+        const prevBreakDed = Number(existing.breakDeduction) || 0;
+        const newBreakDed = Number(attendance.breakDeduction) || 0;
+        if (newBreakDed > prevBreakDed) {
+          const delta = round2(newBreakDed - prevBreakDed);
+          await createAndSendNotification({
+            companyId: attendance.companyId,
+            userId: attendance.userId,
+            title: 'Break Delay Deduction',
+            message: `A break-delay deduction of ₹${delta.toLocaleString('en-IN')} (${attendance.totalBreakDelayMinutes || 0} mins excess break on ${attendance.date}) has been recorded.`,
+            type: 'deduction',
+            metadata: {
+              date: attendance.date,
+              amount: delta,
+              totalBreakDelayMinutes: attendance.totalBreakDelayMinutes || 0,
+              reason: 'Excess lunch/casual break delay',
+            },
+          });
+        }
+
+        if (req.body.checkOut && Number(attendance.totalWorkingHours) > 0) {
+          const ps = await PayrollSetting.findOne({ companyId: attendance.companyId }).lean();
+          const reqHours = Number(ps?.workingHoursPerDay) || 8;
+          const otEnabled = ps?.overtimeEnabled !== false;
+          const otHours = round2(Number(attendance.totalWorkingHours) - reqHours);
+          if (otEnabled && otHours > 0 && ((otHours * 60) >= (Number(ps?.overtimeMinMinutes) || 0))) {
+            await createAndSendNotification({
+              companyId: attendance.companyId,
+              userId: attendance.userId,
+              title: 'Overtime Recorded',
+              message: `You logged +${otHours}h overtime on ${attendance.date}. Overtime earnings will be added to your payroll.`,
+              type: 'payroll',
+              metadata: {
+                date: attendance.date,
+                overtimeHours: otHours,
+                reason: 'Overtime work',
+              },
+            });
+          }
+        }
+      } catch (_) {}
     }
     const io = getIO();
     if (io) {
@@ -341,164 +423,417 @@ export const updateAttendance = async (req, res) => {
 };
 
 /**
- * Helper to build attendance report items and summary metrics for day, week, month, or year
+ * Helper to build complete historical attendance report items and summary metrics
+ * Supports: all | range | day | week | month | year, employee, department, status, search, pagination
  */
-export const buildAttendanceReportData = async (companyId, { period = 'month', date, startDate, endDate, month, year, department, status, search }) => {
-  const query = { companyId };
+export const buildAttendanceReportData = async (companyId, queryParams = {}) => {
+  const {
+    userId: queryUserId,
+    employeeId: queryEmployeeId,
+    department,
+    status,
+    search,
+  } = queryParams;
 
-  const now = new Date();
-  const pad2 = (n) => String(n).padStart(2, '0');
-  const todayStr = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
-  let periodLabel = '';
+  const targetEmployeeFilter = queryUserId || queryEmployeeId || 'all';
 
-  if (period === 'day') {
-    const targetDate = (date || todayStr).trim();
-    query.date = targetDate;
-    periodLabel = `Day (${targetDate})`;
-  } else if (period === 'week') {
-    let start = startDate;
-    let end = endDate;
-    if (!start || !end) {
-      const d = new Date(now);
-      const day = d.getDay();
-      const diffToMon = d.getDate() - day + (day === 0 ? -6 : 1);
-      const mon = new Date(d.setDate(diffToMon));
-      const sun = new Date(mon);
-      sun.setDate(mon.getDate() + 6);
-      start = `${mon.getFullYear()}-${pad2(mon.getMonth() + 1)}-${pad2(mon.getDate())}`;
-      end = `${sun.getFullYear()}-${pad2(sun.getMonth() + 1)}-${pad2(sun.getDate())}`;
-    }
-    query.date = { $gte: start, $lte: end };
-    periodLabel = `Week (${start} to ${end})`;
-  } else if (period === 'year') {
-    const targetYear = (year || String(now.getFullYear())).trim();
-    query.date = { $regex: `^${targetYear}` };
-    periodLabel = `Year (${targetYear})`;
-  } else {
-    // Default: 'month'
-    const targetMonth = (month || `${now.getFullYear()}-${pad2(now.getMonth() + 1)}`).trim();
-    query.date = { $regex: `^${targetMonth}` };
-    periodLabel = `Month (${targetMonth})`;
+  // Fetch company, payroll shift policy, earliest attendance date, and full employee lookup
+  const [company, payrollSetting, earliestAtt, userLookup] = await Promise.all([
+    Company.findById(companyId).select('name code email createdAt officeLocation').lean(),
+    PayrollSetting.findOne({ companyId }).lean(),
+    Attendance.findOne({ companyId }).sort({ date: 1 }).select('date').lean(),
+    buildCompanyUserLookup(companyId),
+  ]);
+
+  const companyName = company?.name || 'Company';
+  const companyCreatedDate = normalizeDateOnly(company?.createdAt);
+  const earliestRecordDate = earliestAtt?.date || companyCreatedDate || '';
+  const window = resolveReportWindow(queryParams, earliestRecordDate);
+
+  const shiftStartMins = parseTimeToMinutes(payrollSetting?.checkInTime || '09:30');
+  const shiftEndMins = parseTimeToMinutes(payrollSetting?.checkOutTime || '18:30');
+  const graceMinutes = Number(payrollSetting?.graceMinutes) || 0;
+  const requiredHours = Number(payrollSetting?.workingHoursPerDay) || 8;
+  const officeRadius = Number(company?.officeLocation?.radius) || 5;
+
+  const attQuery = { companyId };
+  if (window.startDate && window.endDate) {
+    attQuery.date = { $gte: window.startDate, $lte: window.endDate };
+  } else if (window.startDate) {
+    attQuery.date = { $gte: window.startDate };
+  } else if (window.endDate) {
+    attQuery.date = { $lte: window.endDate };
   }
 
-  // Fetch company details
-  const company = await Company.findById(companyId).select('name code email').lean();
-  const companyName = company?.name || 'Company';
+  const leaveQuery = { companyId };
+  if (window.startDate && window.endDate) {
+    leaveQuery.startDate = { $lte: window.endDate };
+    leaveQuery.endDate = { $gte: window.startDate };
+  }
 
-  // Fetch all company users for employee metadata mapping
-  const users = await User.find({ companyId }).select('userId StaffId name username department designation').lean();
-  const userMap = new Map();
-  users.forEach(u => {
-    if (u.userId) userMap.set(u.userId, u);
-    if (u.StaffId) userMap.set(u.StaffId, u);
-    userMap.set(String(u._id), u);
-  });
+  const holidayQuery = { companyId };
+  if (window.startDate && window.endDate) {
+    holidayQuery.date = { $gte: window.startDate, $lte: window.endDate };
+  }
 
-  // Query raw attendance records
-  let records = await Attendance.find(query).sort({ date: -1, checkIn: 1 }).lean();
+  const [records, leaves, holidays] = await Promise.all([
+    Attendance.find(attQuery).sort({ date: -1, checkIn: 1 }).lean(),
+    Leave.find(leaveQuery).sort({ startDate: -1 }).lean(),
+    Holiday.find(holidayQuery).sort({ date: -1 }).lean(),
+  ]);
 
   const formatTimeDisplay = (timeStr) => {
     if (!timeStr) return '--';
-    if (timeStr.includes('T')) {
+    if (String(timeStr).includes('T')) {
       const d = new Date(timeStr);
-      if (!isNaN(d.getTime())) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+      }
     }
-    return timeStr;
+    return String(timeStr);
   };
 
-  // Map enriched rows
-  let rows = records.map(r => {
-    const u = userMap.get(r.userId) || {};
-    const workedHours = calculateWorkedHours(r.checkIn, r.checkOut, r.status, 8);
-    const staffId = u.StaffId || r.userId;
-    const name = u.name || u.username || r.userId;
-    const dept = u.department || 'General';
-    const desig = u.designation || 'Staff';
+  // Enrich attendance rows with weekday/month/year, joining date, shift late/overtime, breaks, GPS verification, edit history
+  let rows = records.map((r) => {
+    const emp = userLookup.resolveUser(r.userId, r.employeeName || r.userName);
+    const storedHours = Number(r.totalWorkingHours ?? r.workingHours);
+    const workedHours = !isNaN(storedHours) && storedHours > 0
+      ? round2(storedHours)
+      : calculateWorkedHours(r.checkIn, r.checkOut, r.status, requiredHours);
+
+    const dateMeta = parseDateBreakdown(r.date);
+    const inMins = parseTimeToMinutes(r.checkIn);
+    const outMins = parseTimeToMinutes(r.checkOut);
+
+    let lateMinutes = 0;
+    if (inMins !== null && shiftStartMins !== null) {
+      const diffIn = Math.round(inMins - (shiftStartMins + graceMinutes));
+      if (diffIn > 0 && (r.status === 'late' || r.status === 'present' || r.status === 'half_day')) {
+        lateMinutes = diffIn;
+      }
+    }
+
+    let earlyDepartureMinutes = 0;
+    if (outMins !== null && shiftEndMins !== null && outMins < shiftEndMins && r.checkOut) {
+      earlyDepartureMinutes = Math.round(shiftEndMins - outMins);
+    }
+
+    const overtimeHours = workedHours > requiredHours ? round2(workedHours - requiredHours) : 0;
+    const coords = r.locationCoords || null;
+    const hasCoords = coords && typeof coords.latitude === 'number' && typeof coords.longitude === 'number';
+    const locationVerified = hasCoords
+      ? (typeof coords.distance === 'number' ? coords.distance <= officeRadius : true)
+      : false;
+
+    const createdMs = r.createdAt ? new Date(r.createdAt).getTime() : 0;
+    const updatedMs = r.updatedAt ? new Date(r.updatedAt).getTime() : 0;
+    const wasModified = createdMs > 0 && updatedMs > createdMs + 5000;
 
     return {
       id: r.id || String(r._id),
+      recordType: 'attendance',
       date: r.date,
-      userId: r.userId,
-      staffId,
-      name,
-      department: dept,
-      designation: desig,
+      weekday: dateMeta.weekday,
+      month: dateMeta.month,
+      year: dateMeta.year,
+      userId: emp.userId,
+      staffId: emp.staffId,
+      name: emp.name,
+      department: emp.department,
+      designation: emp.designation,
+      joiningDate: emp.joiningDate,
+      employeeStatus: emp.employeeStatus,
       status: r.status || 'present',
       checkIn: r.checkIn || null,
       checkOut: r.checkOut || null,
       checkInDisplay: formatTimeDisplay(r.checkIn),
       checkOutDisplay: formatTimeDisplay(r.checkOut),
       workingHours: workedHours,
+      lateMinutes,
+      isLate: r.status === 'late' || lateMinutes > 0,
+      earlyDepartureMinutes,
+      overtimeHours,
       workMode: r.workMode || 'office',
-      breakMinutes: r.breakMinutes || 0,
-      breakDelayMinutes: r.breakDelayMinutes || 0,
-      casualBreakMinutes: r.casualBreakMinutes || 0,
-      casualBreakDelayMinutes: r.casualBreakDelayMinutes || 0,
-      totalBreakDelayMinutes: r.totalBreakDelayMinutes || 0,
-      breakDeduction: r.breakDeduction || 0,
+      breakStart: r.breakStart || null,
+      breakEnd: r.breakEnd || null,
+      breakStartDisplay: formatTimeDisplay(r.breakStart),
+      breakEndDisplay: formatTimeDisplay(r.breakEnd),
+      breakMinutes: Number(r.breakMinutes) || 0,
+      breakDelayMinutes: Number(r.breakDelayMinutes) || 0,
+      casualBreakStart: r.casualBreakStart || null,
+      casualBreakEnd: r.casualBreakEnd || null,
+      casualBreakStartDisplay: formatTimeDisplay(r.casualBreakStart),
+      casualBreakEndDisplay: formatTimeDisplay(r.casualBreakEnd),
+      casualBreakMinutes: Number(r.casualBreakMinutes) || 0,
+      casualBreakDelayMinutes: Number(r.casualBreakDelayMinutes) || 0,
+      totalBreakDelayMinutes: Number(r.totalBreakDelayMinutes) || 0,
+      breakDeduction: Number(r.breakDeduction) || 0,
       activeBreakType: r.activeBreakType || 'none',
-      location: r.location || 'Main Office',
+      location: r.location || (r.workMode === 'remote' ? 'Remote' : 'Main Office'),
+      locationCoords: coords,
+      locationVerified,
       notes: r.notes || '',
+      createdAt: r.createdAt || null,
+      updatedAt: r.updatedAt || null,
+      wasModified,
+      _userMeta: emp,
     };
   });
 
-  // Filter by department, status, or search
-  if (department && department !== 'all') {
-    rows = rows.filter(r => (r.department || '').toLowerCase() === department.toLowerCase());
-  }
-  if (status && status !== 'all') {
-    rows = rows.filter(r => (r.status || '').toLowerCase() === status.toLowerCase());
-  }
+  // Map stored Leave records overlapping window
+  let leaveRows = leaves.map((l) => {
+    const emp = userLookup.resolveUser(l.userId, l.employeeName);
+    const dateMeta = parseDateBreakdown(l.startDate);
+    return {
+      id: l.id || String(l._id),
+      recordType: 'leave',
+      date: l.startDate,
+      endDate: l.endDate,
+      weekday: dateMeta.weekday,
+      month: dateMeta.month,
+      year: dateMeta.year,
+      userId: emp.userId,
+      staffId: emp.staffId,
+      name: emp.name,
+      department: l.department || emp.department,
+      designation: emp.designation,
+      joiningDate: emp.joiningDate,
+      employeeStatus: emp.employeeStatus,
+      status: 'leave',
+      leaveType: l.type || 'casual',
+      leaveStatus: l.status || 'pending',
+      workingDays: Number(l.workingDays) || 1,
+      approvedByName: l.approvedByName || '',
+      approvalDate: l.approvalDate || '',
+      checkIn: null,
+      checkOut: null,
+      checkInDisplay: '--',
+      checkOutDisplay: '--',
+      workingHours: 0,
+      lateMinutes: 0,
+      earlyDepartureMinutes: 0,
+      overtimeHours: 0,
+      breakMinutes: 0,
+      casualBreakMinutes: 0,
+      totalBreakDelayMinutes: 0,
+      breakDeduction: 0,
+      workMode: 'leave',
+      location: `${String(l.type || 'casual').toUpperCase()} Leave (${l.status})`,
+      locationVerified: false,
+      notes: l.reason || l.remarks || '',
+      createdAt: l.createdAt || null,
+      updatedAt: l.updatedAt || null,
+      wasModified: false,
+      _userMeta: emp,
+    };
+  });
+
+  // Map stored Holiday records in window
+  let holidayRows = holidays.map((h) => {
+    const dateMeta = parseDateBreakdown(h.date);
+    return {
+      id: h.id || String(h._id),
+      recordType: 'holiday',
+      date: h.date,
+      weekday: dateMeta.weekday,
+      month: dateMeta.month,
+      year: dateMeta.year,
+      userId: 'ALL',
+      staffId: 'HOLIDAY',
+      name: h.name,
+      department: 'All Departments',
+      designation: 'Company Holiday',
+      joiningDate: '',
+      employeeStatus: 'active',
+      status: 'holiday',
+      checkIn: null,
+      checkOut: null,
+      checkInDisplay: '--',
+      checkOutDisplay: '--',
+      workingHours: 0,
+      lateMinutes: 0,
+      earlyDepartureMinutes: 0,
+      overtimeHours: 0,
+      breakMinutes: 0,
+      casualBreakMinutes: 0,
+      totalBreakDelayMinutes: 0,
+      breakDeduction: 0,
+      workMode: 'holiday',
+      location: 'Public Holiday',
+      locationVerified: false,
+      notes: h.name,
+      createdAt: h.createdAt || null,
+      updatedAt: h.updatedAt || null,
+      wasModified: false,
+    };
+  });
+
+  const applyCommonFilters = (list, { includeEmployeeFilter = true } = {}) => {
+    let out = list;
+    if (includeEmployeeFilter && targetEmployeeFilter && targetEmployeeFilter !== 'all') {
+      out = out.filter((r) => r._userMeta && matchesEmployeeFilter(r._userMeta, targetEmployeeFilter));
+    }
+    if (department && department !== 'all') {
+      out = out.filter((r) => (r.department || '').toLowerCase() === String(department).toLowerCase());
+    }
+    if (search) {
+      const q = String(search).toLowerCase().trim();
+      out = out.filter((r) =>
+        (r.name || '').toLowerCase().includes(q) ||
+        (r.staffId || '').toLowerCase().includes(q) ||
+        (r.userId || '').toLowerCase().includes(q) ||
+        (r.department || '').toLowerCase().includes(q) ||
+        (r.notes || '').toLowerCase().includes(q),
+      );
+    }
+    return out;
+  };
+
+  rows = applyCommonFilters(rows);
+  leaveRows = applyCommonFilters(leaveRows);
   if (search) {
-    const q = search.toLowerCase();
-    rows = rows.filter(r =>
-      (r.name || '').toLowerCase().includes(q) ||
-      (r.staffId || '').toLowerCase().includes(q) ||
-      (r.userId || '').toLowerCase().includes(q)
-    );
+    const q = String(search).toLowerCase().trim();
+    holidayRows = holidayRows.filter((h) => (h.name || '').toLowerCase().includes(q));
   }
 
-  // Compute Summary Statistics
-  const totalRecords = rows.length;
-  const totalWorkingHours = round2(rows.reduce((sum, r) => sum + r.workingHours, 0));
+  let activeRows = rows;
+  const normalizedStatus = String(status || 'all').toLowerCase().trim();
+  if (normalizedStatus === 'leave') {
+    activeRows = leaveRows;
+  } else if (normalizedStatus === 'holiday') {
+    activeRows = holidayRows;
+  } else if (normalizedStatus !== 'all') {
+    activeRows = rows.filter((r) => (r.status || '').toLowerCase() === normalizedStatus);
+  }
+
+  // Strip internal lookup helper before serialization
+  const sanitizeRow = ({ _userMeta, ...rest }) => rest;
+  const cleanRows = activeRows.map(sanitizeRow);
+  const cleanLeaves = leaveRows.map(sanitizeRow);
+  const cleanHolidays = holidayRows;
+
+  // Build per-employee historical summary from attendance & leave rows
+  const empAggMap = new Map();
+  for (const r of rows) {
+    const key = r.userId || r.staffId;
+    if (!empAggMap.has(key)) {
+      empAggMap.set(key, {
+        userId: r.userId,
+        staffId: r.staffId,
+        name: r.name,
+        department: r.department,
+        designation: r.designation,
+        joiningDate: r.joiningDate,
+        employeeStatus: r.employeeStatus,
+        totalShifts: 0,
+        presentCount: 0,
+        lateCount: 0,
+        halfDayCount: 0,
+        absentCount: 0,
+        leaveDays: 0,
+        totalWorkingHours: 0,
+        totalOvertimeHours: 0,
+        totalLateMinutes: 0,
+        totalBreakMinutes: 0,
+        totalBreakDelayMinutes: 0,
+      });
+    }
+    const s = empAggMap.get(key);
+    s.totalShifts += 1;
+    if (r.status === 'present') s.presentCount += 1;
+    else if (r.status === 'late') s.lateCount += 1;
+    else if (r.status === 'half_day') s.halfDayCount += 1;
+    else if (r.status === 'absent') s.absentCount += 1;
+    s.totalWorkingHours = round2(s.totalWorkingHours + (r.workingHours || 0));
+    s.totalOvertimeHours = round2(s.totalOvertimeHours + (r.overtimeHours || 0));
+    s.totalLateMinutes += r.lateMinutes || 0;
+    s.totalBreakMinutes += (r.breakMinutes || 0) + (r.casualBreakMinutes || 0);
+    s.totalBreakDelayMinutes += r.totalBreakDelayMinutes || 0;
+  }
+  for (const l of cleanLeaves) {
+    if (l.leaveStatus === 'approved') {
+      const key = l.userId || l.staffId;
+      if (empAggMap.has(key)) {
+        empAggMap.get(key).leaveDays += l.workingDays || 1;
+      }
+    }
+  }
+  const employeeSummaries = Array.from(empAggMap.values()).sort((a, b) =>
+    (a.name || '').localeCompare(b.name || ''),
+  );
+
+  // Compute summary metrics across filtered rows
+  const totalRecords = cleanRows.length;
+  const totalWorkingHours = round2(cleanRows.reduce((sum, r) => sum + (Number(r.workingHours) || 0), 0));
   const averageDailyHours = totalRecords > 0 ? round2(totalWorkingHours / totalRecords) : 0;
-  const presentCount = rows.filter(r => r.status === 'present').length;
-  const lateCount = rows.filter(r => r.status === 'late').length;
-  const halfDayCount = rows.filter(r => r.status === 'half_day').length;
-  const absentCount = rows.filter(r => r.status === 'absent').length;
-  const uniqueEmployees = new Set(rows.map(r => r.userId)).size;
+  const presentCount = cleanRows.filter((r) => r.status === 'present').length;
+  const lateCount = cleanRows.filter((r) => r.status === 'late').length;
+  const halfDayCount = cleanRows.filter((r) => r.status === 'half_day').length;
+  const absentCount = cleanRows.filter((r) => r.status === 'absent').length;
+  const leaveCount = cleanLeaves.length;
+  const holidayCount = cleanHolidays.length;
+  const totalLateMinutes = cleanRows.reduce((sum, r) => sum + (Number(r.lateMinutes) || 0), 0);
+  const totalOvertimeHours = round2(cleanRows.reduce((sum, r) => sum + (Number(r.overtimeHours) || 0), 0));
+  const totalBreakMinutes = cleanRows.reduce(
+    (sum, r) => sum + (Number(r.breakMinutes) || 0) + (Number(r.casualBreakMinutes) || 0),
+    0,
+  );
+  const totalBreakDelayMinutes = cleanRows.reduce((sum, r) => sum + (Number(r.totalBreakDelayMinutes) || 0), 0);
+  const uniqueEmployees = new Set(cleanRows.map((r) => r.userId).filter((id) => id && id !== 'ALL')).size;
 
-  // Build CSV content
-  const csvHeaders = ['Date', 'Employee ID', 'Name', 'Department', 'Designation', 'Status', 'Check In', 'Check Out', 'Working Hours', 'Work Mode', 'Location', 'Notes'];
-  const csvRows = rows.map(r => [
+  // Build full CSV across ALL matching rows before pagination
+  const csvHeaders = [
+    'Date', 'Weekday', 'Employee ID', 'Name', 'Department', 'Designation', 'Joining Date',
+    'Employee Status', 'Status', 'Check In', 'Check Out', 'Working Hours', 'Late (mins)',
+    'Early Out (mins)', 'Overtime (hrs)', 'Lunch Break (mins)', 'Casual Break (mins)',
+    'Break Delay (mins)', 'Work Mode', 'Location', 'Location Verified', 'Notes',
+  ];
+  const csvRows = cleanRows.map((r) => [
     r.date,
+    r.weekday || '',
     r.staffId,
-    `"${(r.name || '').replace(/"/g, '""')}"`,
-    `"${(r.department || '').replace(/"/g, '""')}"`,
-    `"${(r.designation || '').replace(/"/g, '""')}"`,
+    r.name,
+    r.department,
+    r.designation,
+    r.joiningDate || '',
+    r.employeeStatus || 'active',
     r.status,
-    `"${r.checkInDisplay}"`,
-    `"${r.checkOutDisplay}"`,
+    r.checkInDisplay,
+    r.checkOutDisplay,
     r.workingHours,
+    r.lateMinutes || 0,
+    r.earlyDepartureMinutes || 0,
+    r.overtimeHours || 0,
+    r.breakMinutes || 0,
+    r.casualBreakMinutes || 0,
+    r.totalBreakDelayMinutes || 0,
     r.workMode,
-    `"${(r.location || '').replace(/"/g, '""')}"`,
-    `"${(r.notes || '').replace(/"/g, '""')}"`,
-  ].join(','));
+    r.location,
+    r.locationVerified ? 'Verified' : 'No/Manual',
+    r.notes || '',
+  ]);
 
-  const csvContent = [
-    `# ${companyName} - Official Attendance Report`,
-    `# Period: ${periodLabel}`,
-    `# Generated: ${new Date().toLocaleString()}`,
-    `# Summary: Total Shifts: ${totalRecords} | Total Hours: ${totalWorkingHours}h | Unique Staff: ${uniqueEmployees}`,
-    '',
-    csvHeaders.join(','),
-    ...csvRows,
-  ].join('\n');
+  const csvContent = buildCsvDocument(
+    [
+      `# ${companyName} - Historical Attendance Report`,
+      `# Period: ${window.periodLabel}`,
+      `# Generated: ${new Date().toLocaleString()}`,
+      `# Summary: Records: ${totalRecords} | Total Hours: ${totalWorkingHours}h | Overtime: ${totalOvertimeHours}h | Late Mins: ${totalLateMinutes} | Unique Staff: ${uniqueEmployees}`,
+    ],
+    csvHeaders,
+    csvRows,
+  );
+
+  const paged = paginateItems(cleanRows, queryParams);
 
   return {
     companyName,
-    period,
-    periodLabel,
+    companyCreatedAt: companyCreatedDate,
+    earliestRecordDate,
+    period: window.period,
+    periodLabel: window.periodLabel,
+    startDate: window.startDate,
+    endDate: window.endDate,
     totalRecords,
     totalWorkingHours,
     averageDailyHours,
@@ -506,8 +841,20 @@ export const buildAttendanceReportData = async (companyId, { period = 'month', d
     lateCount,
     halfDayCount,
     absentCount,
+    leaveCount,
+    holidayCount,
+    totalLateMinutes,
+    totalOvertimeHours,
+    totalBreakMinutes,
+    totalBreakDelayMinutes,
     uniqueEmployees,
-    records: rows,
+    records: paged.items,
+    pagination: paged.pagination,
+    leaveRecords: cleanLeaves,
+    holidayRecords: cleanHolidays,
+    employeeSummaries,
+    employees: userLookup.employeeOptions,
+    departments: userLookup.departments,
     csvContent,
   };
 };
@@ -517,10 +864,9 @@ export const buildAttendanceReportData = async (companyId, { period = 'month', d
  */
 export const getAttendanceReport = async (req, res) => {
   try {
-    const companyId = req.companyId;
-    if (!companyId) return res.status(400).json({ message: 'Company context required' });
+    if (!assertCompanyReportAccess(req, res)) return;
 
-    const report = await buildAttendanceReportData(companyId, req.query);
+    const report = await buildAttendanceReportData(req.companyId, req.query);
     res.status(200).json(report);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -532,15 +878,14 @@ export const getAttendanceReport = async (req, res) => {
  */
 export const sendAttendanceReport = async (req, res) => {
   try {
-    const companyId = req.companyId;
-    if (!companyId) return res.status(400).json({ message: 'Company context required' });
+    if (!assertCompanyReportAccess(req, res)) return;
 
     const { recipientEmail, notes, ...filterParams } = req.body;
     if (!recipientEmail || !recipientEmail.trim()) {
       return res.status(400).json({ message: 'Recipient email is required' });
     }
 
-    const report = await buildAttendanceReportData(companyId, filterParams);
+    const report = await buildAttendanceReportData(req.companyId, { ...filterParams, limit: 'all' });
 
     const summaryMetrics = [
       { label: 'Total Working Hours', value: `${report.totalWorkingHours}h` },

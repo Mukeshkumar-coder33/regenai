@@ -336,7 +336,9 @@ class WebRtcCallManager extends ChangeNotifier {
 
   Future<void> acceptIncomingCall() async {
     await MessengerSoundService.instance.stopRingtone();
-    if (_callPhase != CallPhase.incoming || _callId == null || _peerId == null) {
+    if (_callPhase != CallPhase.incoming ||
+        _callId == null ||
+        _peerId == null) {
       return;
     }
     final socket = MessengerSocketService.instance;
@@ -652,7 +654,9 @@ class WebRtcCallManager extends ChangeNotifier {
     final callerName = _peerName ?? 'Someone';
     final mediaType = _callMediaType;
     final callId = _callId;
-    _statusMessage = wasIncoming ? 'Missed call from $callerName' : 'Call ended';
+    _statusMessage = wasIncoming
+        ? 'Missed call from $callerName'
+        : 'Call ended';
     await _cleanupCall();
     if (wasIncoming) {
       await MessengerSoundService.instance.playMissedCallTone();
@@ -965,7 +969,8 @@ class WebRtcCallManager extends ChangeNotifier {
   void _handleMeetingStarted(Map<String, dynamic> data) {
     final invite = MeetingInvitePayload.fromMap(data);
     if (invite.meetingId.isEmpty || invite.hostId == _myUserId) return;
-    if (_meetingPhase == MeetingPhase.inMeeting || _callPhase != CallPhase.idle) {
+    if (_meetingPhase == MeetingPhase.inMeeting ||
+        _callPhase != CallPhase.idle) {
       return;
     }
 

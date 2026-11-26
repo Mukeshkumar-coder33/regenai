@@ -1,7 +1,9 @@
 import Leave from '../models/Leave.js';
 import Company from '../models/Company.js';
 import User from '../models/User.js';
+import Holiday from '../models/Holiday.js';
 import Notification from '../models/Notification.js';
+import Payroll from '../models/Payroll.js';
 import PayrollSetting from '../models/PayrollSetting.js';
 import { getWeeklyOffDays } from '../utils/payrollCalculator.js';
 import mongoose from 'mongoose';
@@ -22,6 +24,14 @@ export const DEFAULT_LEAVE_POLICY = {
     monthlyEntitlement: 1,
     carryForward: false,
     maxCarryForward: 6,
+    requiresApproval: true,
+    unapprovedDeductionRate: 100
+  },
+  earnedLeave: {
+    enabled: true,
+    monthlyEntitlement: 1,
+    carryForward: true,
+    maxCarryForward: 24,
     requiresApproval: true,
     unapprovedDeductionRate: 100
   },
@@ -84,6 +94,7 @@ export const computeUserLeaveBalance = async (companyId, userId) => {
         policy = {
           casualLeave: { ...DEFAULT_LEAVE_POLICY.casualLeave, ...(comp.leavePolicy.casualLeave || {}) },
           sickLeave: { ...DEFAULT_LEAVE_POLICY.sickLeave, ...(comp.leavePolicy.sickLeave || {}) },
+          earnedLeave: { ...DEFAULT_LEAVE_POLICY.earnedLeave, ...(comp.leavePolicy.earnedLeave || {}) },
           unpaidLeave: { ...DEFAULT_LEAVE_POLICY.unpaidLeave, ...(comp.leavePolicy.unpaidLeave || {}) }
         };
       }
@@ -97,8 +108,19 @@ export const computeUserLeaveBalance = async (companyId, userId) => {
   const startOfYear = `${currentYear}-01-01`;
   const endOfYear = `${currentYear}-12-31`;
 
+  let userIdCandidates = [userId];
+  try {
+    const u = await User.findOne({
+      $or: [{ userId }, { StaffId: userId }, ...(mongoose.isValidObjectId(userId) ? [{ _id: userId }] : [])],
+      ...(companyId ? { companyId } : {})
+    }).select('userId StaffId _id').lean();
+    if (u) {
+      userIdCandidates = [...new Set([u.userId, u.StaffId, String(u._id)].filter(Boolean))];
+    }
+  } catch (_) {}
+
   const approvedLeaves = await Leave.find({
-    userId,
+    userId: { $in: userIdCandidates },
     ...(companyId ? { companyId } : {}),
     status: 'approved',
     startDate: { $gte: startOfYear, $lte: endOfYear }
@@ -134,6 +156,20 @@ export const computeUserLeaveBalance = async (companyId, userId) => {
     .reduce((sum, l) => sum + (Number(l.workingDays) || 1), 0);
   const sickRemaining = Math.max(0, sickTotalAvailable - sickUsed);
 
+  // Earned Leave
+  const earnedEntitlement = Number(policy.earnedLeave.monthlyEntitlement) || 1;
+  const earnedCarryForward = policy.earnedLeave.carryForward !== false;
+  const earnedMaxCarry = Number(policy.earnedLeave.maxCarryForward) || 24;
+  let earnedCarriedForward = 0;
+  if (earnedCarryForward) {
+    earnedCarriedForward = Math.min(currentMonth * earnedEntitlement, earnedMaxCarry);
+  }
+  const earnedTotalAvailable = earnedEntitlement + earnedCarriedForward;
+  const earnedUsed = approvedLeaves
+    .filter(l => l.type === 'earned')
+    .reduce((sum, l) => sum + (Number(l.workingDays) || 1), 0);
+  const earnedRemaining = Math.max(0, earnedTotalAvailable - earnedUsed);
+
   // Unpaid Leave
   const unpaidUsed = approvedLeaves
     .filter(l => l.type === 'unpaid')
@@ -147,7 +183,7 @@ export const computeUserLeaveBalance = async (companyId, userId) => {
       used: casualUsed,
       remaining: casualRemaining,
       requiresApproval: policy.casualLeave.requiresApproval !== false,
-      unapprovedDeductionRate: Number(policy.casualLeave.unapprovedDeductionRate) || 100
+      unapprovedDeductionRate: Number(policy.casualLeave.unapprovedDeductionRate) ?? 100
     },
     sick: {
       enabled: policy.sickLeave.enabled !== false,
@@ -156,13 +192,22 @@ export const computeUserLeaveBalance = async (companyId, userId) => {
       used: sickUsed,
       remaining: sickRemaining,
       requiresApproval: policy.sickLeave.requiresApproval !== false,
-      unapprovedDeductionRate: Number(policy.sickLeave.unapprovedDeductionRate) || 100
+      unapprovedDeductionRate: Number(policy.sickLeave.unapprovedDeductionRate) ?? 100
+    },
+    earned: {
+      enabled: policy.earnedLeave.enabled !== false,
+      entitlement: earnedEntitlement,
+      carriedForward: earnedCarriedForward,
+      used: earnedUsed,
+      remaining: earnedRemaining,
+      requiresApproval: policy.earnedLeave.requiresApproval !== false,
+      unapprovedDeductionRate: Number(policy.earnedLeave.unapprovedDeductionRate) ?? 100
     },
     unpaid: {
       enabled: policy.unpaidLeave.enabled !== false,
       used: unpaidUsed,
-      approvedDeductionRate: Number(policy.unpaidLeave.approvedDeductionRate) || 100,
-      unapprovedDeductionRate: Number(policy.unpaidLeave.unapprovedDeductionRate) || 100,
+      approvedDeductionRate: Number(policy.unpaidLeave.approvedDeductionRate) ?? 100,
+      unapprovedDeductionRate: Number(policy.unpaidLeave.unapprovedDeductionRate) ?? 100,
       sameDeductionRate: policy.unpaidLeave.sameDeductionRate !== false
     }
   };
@@ -190,6 +235,7 @@ export const getLeavePolicy = async (req, res) => {
     const policy = comp?.leavePolicy ? {
       casualLeave: { ...DEFAULT_LEAVE_POLICY.casualLeave, ...(comp.leavePolicy.casualLeave || {}) },
       sickLeave: { ...DEFAULT_LEAVE_POLICY.sickLeave, ...(comp.leavePolicy.sickLeave || {}) },
+      earnedLeave: { ...DEFAULT_LEAVE_POLICY.earnedLeave, ...(comp.leavePolicy.earnedLeave || {}) },
       unpaidLeave: { ...DEFAULT_LEAVE_POLICY.unpaidLeave, ...(comp.leavePolicy.unpaidLeave || {}) }
     } : DEFAULT_LEAVE_POLICY;
     res.status(200).json(policy);
@@ -216,16 +262,18 @@ export const updateLeavePolicy = async (req, res) => {
     if (!companyId) {
       return res.status(400).json({ message: 'Company ID is required to configure leave policy' });
     }
-    const { casualLeave, sickLeave, unpaidLeave } = req.body;
+    const { casualLeave, sickLeave, earnedLeave, unpaidLeave } = req.body;
     const updateObj = {};
     if (casualLeave) updateObj['leavePolicy.casualLeave'] = casualLeave;
     if (sickLeave) updateObj['leavePolicy.sickLeave'] = sickLeave;
+    if (earnedLeave) updateObj['leavePolicy.earnedLeave'] = earnedLeave;
     if (unpaidLeave) updateObj['leavePolicy.unpaidLeave'] = unpaidLeave;
 
     const comp = await Company.findByIdAndUpdate(companyId, { $set: updateObj }, { new: true, upsert: true }).lean();
     const fullPolicy = {
       casualLeave: { ...DEFAULT_LEAVE_POLICY.casualLeave, ...(comp.leavePolicy?.casualLeave || {}) },
       sickLeave: { ...DEFAULT_LEAVE_POLICY.sickLeave, ...(comp.leavePolicy?.sickLeave || {}) },
+      earnedLeave: { ...DEFAULT_LEAVE_POLICY.earnedLeave, ...(comp.leavePolicy?.earnedLeave || {}) },
       unpaidLeave: { ...DEFAULT_LEAVE_POLICY.unpaidLeave, ...(comp.leavePolicy?.unpaidLeave || {}) }
     };
     emitToCompany('payroll:change', companyId, { action: 'leave_policy_updated' });
@@ -296,6 +344,7 @@ export const createLeave = async (req, res) => {
         policy = {
           casualLeave: { ...DEFAULT_LEAVE_POLICY.casualLeave, ...(comp.leavePolicy.casualLeave || {}) },
           sickLeave: { ...DEFAULT_LEAVE_POLICY.sickLeave, ...(comp.leavePolicy.sickLeave || {}) },
+          earnedLeave: { ...DEFAULT_LEAVE_POLICY.earnedLeave, ...(comp.leavePolicy.earnedLeave || {}) },
           unpaidLeave: { ...DEFAULT_LEAVE_POLICY.unpaidLeave, ...(comp.leavePolicy.unpaidLeave || {}) }
         };
       }
@@ -307,6 +356,9 @@ export const createLeave = async (req, res) => {
     if (leaveType === 'sick' && policy.sickLeave.enabled === false) {
       return res.status(400).json({ message: 'Sick Leave is currently disabled by your company policy.' });
     }
+    if (leaveType === 'earned' && policy.earnedLeave.enabled === false) {
+      return res.status(400).json({ message: 'Earned Leave is currently disabled by your company policy.' });
+    }
     if (leaveType === 'unpaid' && policy.unpaidLeave.enabled === false) {
       return res.status(400).json({ message: 'Unpaid Leave is currently disabled by your company policy.' });
     }
@@ -314,6 +366,22 @@ export const createLeave = async (req, res) => {
     // 2. Date validation & working days calculation
     if (body.startDate > body.endDate) {
       return res.status(400).json({ message: 'End date must be greater than or equal to start date.' });
+    }
+
+    // Lock check: block creating leaves inside an already finalized/paid payroll month
+    if (body.companyId && body.userId) {
+      const startMonth = String(body.startDate).slice(0, 7);
+      const endMonth = String(body.endDate).slice(0, 7);
+      const targetMonths = [...new Set([startMonth, endMonth].filter(Boolean))];
+      const lockedPayroll = await Payroll.findOne({
+        companyId: body.companyId,
+        userId: body.userId,
+        month: { $in: targetMonths },
+        $or: [{ status: 'finalized' }, { isClosed: true }, { paymentStatus: { $in: ['paid', 'partially_paid'] } }]
+      }).lean();
+      if (lockedPayroll) {
+        return res.status(400).json({ message: `Payroll for ${lockedPayroll.month} is already finalized/closed. Cannot alter leaves for this period.` });
+      }
     }
 
     const workingDays = await calculateWorkingDaysBetween(body.companyId, body.startDate, body.endDate);
@@ -337,9 +405,11 @@ export const createLeave = async (req, res) => {
     }
 
     // 4. Balance check for paid leaves
-    if (leaveType === 'casual' || leaveType === 'sick') {
+    if (leaveType === 'casual' || leaveType === 'sick' || leaveType === 'earned') {
       const balance = await computeUserLeaveBalance(body.companyId, body.userId);
-      const remaining = leaveType === 'casual' ? balance.casual.remaining : balance.sick.remaining;
+      const remaining = leaveType === 'casual'
+        ? balance.casual.remaining
+        : (leaveType === 'sick' ? balance.sick.remaining : balance.earned.remaining);
       if (workingDays > remaining) {
         return res.status(400).json({
           message: `Insufficient leave balance. You requested ${workingDays} working day(s), but only have ${remaining} day(s) remaining.`
@@ -486,6 +556,23 @@ export const updateLeaveStatus = async (req, res) => {
       updateFields.rejectionReason = updateFields.remarks;
     }
 
+    const existingLeave = await Leave.findOne(filter).lean();
+    if (!existingLeave) return res.status(404).json({ message: 'Leave not found' });
+
+    if (existingLeave.companyId && existingLeave.userId && existingLeave.startDate) {
+      const startMonth = String(existingLeave.startDate).slice(0, 7);
+      const endMonth = String(existingLeave.endDate || existingLeave.startDate).slice(0, 7);
+      const lockedPayroll = await Payroll.findOne({
+        companyId: existingLeave.companyId,
+        userId: existingLeave.userId,
+        month: { $in: [...new Set([startMonth, endMonth])] },
+        $or: [{ status: 'finalized' }, { isClosed: true }, { paymentStatus: { $in: ['paid', 'partially_paid'] } }]
+      }).lean();
+      if (lockedPayroll) {
+        return res.status(400).json({ message: `Payroll for ${lockedPayroll.month} is already finalized/closed and cannot be modified.` });
+      }
+    }
+
     const leave = await Leave.findOneAndUpdate(filter, updateFields, { new: true });
     if (!leave) return res.status(404).json({ message: 'Leave not found' });
     emitToCompany('payroll:change', leave.companyId, { action: 'leave_updated', userId: leave.userId });
@@ -528,6 +615,23 @@ export const deleteLeave = async (req, res) => {
     const id = req.params.id;
     const filter = mongoose.isValidObjectId(id) ? { $or: [{ id }, { _id: id }] } : { id };
     if (req.companyId) filter.companyId = req.companyId;
+    const existingLeave = await Leave.findOne(filter).lean();
+    if (!existingLeave) return res.status(404).json({ message: 'Leave not found' });
+
+    if (existingLeave.companyId && existingLeave.userId && existingLeave.startDate) {
+      const startMonth = String(existingLeave.startDate).slice(0, 7);
+      const endMonth = String(existingLeave.endDate || existingLeave.startDate).slice(0, 7);
+      const lockedPayroll = await Payroll.findOne({
+        companyId: existingLeave.companyId,
+        userId: existingLeave.userId,
+        month: { $in: [...new Set([startMonth, endMonth])] },
+        $or: [{ status: 'finalized' }, { isClosed: true }, { paymentStatus: { $in: ['paid', 'partially_paid'] } }]
+      }).lean();
+      if (lockedPayroll) {
+        return res.status(400).json({ message: `Payroll for ${lockedPayroll.month} is already finalized/closed and cannot be deleted.` });
+      }
+    }
+
     const leave = await Leave.findOneAndDelete(filter);
     if (!leave) return res.status(404).json({ message: 'Leave not found' });
     emitToCompany('payroll:change', leave.companyId, { action: 'leave_deleted', userId: leave.userId });

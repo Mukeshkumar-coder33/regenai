@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../../../core/theme/celadon_colors.dart';
+import '../../../core/widgets/regen_page_header.dart';
 import '../../auth/data/user_model.dart';
 import '../../dashboard/data/dashboard_service.dart';
 import '../data/e2e_crypto_service.dart';
@@ -3416,91 +3417,6 @@ class _MessengerViewState extends State<MessengerView> {
   Widget build(BuildContext context) {
     final scaffold = Scaffold(
       backgroundColor: CeladonColors.background,
-      appBar: _activeConversation != null
-          ? null
-          : AppBar(
-              backgroundColor: CeladonColors.background,
-              foregroundColor: CeladonColors.textPrimary,
-              elevation: 0,
-              scrolledUnderElevation: 0,
-              automaticallyImplyLeading: false,
-              leading: IconButton(
-                icon: const Icon(
-                  Icons.arrow_back_rounded,
-                  color: CeladonColors.textPrimary,
-                  size: 22,
-                ),
-                tooltip: 'Back',
-                onPressed: widget.onBack ??
-                    () {
-                      if (Navigator.of(context).canPop()) {
-                        Navigator.of(context).pop();
-                      } else if (widget.onOpenDrawer != null) {
-                        widget.onOpenDrawer!();
-                      }
-                    },
-              ),
-              titleSpacing: 0,
-              title: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text(
-                              'Messenger',
-                              style: TextStyle(
-                                fontSize: 19,
-                                fontWeight: FontWeight.w800,
-                                color: CeladonColors.textPrimary,
-                                letterSpacing: -0.2,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            if (_socketConnected)
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFF22C55E),
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 2),
-                        const Text(
-                          'Direct and group communications.',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: CeladonColors.textMuted,
-                            height: 1.25,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                IconButton(
-                  tooltip: 'New Group',
-                  icon: const Icon(Icons.group_add_outlined, color: CeladonColors.primary, size: 22),
-                  onPressed: _showCreateGroupSheet,
-                ),
-                IconButton(
-                  tooltip: 'Refresh messages',
-                  icon: const Icon(Icons.refresh_rounded, color: CeladonColors.primary, size: 21),
-                  onPressed: _loadMessengerData,
-                ),
-              ],
-            ),
       floatingActionButton: (_activeConversation == null && _activeTab == 0)
           ? FloatingActionButton.extended(
               tooltip: 'New Chat',
@@ -3513,9 +3429,61 @@ class _MessengerViewState extends State<MessengerView> {
             )
           : null,
       body: SafeArea(
-        top: _activeConversation != null,
+        top: !widget.embedded || _activeConversation != null,
         bottom: false,
-        child: _buildBodyContent(),
+        child: _activeConversation != null
+            ? _buildBodyContent()
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
+                    child: ReGenPageHeader(
+                      title: 'Messenger',
+                      subtitle: 'Direct and group communications.',
+                      onBack: widget.onBack ??
+                          () {
+                            if (Navigator.of(context).canPop()) {
+                              Navigator.of(context).pop();
+                            } else if (widget.onOpenDrawer != null) {
+                              widget.onOpenDrawer!();
+                            }
+                          },
+                      titleBadge: _socketConnected
+                          ? Container(
+                              width: 8,
+                              height: 8,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF22C55E),
+                                shape: BoxShape.circle,
+                              ),
+                            )
+                          : null,
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                            tooltip: 'New Group',
+                            icon: const Icon(Icons.group_add_outlined, color: CeladonColors.primary, size: 21),
+                            onPressed: _showCreateGroupSheet,
+                          ),
+                          const SizedBox(width: 4),
+                          IconButton(
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                            tooltip: 'Refresh messages',
+                            icon: const Icon(Icons.refresh_rounded, color: CeladonColors.primary, size: 21),
+                            onPressed: _loadMessengerData,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Expanded(child: _buildBodyContent()),
+                ],
+              ),
       ),
     );
 

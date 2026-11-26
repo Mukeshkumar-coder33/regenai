@@ -1,6 +1,10 @@
 import 'dart:async';
+
+import '../../../app/app_config.dart';
 import '../../auth/presentation/login_screen.dart';
+
 import 'package:flutter/material.dart';
+
 import '../../../core/navigation/bottom_nav_customizer.dart';
 import '../../../core/navigation/role_menu_registry.dart';
 import '../../../core/storage/session_storage.dart';
@@ -47,15 +51,20 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObserver {
+class _DashboardScreenState extends State<DashboardScreen>
+    with WidgetsBindingObserver {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   int _currentTabIndex = 0;
   late UserModel _currentUser;
 
   // Independent role-based bottom nav shortcut customization (Employee & Super Admin)
-  List<String> get _defaultSlotIds => RoleMenuRegistry.getDefaultSlotsForRole(_currentUser);
+  List<String> get _defaultSlotIds =>
+      RoleMenuRegistry.getDefaultSlotsForRole(_currentUser);
   late List<String> _bottomNavSlots;
-  final List<GlobalKey> _bottomNavSlotKeys = List.generate(5, (_) => GlobalKey());
+  final List<GlobalKey> _bottomNavSlotKeys = List.generate(
+    5,
+    (_) => GlobalKey(),
+  );
   String? _overridePageId;
   bool _messengerInChat = false;
 
@@ -64,9 +73,11 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   bool _isLoadingPolicy = false;
   bool _isPolicySubmitting = false;
 
-  String get _roleStorageKey => RoleMenuRegistry.getRoleStorageKey(_currentUser);
+  String get _roleStorageKey =>
+      RoleMenuRegistry.getRoleStorageKey(_currentUser);
 
-  List<NavShortcutItem> get _roleNavCatalog => RoleMenuRegistry.getNavCatalogForRole(_currentUser);
+  List<NavShortcutItem> get _roleNavCatalog =>
+      RoleMenuRegistry.getNavCatalogForRole(_currentUser);
 
   NavShortcutItem _shortcutForId(String id) {
     final catalog = _roleNavCatalog;
@@ -74,7 +85,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   }
 
   String get _activePageId =>
-      _overridePageId ?? _bottomNavSlots[_currentTabIndex.clamp(0, _bottomNavSlots.length - 1)];
+      _overridePageId ??
+      _bottomNavSlots[_currentTabIndex.clamp(0, _bottomNavSlots.length - 1)];
 
   @override
   void initState() {
@@ -113,15 +125,26 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      MessengerSocketService.instance.ensureConnected();
+      AppConfig.resolveBestBackend(forceProbe: true).then((_) async {
+        final sameServer = await SessionStorage.isSessionValidForCurrentServer();
+        if (!sameServer) {
+          if (mounted) {
+            await _handleLogout();
+          }
+          return;
+        }
+        MessengerSocketService.instance.ensureConnected();
+      });
     }
   }
 
   Future<void> _initRealtimeCommunication(UserModel user) async {
     WebRtcCallManager.instance.bindUser(user);
-    await CallNotificationService.instance.initialize(onTap: (payload) {
-      DashboardNavigation.handleNotificationTap(payload);
-    });
+    await CallNotificationService.instance.initialize(
+      onTap: (payload) {
+        DashboardNavigation.handleNotificationTap(payload);
+      },
+    );
     await MessengerSocketService.instance.connect(user: user);
   }
 
@@ -241,14 +264,18 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         );
       case 'calendar':
         return CalendarView(
-          key: ValueKey('page_calendar_${_effectiveUserId}_${_currentUser.role}'),
+          key: ValueKey(
+            'page_calendar_${_effectiveUserId}_${_currentUser.role}',
+          ),
           user: _currentUser,
           onOpenDrawer: _openDrawer,
           onBack: () => _navigateToPage('home'),
         );
       case 'profile':
         return ProfileView(
-          key: ValueKey('page_profile_${_effectiveUserId}_${_currentUser.role}'),
+          key: ValueKey(
+            'page_profile_${_effectiveUserId}_${_currentUser.role}',
+          ),
           user: _currentUser,
           onLogout: _handleLogout,
           onNavigateToTab: _navigateToTab,
@@ -273,7 +300,9 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         );
       case 'attendance':
         return AttendanceView(
-          key: ValueKey('page_attendance_${_effectiveUserId}_${_currentUser.role}'),
+          key: ValueKey(
+            'page_attendance_${_effectiveUserId}_${_currentUser.role}',
+          ),
           onOpenDrawer: _openDrawer,
           onBack: () => _navigateToPage('home'),
         );
@@ -285,14 +314,18 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         );
       case 'payroll':
         return EmployeePayrollView(
-          key: ValueKey('page_payroll_${_effectiveUserId}_${_currentUser.role}'),
+          key: ValueKey(
+            'page_payroll_${_effectiveUserId}_${_currentUser.role}',
+          ),
           user: _currentUser,
           embedded: true,
           onBack: () => _navigateToPage('home'),
         );
       case 'settings':
         return SettingsView(
-          key: ValueKey('page_settings_${_effectiveUserId}_${_currentUser.role}'),
+          key: ValueKey(
+            'page_settings_${_effectiveUserId}_${_currentUser.role}',
+          ),
           user: _currentUser,
           currentSlots: _bottomNavSlots,
           onNavSlotsChanged: (updated) {
@@ -300,6 +333,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
               _bottomNavSlots = updated;
             });
           },
+          onSwitchServerLogout: _handleLogout,
           onBack: () => _navigateToPage('home'),
         );
       default:
@@ -334,7 +368,9 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     // Dedicated high-end Company Workspace Experience matching ReGen Design Specification
     if (_currentUser.isCompanyAdmin) {
       return CompanyDashboardView(
-        key: ValueKey('company_dashboard_${_effectiveUserId}_${_currentUser.role}'),
+        key: ValueKey(
+          'company_dashboard_${_effectiveUserId}_${_currentUser.role}',
+        ),
         user: _currentUser,
         onOpenDrawer: _openDrawer,
         onLogout: _handleLogout,
@@ -352,7 +388,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     // Mandatory Employee Policy Barrier (Locked until acknowledged or owner allows)
     if (!_currentUser.isSuperAdmin &&
         _policyStatus != null &&
-        (_policyStatus!.hasBlockedPolicy || _policyStatus!.pendingPolicies.isNotEmpty)) {
+        (_policyStatus!.hasBlockedPolicy ||
+            _policyStatus!.pendingPolicies.isNotEmpty)) {
       return _buildPolicyBarrierScreen();
     }
 
@@ -369,13 +406,16 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         currentPageId: _activePageId,
       ),
       body: _buildPageById(_activePageId),
-      bottomNavigationBar: (_overridePageId != null ||
+      bottomNavigationBar:
+          (_overridePageId != null ||
               (_activePageId == 'messenger' && _messengerInChat))
           ? null
           : Container(
               decoration: const BoxDecoration(
                 color: Colors.white,
-                border: Border(top: BorderSide(color: Color(0xFFE2E8F0), width: 1.0)),
+                border: Border(
+                  top: BorderSide(color: Color(0xFFE2E8F0), width: 1.0),
+                ),
                 boxShadow: [
                   BoxShadow(
                     color: Color(0x0A000000),
@@ -408,7 +448,9 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     // 1. Super Admin Dashboard (param)
     if (_currentUser.isSuperAdmin) {
       return SuperAdminDashboardView(
-        key: ValueKey('superadmin_home_${_effectiveUserId}_${_currentUser.role}'),
+        key: ValueKey(
+          'superadmin_home_${_effectiveUserId}_${_currentUser.role}',
+        ),
         user: _currentUser,
         onOpenDrawer: _openDrawer,
         onLogout: _handleLogout,
@@ -423,7 +465,9 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     // 2. Company Owner/Admin Dashboard (owner, admin)
     if (_currentUser.isCompanyAdmin) {
       return CompanyDashboardView(
-        key: ValueKey('company_dashboard_${_effectiveUserId}_${_currentUser.role}'),
+        key: ValueKey(
+          'company_dashboard_${_effectiveUserId}_${_currentUser.role}',
+        ),
         user: _currentUser,
         onOpenDrawer: _openDrawer,
         onLogout: _handleLogout,
@@ -536,7 +580,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         ? (blockedItem?['effectiveDate'] ?? '')
         : (pendingItem?['effectiveDate'] ?? '');
     final declineReason = blockedItem?['declineReason']?.toString();
-    final policyId = (pendingItem?['policyId'] ?? blockedItem?['policyId'] ?? '').toString();
+    final policyId =
+        (pendingItem?['policyId'] ?? blockedItem?['policyId'] ?? '').toString();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F6),
@@ -553,16 +598,24 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                     width: 72,
                     height: 72,
                     decoration: BoxDecoration(
-                      color: isBlocked ? const Color(0xFFFEF2F2) : const Color(0xFFE8F3EC),
+                      color: isBlocked
+                          ? const Color(0xFFFEF2F2)
+                          : const Color(0xFFE8F3EC),
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: isBlocked ? const Color(0xFFDC4C4C) : const Color(0xFF087A4B),
+                        color: isBlocked
+                            ? const Color(0xFFDC4C4C)
+                            : const Color(0xFF087A4B),
                         width: 1.5,
                       ),
                     ),
                     child: Icon(
-                      isBlocked ? Icons.lock_clock_rounded : Icons.gavel_rounded,
-                      color: isBlocked ? const Color(0xFFDC4C4C) : const Color(0xFF087A4B),
+                      isBlocked
+                          ? Icons.lock_clock_rounded
+                          : Icons.gavel_rounded,
+                      color: isBlocked
+                          ? const Color(0xFFDC4C4C)
+                          : const Color(0xFF087A4B),
                       size: 34,
                     ),
                   ),
@@ -586,7 +639,11 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                       ? 'Your work access is paused pending management review.'
                       : 'Please review and acknowledge the organizational policy to continue working.',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 13, color: Color(0xFF829089), height: 1.4),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF829089),
+                    height: 1.4,
+                  ),
                 ),
                 const SizedBox(height: 24),
 
@@ -613,19 +670,30 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                           Expanded(
                             child: Text(
                               policyTitle,
-                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF17231F)),
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF17231F),
+                              ),
                             ),
                           ),
                           if (effectiveDate.isNotEmpty)
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
                               decoration: BoxDecoration(
                                 color: const Color(0xFFE8F3EC),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
                                 effectiveDate,
-                                style: const TextStyle(color: Color(0xFF087A4B), fontSize: 10.5, fontWeight: FontWeight.w600),
+                                style: const TextStyle(
+                                  color: Color(0xFF087A4B),
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
                         ],
@@ -637,12 +705,18 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                           child: SingleChildScrollView(
                             child: Text(
                               policyContent,
-                              style: const TextStyle(fontSize: 12.5, color: Color(0xFF52615B), height: 1.45),
+                              style: const TextStyle(
+                                fontSize: 12.5,
+                                color: Color(0xFF52615B),
+                                height: 1.45,
+                              ),
                             ),
                           ),
                         ),
                       ],
-                      if (isBlocked && declineReason != null && declineReason.isNotEmpty) ...[
+                      if (isBlocked &&
+                          declineReason != null &&
+                          declineReason.isNotEmpty) ...[
                         const SizedBox(height: 14),
                         Container(
                           padding: const EdgeInsets.all(12),
@@ -656,12 +730,20 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                             children: [
                               const Text(
                                 'Submitted Decline Reason:',
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFFDC4C4C)),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFFDC4C4C),
+                                ),
                               ),
                               const SizedBox(height: 4),
                               Text(
                                 '"$declineReason"',
-                                style: const TextStyle(fontSize: 12, color: Color(0xFF991B1B), fontStyle: FontStyle.italic),
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF991B1B),
+                                  fontStyle: FontStyle.italic,
+                                ),
                               ),
                             ],
                           ),
@@ -676,27 +758,55 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                   ElevatedButton.icon(
                     onPressed: _isLoadingPolicy ? null : _checkPolicyStatus,
                     icon: _isLoadingPolicy
-                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
                         : const Icon(Icons.refresh_rounded, size: 18),
-                    label: const Text('Check Approval Status', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                    label: const Text(
+                      'Check Approval Status',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF087A4B),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                       elevation: 0,
                     ),
                   ),
                   const SizedBox(height: 12),
                   OutlinedButton.icon(
                     onPressed: _handleLogout,
-                    icon: const Icon(Icons.logout_rounded, size: 18, color: Color(0xFFDC4C4C)),
-                    label: const Text('Sign Out', style: TextStyle(color: Color(0xFFDC4C4C), fontSize: 13, fontWeight: FontWeight.w600)),
+                    icon: const Icon(
+                      Icons.logout_rounded,
+                      size: 18,
+                      color: Color(0xFFDC4C4C),
+                    ),
+                    label: const Text(
+                      'Sign Out',
+                      style: TextStyle(
+                        color: Color(0xFFDC4C4C),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: Color(0xFFE1E8E4)),
                       backgroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
                   ),
                 ] else ...[
@@ -705,50 +815,105 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                         ? null
                         : () async {
                             setState(() => _isPolicySubmitting = true);
-                            final ok = await _policyService.acceptPolicy(policyId);
+                            final ok = await _policyService.acceptPolicy(
+                              policyId,
+                            );
                             if (mounted) {
                               setState(() => _isPolicySubmitting = false);
                               if (ok) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(backgroundColor: Color(0xFF087A4B), content: Text('Policy accepted. Workspace unlocked!')),
+                                  const SnackBar(
+                                    backgroundColor: Color(0xFF087A4B),
+                                    content: Text(
+                                      'Policy accepted. Workspace unlocked!',
+                                    ),
+                                  ),
                                 );
                                 _checkPolicyStatus();
                               } else {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(backgroundColor: Color(0xFFDC4C4C), content: Text('Failed to accept policy. Please try again.')),
+                                  const SnackBar(
+                                    backgroundColor: Color(0xFFDC4C4C),
+                                    content: Text(
+                                      'Failed to accept policy. Please try again.',
+                                    ),
+                                  ),
                                 );
                               }
                             }
                           },
                     icon: _isPolicySubmitting
-                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Icon(Icons.check_circle_outline_rounded, size: 18),
-                    label: const Text('Allow & Continue to Work', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.check_circle_outline_rounded,
+                            size: 18,
+                          ),
+                    label: const Text(
+                      'Allow & Continue to Work',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF087A4B),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                       elevation: 0,
                     ),
                   ),
                   const SizedBox(height: 12),
                   OutlinedButton.icon(
-                    onPressed: _isPolicySubmitting ? null : () => _showDeclineReasonDialog(policyId),
-                    icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFFDC4C4C)),
-                    label: const Text('Decline with Reason', style: TextStyle(color: Color(0xFFDC4C4C), fontSize: 13, fontWeight: FontWeight.w600)),
+                    onPressed: _isPolicySubmitting
+                        ? null
+                        : () => _showDeclineReasonDialog(policyId),
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      size: 18,
+                      color: Color(0xFFDC4C4C),
+                    ),
+                    label: const Text(
+                      'Decline with Reason',
+                      style: TextStyle(
+                        color: Color(0xFFDC4C4C),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: Color(0xFFE1E8E4)),
                       backgroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
                   TextButton.icon(
                     onPressed: _handleLogout,
-                    icon: const Icon(Icons.logout_rounded, size: 16, color: Color(0xFF829089)),
-                    label: const Text('Sign Out', style: TextStyle(color: Color(0xFF829089), fontSize: 12.5)),
+                    icon: const Icon(
+                      Icons.logout_rounded,
+                      size: 16,
+                      color: Color(0xFF829089),
+                    ),
+                    label: const Text(
+                      'Sign Out',
+                      style: TextStyle(
+                        color: Color(0xFF829089),
+                        fontSize: 12.5,
+                      ),
+                    ),
                   ),
                 ],
               ],
@@ -775,9 +940,20 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
           ),
           title: const Row(
             children: [
-              Icon(Icons.report_problem_rounded, color: Color(0xFFDC4C4C), size: 22),
+              Icon(
+                Icons.report_problem_rounded,
+                color: Color(0xFFDC4C4C),
+                size: 22,
+              ),
               SizedBox(width: 8),
-              Text('Decline Policy Reason', style: TextStyle(color: Color(0xFF17231F), fontWeight: FontWeight.w800, fontSize: 16)),
+              Text(
+                'Decline Policy Reason',
+                style: TextStyle(
+                  color: Color(0xFF17231F),
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                ),
+              ),
             ],
           ),
           content: Column(
@@ -796,7 +972,10 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                 style: const TextStyle(color: Color(0xFF17231F), fontSize: 13),
                 decoration: InputDecoration(
                   hintText: 'Enter your reason here...',
-                  hintStyle: const TextStyle(color: Color(0xFF829089), fontSize: 12.5),
+                  hintStyle: const TextStyle(
+                    color: Color(0xFF829089),
+                    fontSize: 12.5,
+                  ),
                   filled: true,
                   fillColor: const Color(0xFFF8FAF9),
                   border: OutlineInputBorder(
@@ -814,7 +993,10 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel', style: TextStyle(color: Color(0xFF829089))),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Color(0xFF829089)),
+              ),
             ),
             ElevatedButton(
               onPressed: isSending
@@ -823,34 +1005,57 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                       final reason = reasonCtrl.text.trim();
                       if (reason.isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(backgroundColor: Colors.red, content: Text('Please provide a reason.')),
+                          const SnackBar(
+                            backgroundColor: Colors.red,
+                            content: Text('Please provide a reason.'),
+                          ),
                         );
                         return;
                       }
                       setDlgState(() => isSending = true);
                       final nav = Navigator.of(ctx);
                       final messenger = ScaffoldMessenger.of(context);
-                      final ok = await _policyService.declinePolicy(policyId, reason);
+                      final ok = await _policyService.declinePolicy(
+                        policyId,
+                        reason,
+                      );
                       nav.pop();
                       if (mounted) {
                         if (ok) {
                           messenger.showSnackBar(
                             const SnackBar(
                               backgroundColor: Color(0xFFEF4444),
-                              content: Text('Reason submitted to company owner. Work access paused.'),
+                              content: Text(
+                                'Reason submitted to company owner. Work access paused.',
+                              ),
                             ),
                           );
                           _checkPolicyStatus();
                         } else {
                           messenger.showSnackBar(
-                            const SnackBar(backgroundColor: Colors.red, content: Text('Failed to submit reason. Please try again.')),
+                            const SnackBar(
+                              backgroundColor: Colors.red,
+                              content: Text(
+                                'Failed to submit reason. Please try again.',
+                              ),
+                            ),
                           );
                         }
                       }
                     },
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDC4C4C), foregroundColor: Colors.white),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFDC4C4C),
+                foregroundColor: Colors.white,
+              ),
               child: isSending
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                   : const Text('Submit Reason'),
             ),
           ],

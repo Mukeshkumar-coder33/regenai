@@ -51,6 +51,7 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.join(__dirname, '.env') });
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 5006;
 const DEFAULT_PASSWORD = process.env.DEFAULT_PASSWORD || '1234';
 const SUPER_ADMIN_USERNAME = process.env.SUPER_ADMIN_USERNAME || 'Vyshwa';
@@ -78,15 +79,20 @@ pushLog('INFO', 'Server process started', `Port ${process.env.PORT || 5006}`);
 
 const ALLOWED_ORIGINS = [
   process.env.FRONTEND_BASE_URL || 'https://regen.krishub.in',
-  'http://localhost:2000',
-  'http://127.0.0.1:2000',
-  'http://localhost:2001',
-  'http://127.0.0.1:2001',
+  'https://regen.krishub.in',
+  'http://regen.krishub.in',
+  'http://103.186.230.7',
+  'https://103.186.230.7',
 ];
+const LAN_OR_PUBLIC_ORIGIN_REGEX =
+  /^https?:\/\/(([a-z0-9-]+\.)*krishub\.in|103\.186\.230\.7|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+|localhost|127\.0\.0\.1)(:\d+)?$/i;
+
 app.use(cors({
   origin: (origin, cb) => {
-    // Allow requests with no origin (server-to-server, curl, mobile apps) or localhost/LAN
-    if (!origin || ALLOWED_ORIGINS.includes(origin) || /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin)) return cb(null, true);
+    // Allow native/server-to-server requests (no Origin) and verified local LAN / public origins
+    if (!origin || ALLOWED_ORIGINS.includes(origin) || LAN_OR_PUBLIC_ORIGIN_REGEX.test(origin)) {
+      return cb(null, true);
+    }
     cb(null, false);
   },
   credentials: true,
@@ -729,18 +735,18 @@ app.post('/api/auth/reset-password', authLimiter, async (req, res) => {
   }
 });
 
-// Health check: BEFORE auth so external monitoring can reach it
+// Lightweight health check: BEFORE auth so clients & monitors can probe reachability safely
 app.get('/api/health', (req, res) => {
   try {
     const state = mongoose.connection.readyState; // 1=connected
     res.json({
       status: 'ok',
+      service: 'regen-backend',
       mongoConnected: state === 1,
-      mongoState: state,
-      port: PORT
+      timestamp: new Date().toISOString(),
     });
-  } catch (e) {
-    res.status(500).json({ status: 'error', message: e.message });
+  } catch (_) {
+    res.status(503).json({ status: 'error', service: 'regen-backend' });
   }
 });
 
@@ -1369,7 +1375,7 @@ server.on('error', (err) => {
   process.exit(1);
 });
 
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT} (with WebSocket)`);
-  pushLog('INFO', `Server listening on port ${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on http://0.0.0.0:${PORT} (with WebSocket)`);
+  pushLog('INFO', `Server listening on 0.0.0.0:${PORT}`);
 });

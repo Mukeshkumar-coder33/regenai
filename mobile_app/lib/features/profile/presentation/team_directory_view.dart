@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/celadon_colors.dart';
+import '../../../core/widgets/regen_page_header.dart';
 import '../../dashboard/data/dashboard_service.dart';
 
 /// Team Directory Screen — 100% Dynamic Company Team Roster from MongoDB (`GET /api/users`)
@@ -95,72 +96,32 @@ class _TeamDirectoryViewState extends State<TeamDirectoryView> {
       body: SafeArea(
         child: Column(
           children: [
-            // 1. Top App Bar (Messenger Style)
+            // 1. Top App Bar matching Company Calendar
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 18, 16, 10),
-              child: Row(
-                children: [
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 40,
-                      minHeight: 40,
-                    ),
-                    icon: const Icon(
-                      Icons.arrow_back_rounded,
-                      size: 22,
-                      color: CeladonColors.textPrimary,
-                    ),
-                    tooltip: 'Back to Home',
-                    onPressed: () {
-                      if (widget.onBack != null) {
-                        widget.onBack!();
-                      } else if (Navigator.of(context).canPop()) {
-                        Navigator.of(context).pop();
-                      }
-                    },
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 10),
+              child: ReGenPageHeader(
+                title: 'Directory',
+                subtitle: 'Browse company members and team directory details.',
+                onBack: () {
+                  if (widget.onBack != null) {
+                    widget.onBack!();
+                  } else if (Navigator.of(context).canPop()) {
+                    Navigator.of(context).pop();
+                  }
+                },
+                backTooltip: 'Back to Home',
+                trailing: IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                  icon: const Icon(
+                    Icons.search_rounded,
+                    color: CeladonColors.textPrimary,
+                    size: 22,
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        Text(
-                          'Directory',
-                          style: TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w800,
-                            color: CeladonColors.textPrimary,
-                            letterSpacing: -0.2,
-                          ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          'Browse company members and team directory details.',
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            color: CeladonColors.textMuted,
-                            height: 1.25,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.search_rounded,
-                      color: CeladonColors.textPrimary,
-                      size: 24,
-                    ),
-                    onPressed: () {
+                  onPressed: () {
                       _showSearchModal(context);
                     },
                   ),
-                ],
               ),
             ),
 

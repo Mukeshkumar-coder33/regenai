@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import '../../../app/app_config.dart';
 import '../../../core/theme/celadon_colors.dart';
 
 /// Service to download chat media (Images, Videos, Documents)
@@ -44,7 +45,8 @@ class MediaDownloadService {
             final base64Str = comma != -1 ? url.substring(comma + 1) : url;
             bytes = base64Decode(base64Str);
           } else {
-            final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 15));
+            final resolved = AppConfig.resolveMediaUrl(url);
+            final response = await http.get(Uri.parse(resolved)).timeout(const Duration(seconds: 15));
             if (response.statusCode == 200) {
               bytes = response.bodyBytes;
             }

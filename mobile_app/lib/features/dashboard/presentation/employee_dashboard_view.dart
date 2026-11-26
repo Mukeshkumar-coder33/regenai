@@ -879,6 +879,8 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> with Auto
                                 icon = Icons.assignment_rounded;
                               } else if (notif.isAttendance) {
                                 icon = Icons.event_available_rounded;
+                              } else if (notif.isPayment) {
+                                icon = Icons.payments_rounded;
                               }
 
                               return Dismissible(
@@ -978,6 +980,8 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> with Auto
                                         );
                                       } else if (notif.type.contains('leave')) {
                                         _navigateToPage('leave');
+                                      } else if (notif.isPayment) {
+                                        _navigateToPage('payroll');
                                       } else if (notif.isAttendance) {
                                         _navigateToPage('calendar', fallbackTab: 2);
                                       }

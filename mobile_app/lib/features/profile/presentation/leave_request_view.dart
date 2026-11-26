@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import '../../../core/storage/session_storage.dart';
 import '../../../core/theme/celadon_colors.dart';
+import '../../../core/widgets/regen_page_header.dart';
 import '../../attendance/data/attendance_service.dart';
 import '../../attendance/data/work_schedule_model.dart';
 import '../../auth/data/user_model.dart';
@@ -250,61 +251,21 @@ class _LeaveRequestViewState extends State<LeaveRequestView> {
           color: primaryGreen,
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // 1. Top Bar with Messenger-style Left Arrow + Heading + Subtitle
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    IconButton(
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                      icon: const Icon(
-                        Icons.arrow_back_rounded,
-                        size: 22,
-                        color: CeladonColors.textPrimary,
-                      ),
-                      tooltip: 'Back to Home',
-                      onPressed: () {
-                        if (widget.onBack != null) {
-                          widget.onBack!();
-                        } else {
-                          Navigator.maybePop(context);
-                        }
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          Text(
-                            'Leaves',
-                            style: TextStyle(
-                              fontSize: 19,
-                              fontWeight: FontWeight.w800,
-                              color: CeladonColors.textPrimary,
-                              letterSpacing: -0.2,
-                            ),
-                          ),
-                          SizedBox(height: 2),
-                          Text(
-                            'Submit leave requests and view balances.',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              color: CeladonColors.textMuted,
-                              height: 1.25,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                ReGenPageHeader(
+                  title: 'Leaves',
+                  subtitle: 'Submit leave requests and view balances.',
+                  onBack: () {
+                    if (widget.onBack != null) {
+                      widget.onBack!();
+                    } else {
+                      Navigator.maybePop(context);
+                    }
+                  },
+                  backTooltip: 'Back to Home',
                 ),
                 const SizedBox(height: 16),
 

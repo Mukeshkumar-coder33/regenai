@@ -20,6 +20,23 @@ const dailyBreakdownItemSchema = new mongoose.Schema({
   shortfallDeduction: { type: Number, default: 0 },
   overtimeAddition: { type: Number, default: 0 },
   leaveDeduction: { type: Number, default: 0 },
+  attendanceStatus: { type: String },
+  leaveType: { type: String },
+  leaveApprovalStatus: { type: String },
+  lateMinutes: { type: Number, default: 0 },
+  lateDeduction: { type: Number, default: 0 },
+  breakMinutes: { type: Number, default: 0 },
+  casualBreakMinutes: { type: Number, default: 0 },
+  breakDelayMinutes: { type: Number, default: 0 },
+  casualBreakDelayMinutes: { type: Number, default: 0 },
+  totalBreakDelayMinutes: { type: Number, default: 0 },
+  breakDeduction: { type: Number, default: 0 },
+  explanation: { type: String },
+  dailyAdjustments: [{
+    type: { type: String },
+    amount: { type: Number, default: 0 },
+    reason: { type: String },
+  }],
   notes: { type: String },
 }, { _id: false });
 
@@ -135,7 +152,32 @@ const payrollSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  lateMinutes: {
+    type: Number,
+    default: 0,
+  },
+  lateDeduction: {
+    type: Number,
+    default: 0,
+  },
+  totalBreakDelayMinutes: {
+    type: Number,
+    default: 0,
+  },
+  totalBreakDeduction: {
+    type: Number,
+    default: 0,
+  },
+  leaveDeductionBreakdown: {
+    paidUnapproved: { type: Number, default: 0 },
+    unpaidApproved: { type: Number, default: 0 },
+    unpaidUnapproved: { type: Number, default: 0 },
+  },
   otherAdjustments: {
+    type: Number,
+    default: 0,
+  },
+  earnedSalary: {
     type: Number,
     default: 0,
   },
@@ -190,6 +232,23 @@ const payrollSchema = new mongoose.Schema({
   },
   finalizedBy: {
     type: String,
+  },
+  isClosed: {
+    type: Boolean,
+    default: false,
+    index: true,
+  },
+  closedAt: {
+    type: Date,
+  },
+  closedBy: {
+    type: String,
+  },
+  payslipNumber: {
+    type: String,
+  },
+  payslipGeneratedAt: {
+    type: Date,
   },
   paidAt: {
     type: Date,

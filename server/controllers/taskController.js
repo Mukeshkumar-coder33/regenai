@@ -4,6 +4,17 @@ import Company from '../models/Company.js';
 import { resolveCompanyId } from '../utils/resolveCompanyId.js';
 import { emitToCompany, emitToUser } from '../socket.js';
 import { sendReportEmail } from '../utils/mailer.js';
+import {
+  assertCompanyReportAccess,
+  resolveReportWindow,
+  isDateInWindow,
+  normalizeDateOnly,
+  buildCompanyUserLookup,
+  matchesEmployeeFilter,
+  paginateItems,
+  buildCsvDocument,
+  getTodayDateStr,
+} from '../utils/reportHelpers.js';
 
 export const createTask = async (req, res) => {
   try {
@@ -368,248 +379,388 @@ export const deleteTask = async (req, res) => {
 };
 
 /**
- * Build Schedules & Tasks Report Data
+ * Computes overdue hours cleanly against dueDate/endDate + dueTime/endTime.
+ */
+const computeTaskDelayInfo = (task, isCompleted) => {
+  const dueDateStr = task.endDate || task.dueDate || '';
+  if (!dueDateStr) return { isOverdue: false, overdueHours: 0, overdueLabel: '' };
+
+  const dueTimeStr = task.dueTime || task.endTime || '23:59';
+  const dueDateObj = new Date(`${dueDateStr}T${dueTimeStr.length === 5 ? `${dueTimeStr}:00` : '23:59:59'}`);
+  if (isNaN(dueDateObj.getTime())) return { isOverdue: false, overdueHours: 0, overdueLabel: '' };
+
+  const compareTime = isCompleted && task.completedAt
+    ? new Date(task.completedAt)
+    : new Date();
+  if (isNaN(compareTime.getTime())) return { isOverdue: false, overdueHours: 0, overdueLabel: '' };
+
+  const diffMs = compareTime.getTime() - dueDateObj.getTime();
+  if (diffMs <= 0) return { isOverdue: false, overdueHours: 0, overdueLabel: '' };
+
+  const overdueHours = Math.round((diffMs / 3600000) * 10) / 10;
+  const days = Math.floor(overdueHours / 24);
+  const remHours = Math.round(overdueHours % 24);
+  const overdueLabel = days > 0 ? `${days}d ${remHours}h overdue` : `${overdueHours}h overdue`;
+  return { isOverdue: true, overdueHours, overdueLabel };
+};
+
+/**
+ * Derives chronological activity history strictly from real stored task fields.
+ */
+const buildTaskActivityHistory = (task) => {
+  const events = [];
+  if (task.createdAt) {
+    events.push({
+      type: 'created',
+      timestamp: new Date(task.createdAt).toISOString(),
+      actor: task.assignorName || 'Company',
+      detail: `Task created and assigned to ${task.assignedTo || 'Unassigned'}`,
+    });
+  }
+  if (task.startedAt) {
+    events.push({
+      type: 'started',
+      timestamp: String(task.startedAt),
+      actor: task.assignedTo || 'Employee',
+      detail: 'Started working on task',
+    });
+  }
+  if (Array.isArray(task.progressUpdates)) {
+    for (const pu of task.progressUpdates) {
+      events.push({
+        type: 'progress_update',
+        timestamp: pu.date || '',
+        actor: pu.employeeName || pu.employeeId || 'Employee',
+        detail: `${pu.percentage ?? 0}% — ${pu.updateText || 'Progress logged'}`,
+      });
+    }
+  }
+  if (task.extensionRequest && task.extensionRequest.status && task.extensionRequest.status !== 'none') {
+    if (task.extensionRequest.requestedAt) {
+      events.push({
+        type: 'extension_requested',
+        timestamp: task.extensionRequest.requestedAt,
+        actor: task.assignedTo || 'Employee',
+        detail: `Requested deadline ${task.extensionRequest.requestedDueDate || ''}: ${task.extensionRequest.reason || ''}`,
+      });
+    }
+    if (task.extensionRequest.reviewedAt) {
+      events.push({
+        type: `extension_${task.extensionRequest.status}`,
+        timestamp: task.extensionRequest.reviewedAt,
+        actor: task.assignorName || 'Management',
+        detail: `Extension ${task.extensionRequest.status}${task.extensionRequest.companyResponse ? `: ${task.extensionRequest.companyResponse}` : ''}`,
+      });
+    }
+  }
+  if (task.completionReport?.submittedAt) {
+    events.push({
+      type: 'completion_report',
+      timestamp: task.completionReport.submittedAt,
+      actor: task.completionReport.employeeName || task.assignedTo || 'Employee',
+      detail: task.completionReport.reportText || 'Submitted completion report',
+    });
+  }
+  if (task.completedAt) {
+    events.push({
+      type: 'completed',
+      timestamp: String(task.completedAt),
+      actor: task.completionReport?.employeeName || task.assignedTo || 'Employee',
+      detail: `Task completed${task.workingTime ? ` (${task.workingTime})` : ''}`,
+    });
+  }
+  return events.sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
+};
+
+/**
+ * Build Schedules & General/Project Tasks Report Data
+ * Supports all historical timeframes (all | range | day | week | month | year),
+ * employee/department/priority/status/scope filters, inactive employees, and pagination.
  */
 export const buildSchedulesReportData = async (companyId, query = {}) => {
-  const period = query.period || 'month'; // 'day' | 'month' | 'year'
-  const filterDate = query.date; // e.g. '2026-10-22'
-  const filterMonth = query.month; // e.g. '2026-10'
-  const filterYear = query.year; // e.g. '2026'
   const departmentFilter = query.department;
-  const statusFilter = query.status; // 'all' | 'completed' | 'in_progress' | 'todo' | 'not_completed'
-  const searchQuery = (query.search || '').trim().toLowerCase();
+  const statusFilter = String(query.status || 'all').toLowerCase().trim();
+  const priorityFilter = String(query.priority || 'all').toLowerCase().trim();
+  const employeeFilter = query.userId || query.employeeId || 'all';
+  const scopeFilter = String(query.scope || 'all').toLowerCase().trim(); // 'general' excludes project tasks
+  const searchQuery = String(query.search || '').trim().toLowerCase();
 
-  const company = await Company.findById(companyId).lean();
+  const [company, earliestTask, userLookup] = await Promise.all([
+    Company.findById(companyId).select('name createdAt').lean(),
+    Task.findOne({ companyId }).sort({ createdAt: 1 }).select('startDate createdAt').lean(),
+    buildCompanyUserLookup(companyId),
+  ]);
+
   const companyName = company?.name || 'Company';
+  const earliestDate = earliestTask?.startDate || normalizeDateOnly(earliestTask?.createdAt || company?.createdAt);
+  const window = resolveReportWindow(query, earliestDate);
 
-  // Format Period Label
-  let periodLabel = '';
-  if (period === 'day') {
-    periodLabel = filterDate ? `Day: ${filterDate}` : 'Today';
-  } else if (period === 'year') {
-    periodLabel = filterYear ? `Year: ${filterYear}` : 'Full Year';
-  } else {
-    periodLabel = filterMonth ? `Month: ${filterMonth}` : 'Current Month';
+  // Fetch all tasks for this company (strictly isolated by companyId)
+  const taskFilter = { companyId };
+  if (scopeFilter === 'general') {
+    taskFilter.isProjectTask = { $ne: true };
+    taskFilter.$or = [{ projectId: null }, { projectId: '' }, { projectId: { $exists: false } }];
   }
+  let tasks = await Task.find(taskFilter).sort({ createdAt: -1 }).lean();
 
-  // 1. Fetch all company employees
-  const userFilter = {
-    companyId,
-    role: { $in: ['staff', 'employee', 'intern', 'freelancer', 'admin'] }
-  };
-  if (departmentFilter && departmentFilter !== 'all') {
-    userFilter.department = departmentFilter;
-  }
-  const employees = await User.find(userFilter).lean();
-
-  // 2. Fetch all tasks for this company
-  const tasks = await Task.find({ companyId }).sort({ createdAt: -1 }).lean();
-
-  // Helper to determine if task date matches selected period
   const matchesPeriod = (t) => {
-    const sDate = t.startDate || '';
-    const eDate = t.endDate || '';
-    const dDate = t.dueDate || '';
-    const cDate = t.createdAt ? new Date(t.createdAt).toISOString().split('T')[0] : '';
+    if (window.period === 'all') return true;
+    const sDate = normalizeDateOnly(t.startDate);
+    const eDate = normalizeDateOnly(t.endDate || t.dueDate);
+    const cDate = normalizeDateOnly(t.createdAt);
+    const compDate = normalizeDateOnly(t.completedAt);
 
-    if (period === 'day' && filterDate) {
-      if (sDate && eDate && sDate <= filterDate && eDate >= filterDate) return true;
-      if (sDate === filterDate || eDate === filterDate || dDate === filterDate || cDate === filterDate) return true;
-      return false;
+    if (window.startDate && window.endDate && sDate && (eDate || sDate)) {
+      const spanEnd = eDate || sDate;
+      if (sDate <= window.endDate && spanEnd >= window.startDate) return true;
     }
-    if (period === 'month' && filterMonth) {
-      if (sDate.startsWith(filterMonth) || eDate.startsWith(filterMonth) || dDate.startsWith(filterMonth) || cDate.startsWith(filterMonth)) return true;
-      try {
-        const [yStr, mStr] = filterMonth.split('-');
-        const y = parseInt(yStr, 10);
-        const m = parseInt(mStr, 10);
-        const lastDay = new Date(y, m, 0).getDate();
-        const pad2 = (n) => String(n).padStart(2, '0');
-        const mStart = `${y}-${pad2(m)}-01`;
-        const mEnd = `${y}-${pad2(m)}-${pad2(lastDay)}`;
-        const effEnd = eDate || dDate;
-        if (sDate && effEnd && sDate <= mEnd && effEnd >= mStart) return true;
-      } catch {
-        // ignore
-      }
-      return false;
-    }
-    if (period === 'year' && filterYear) {
-      if (sDate.startsWith(filterYear) || eDate.startsWith(filterYear) || dDate.startsWith(filterYear) || cDate.startsWith(filterYear)) return true;
-      return false;
-    }
-    return true; // default include
+    return [sDate, eDate, cDate, compDate].some((d) => d && isDateInWindow(d, window));
   };
 
-  const periodTasks = tasks.filter(matchesPeriod);
+  let periodTasks = tasks.filter(matchesPeriod).map((t) => {
+    const expired = isTaskExpired(t) && t.status !== 'not_completed' && t.status !== 'done' && t.status !== 'completed';
+    const effectiveStatus = expired ? 'not_completed' : (t.status || 'todo');
+    const isCompleted = effectiveStatus === 'done' || effectiveStatus === 'completed';
+    const emp = userLookup.resolveUser(t.assignedTo, t.completionReport?.employeeName);
+    const delay = computeTaskDelayInfo({ ...t, status: effectiveStatus }, isCompleted);
 
-  // Auto-flag expired
-  periodTasks.forEach(t => {
-    if (isTaskExpired(t) && t.status !== 'not_completed' && t.status !== 'done' && t.status !== 'completed') {
-      t.status = 'not_completed';
-    }
+    let statusLabel = 'To Do';
+    if (isCompleted) statusLabel = 'Completed';
+    else if (effectiveStatus === 'not_completed') statusLabel = 'Not Completed';
+    else if (effectiveStatus === 'in_progress') statusLabel = 'In Progress';
+    else if (effectiveStatus === 'paused') statusLabel = 'Paused';
+    else if (effectiveStatus === 'blocked') statusLabel = 'Blocked';
+    else if (effectiveStatus === 'review') statusLabel = 'In Review';
+
+    return {
+      ...t,
+      effectiveStatus,
+      statusLabel,
+      isCompleted,
+      delay,
+      emp,
+    };
   });
 
-  // Group tasks by employee
-  const employeeStats = [];
+  // Apply task-level filters
+  if (employeeFilter && employeeFilter !== 'all') {
+    periodTasks = periodTasks.filter((t) => matchesEmployeeFilter(t.emp, employeeFilter));
+  }
+  if (departmentFilter && departmentFilter !== 'all') {
+    periodTasks = periodTasks.filter(
+      (t) => (t.emp.department || '').toLowerCase() === String(departmentFilter).toLowerCase(),
+    );
+  }
+  if (priorityFilter !== 'all') {
+    periodTasks = periodTasks.filter((t) => String(t.priority || 'medium').toLowerCase() === priorityFilter);
+  }
+  if (statusFilter !== 'all') {
+    periodTasks = periodTasks.filter((t) => {
+      if (statusFilter === 'completed' || statusFilter === 'done') return t.isCompleted;
+      if (statusFilter === 'overdue') return t.delay.isOverdue;
+      if (statusFilter === 'in_progress') return t.effectiveStatus === 'in_progress' || t.effectiveStatus === 'paused';
+      return t.effectiveStatus === statusFilter;
+    });
+  }
+  if (searchQuery) {
+    periodTasks = periodTasks.filter((t) =>
+      (t.title || '').toLowerCase().includes(searchQuery) ||
+      (t.description || '').toLowerCase().includes(searchQuery) ||
+      (t.assignorName || '').toLowerCase().includes(searchQuery) ||
+      (t.emp.name || '').toLowerCase().includes(searchQuery) ||
+      (t.emp.staffId || '').toLowerCase().includes(searchQuery) ||
+      (t.emp.department || '').toLowerCase().includes(searchQuery) ||
+      (t.projectName || '').toLowerCase().includes(searchQuery),
+    );
+  }
+
+  // Group enriched task metrics by employee (including former/inactive assignees)
+  const groupedByEmp = new Map();
   const flatRecords = [];
 
-  for (const emp of employees) {
-    const empKey = String(emp.userId || emp._id);
-    const empUsername = String(emp.username || '').toLowerCase();
-    const empName = String(emp.name || '').toLowerCase();
-
-    // Find all tasks assigned to this employee
-    const empTasks = periodTasks.filter(t => {
-      if (!t.assignedTo) return false;
-      const assign = String(t.assignedTo).trim().toLowerCase();
-      return assign === empKey.toLowerCase() || assign === empUsername || assign === empName;
-    });
-
-    // Check status filter if applicable
-    let filteredEmpTasks = empTasks;
-    if (statusFilter && statusFilter !== 'all') {
-      filteredEmpTasks = empTasks.filter(t => {
-        const isDone = t.status === 'done' || t.status === 'completed';
-        if (statusFilter === 'completed') return isDone;
-        if (statusFilter === 'in_progress') return t.status === 'in_progress' || t.status === 'paused';
-        if (statusFilter === 'todo') return t.status === 'todo';
-        if (statusFilter === 'not_completed') return t.status === 'not_completed';
-        return true;
+  for (const t of periodTasks) {
+    const empKey = t.emp.userId || String(t.assignedTo || 'unassigned');
+    if (!groupedByEmp.has(empKey)) {
+      groupedByEmp.set(empKey, {
+        userId: empKey,
+        staffId: t.emp.staffId,
+        name: t.emp.name,
+        email: t.emp.user?.email || '',
+        department: t.emp.department,
+        designation: t.emp.designation,
+        joiningDate: t.emp.joiningDate,
+        employeeStatus: t.emp.employeeStatus,
+        avatar: t.emp.user?.avatar || '',
+        totalTasks: 0,
+        completedTasks: 0,
+        inProgressTasks: 0,
+        pausedTasks: 0,
+        todoTasks: 0,
+        notCompletedTasks: 0,
+        overdueTasks: 0,
+        completionRate: 0,
+        tasks: [],
       });
     }
 
-    const totalAssigned = empTasks.length;
-    const completedCount = empTasks.filter(t => t.status === 'done' || t.status === 'completed').length;
-    const inProgressCount = empTasks.filter(t => t.status === 'in_progress').length;
-    const pausedCount = empTasks.filter(t => t.status === 'paused').length;
-    const todoCount = empTasks.filter(t => t.status === 'todo').length;
-    const notCompletedCount = empTasks.filter(t => t.status === 'not_completed').length;
-    const completionRate = totalAssigned > 0 ? Math.round((completedCount / totalAssigned) * 100) : 0;
+    const bucket = groupedByEmp.get(empKey);
+    const createdDateStr = normalizeDateOnly(t.createdAt);
+    const completedDateStr = normalizeDateOnly(t.completedAt || t.completionReport?.submittedAt);
+    const dueDateStr = t.endDate || t.dueDate || '';
+    const activityHistory = buildTaskActivityHistory(t);
 
-    // Check search query against employee name/id
-    if (searchQuery) {
-      const matchEmp = (emp.name || '').toLowerCase().includes(searchQuery) ||
-                       (emp.userId || '').toLowerCase().includes(searchQuery) ||
-                       (emp.department || '').toLowerCase().includes(searchQuery);
-      const matchAnyTask = empTasks.some(t => (t.title || '').toLowerCase().includes(searchQuery));
-      if (!matchEmp && !matchAnyTask) {
-        continue;
-      }
-    }
+    const taskDetail = {
+      id: t.id,
+      title: t.title,
+      description: t.description || '',
+      projectId: t.projectId || null,
+      projectName: t.projectName || 'General',
+      isProjectTask: !!t.isProjectTask,
+      priority: t.priority || 'medium',
+      createdAt: t.createdAt || null,
+      createdDate: createdDateStr,
+      startDate: t.startDate || '',
+      endDate: dueDateStr,
+      dueDate: dueDateStr,
+      dueTime: t.dueTime || t.endTime || '',
+      startedAt: t.startedAt || '',
+      completedAt: t.completedAt || '',
+      completedDate: completedDateStr,
+      completionTime: t.completionTime || t.workingTime || '',
+      workingTime: t.workingTime || t.completionTime || '',
+      status: t.effectiveStatus,
+      statusLabel: t.statusLabel,
+      isCompleted: t.isCompleted,
+      isOverdue: t.delay.isOverdue,
+      overdueHours: t.delay.overdueHours,
+      overdueLabel: t.delay.overdueLabel,
+      progressPercentage: Number(t.progressPercentage) || (t.isCompleted ? 100 : 0),
+      assignorName: t.assignorName || 'Company',
+      progressUpdates: Array.isArray(t.progressUpdates) ? t.progressUpdates : [],
+      completionReport: t.completionReport || null,
+      extensionRequest: t.extensionRequest || null,
+      activityHistory,
+    };
 
-    const taskItems = filteredEmpTasks.map(t => {
-      const isCompleted = t.status === 'done' || t.status === 'completed';
-      const isExpired = t.status === 'not_completed' || isTaskExpired(t);
-      let statusLabel = 'To Do';
-      if (isCompleted) statusLabel = 'Completed';
-      else if (isExpired) statusLabel = 'Not Completed';
-      else if (t.status === 'in_progress') statusLabel = 'In Progress';
-      else if (t.status === 'paused') statusLabel = 'Paused';
+    bucket.totalTasks += 1;
+    if (t.isCompleted) bucket.completedTasks += 1;
+    else if (t.effectiveStatus === 'in_progress') bucket.inProgressTasks += 1;
+    else if (t.effectiveStatus === 'paused') bucket.pausedTasks += 1;
+    else if (t.effectiveStatus === 'todo') bucket.todoTasks += 1;
+    else if (t.effectiveStatus === 'not_completed') bucket.notCompletedTasks += 1;
+    if (t.delay.isOverdue) bucket.overdueTasks += 1;
+    bucket.tasks.push(taskDetail);
 
-      return {
-        id: t.id,
-        title: t.title,
-        description: t.description || '',
-        projectName: t.projectName || 'General',
-        priority: t.priority || 'medium',
-        startDate: t.startDate || '',
-        endDate: t.endDate || t.dueDate || '',
-        dueTime: t.dueTime || t.endTime || '',
-        status: t.status,
-        statusLabel,
-        isCompleted,
-        assignorName: t.assignorName || 'Company',
-      };
-    });
-
-    employeeStats.push({
-      userId: emp.userId || emp._id,
-      staffId: emp.userId || emp.staffId || 'EMP',
-      name: emp.name || emp.username || 'Staff',
-      email: emp.email || '',
-      department: emp.department || 'General',
-      designation: emp.designation || 'Staff',
-      avatar: emp.avatar || '',
-      totalTasks: totalAssigned,
-      completedTasks: completedCount,
-      inProgressTasks: inProgressCount,
-      pausedTasks: pausedCount,
-      todoTasks: todoCount,
-      notCompletedTasks: notCompletedCount,
-      completionRate,
-      tasks: taskItems,
-    });
-
-    // Add to flatRecords for tabular report view and CSV export
-    taskItems.forEach(t => {
-      flatRecords.push({
-        date: t.startDate || t.endDate || (period === 'day' ? filterDate : ''),
-        employeeId: emp.userId || emp.staffId || '',
-        employeeName: emp.name || emp.username || '',
-        department: emp.department || 'General',
-        designation: emp.designation || 'Staff',
-        taskTitle: t.title,
-        project: t.projectName,
-        priority: t.priority,
-        startDate: t.startDate,
-        dueDate: t.endDate,
-        status: t.statusLabel,
-        isCompleted: t.isCompleted ? 'Completed' : (t.status === 'not_completed' ? 'Not Completed' : 'Pending'),
-      });
+    flatRecords.push({
+      id: t.id,
+      date: t.startDate || createdDateStr || dueDateStr || '',
+      createdDate: createdDateStr,
+      employeeId: t.emp.staffId,
+      userId: empKey,
+      employeeName: t.emp.name,
+      department: t.emp.department,
+      designation: t.emp.designation,
+      joiningDate: t.emp.joiningDate,
+      employeeStatus: t.emp.employeeStatus,
+      assignorName: t.assignorName || 'Company',
+      taskTitle: t.title,
+      description: t.description || '',
+      project: t.projectName || 'General',
+      isProjectTask: !!t.isProjectTask,
+      priority: t.priority || 'medium',
+      startDate: t.startDate || '',
+      dueDate: dueDateStr,
+      completedAt: t.completedAt || '',
+      completedDate: completedDateStr,
+      workingTime: t.workingTime || t.completionTime || '',
+      progressPercentage: taskDetail.progressPercentage,
+      status: t.statusLabel,
+      rawStatus: t.effectiveStatus,
+      isCompleted: t.isCompleted ? 'Completed' : (t.effectiveStatus === 'not_completed' ? 'Not Completed' : 'Pending'),
+      isOverdue: t.delay.isOverdue,
+      overdueHours: t.delay.overdueHours,
+      overdueLabel: t.delay.overdueLabel,
+      progressUpdates: taskDetail.progressUpdates,
+      completionReport: taskDetail.completionReport,
+      extensionRequest: taskDetail.extensionRequest,
+      activityHistory,
     });
   }
 
-  // Summary Metrics
-  const totalTasks = periodTasks.length;
-  const totalCompleted = periodTasks.filter(t => t.status === 'done' || t.status === 'completed').length;
-  const totalInProgress = periodTasks.filter(t => t.status === 'in_progress').length;
-  const totalTodo = periodTasks.filter(t => t.status === 'todo').length;
-  const totalNotCompleted = periodTasks.filter(t => t.status === 'not_completed' || isTaskExpired(t)).length;
-  const overallCompletionRate = totalTasks > 0 ? Math.round((totalCompleted / totalTasks) * 100) : 0;
-  const employeesWithTasks = employeeStats.filter(e => e.totalTasks > 0).length;
+  const employeeStats = Array.from(groupedByEmp.values()).map((e) => ({
+    ...e,
+    completionRate: e.totalTasks > 0 ? Math.round((e.completedTasks / e.totalTasks) * 100) : 0,
+  }));
 
-  // Build CSV content
-  const csvHeaders = ['Date', 'Employee ID', 'Employee Name', 'Department', 'Designation', 'Task Title', 'Project', 'Priority', 'Start Date', 'Due Date', 'Status', 'Completed (Yes/No)'];
-  const csvRows = flatRecords.map(r => [
-    r.date,
+  const totalTasks = flatRecords.length;
+  const totalCompleted = periodTasks.filter((t) => t.isCompleted).length;
+  const totalInProgress = periodTasks.filter((t) => t.effectiveStatus === 'in_progress' || t.effectiveStatus === 'paused').length;
+  const totalTodo = periodTasks.filter((t) => t.effectiveStatus === 'todo').length;
+  const totalNotCompleted = periodTasks.filter((t) => t.effectiveStatus === 'not_completed').length;
+  const totalOverdue = periodTasks.filter((t) => t.delay.isOverdue).length;
+  const overallCompletionRate = totalTasks > 0 ? Math.round((totalCompleted / totalTasks) * 100) : 0;
+  const employeesWithTasks = employeeStats.filter((e) => e.totalTasks > 0).length;
+
+  const csvHeaders = [
+    'Task ID', 'Task Name', 'Description', 'Assigned To', 'Employee ID', 'Department',
+    'Assigned By', 'Scope', 'Priority', 'Progress (%)', 'Created Date', 'Start Date',
+    'Due Date', 'Completed Date', 'Working Time', 'Status', 'Overdue', 'Completion Notes',
+  ];
+  const csvRows = flatRecords.map((r) => [
+    r.id,
+    r.taskTitle,
+    r.description,
+    r.employeeName,
     r.employeeId,
-    `"${(r.employeeName || '').replace(/"/g, '""')}"`,
-    `"${(r.department || '').replace(/"/g, '""')}"`,
-    `"${(r.designation || '').replace(/"/g, '""')}"`,
-    `"${(r.taskTitle || '').replace(/"/g, '""')}"`,
-    `"${(r.project || '').replace(/"/g, '""')}"`,
+    r.department,
+    r.assignorName,
+    r.isProjectTask ? `Project (${r.project})` : 'General',
     r.priority,
+    `${r.progressPercentage}%`,
+    r.createdDate,
     r.startDate,
     r.dueDate,
+    r.completedDate,
+    r.workingTime,
     r.status,
-    r.isCompleted === 'Completed' ? 'Yes' : 'No'
-  ].join(','));
+    r.overdueLabel || 'On Time',
+    r.completionReport?.reportText || '',
+  ]);
 
-  const csvContent = [
-    `# ${companyName} - Official Schedules & Tasks Report`,
-    `# Period: ${periodLabel}`,
-    `# Generated: ${new Date().toLocaleString()}`,
-    `# Summary: Total Tasks: ${totalTasks} | Completed: ${totalCompleted} (${overallCompletionRate}%) | In Progress: ${totalInProgress} | Not Completed: ${totalNotCompleted}`,
-    '',
-    csvHeaders.join(','),
-    ...csvRows,
-  ].join('\n');
+  const csvContent = buildCsvDocument(
+    [
+      `# ${companyName} - Historical ${scopeFilter === 'general' ? 'General Tasks' : 'Schedules & Tasks'} Report`,
+      `# Period: ${window.periodLabel}`,
+      `# Generated: ${new Date().toLocaleString()}`,
+      `# Summary: Total Tasks: ${totalTasks} | Completed: ${totalCompleted} (${overallCompletionRate}%) | In Progress: ${totalInProgress} | Overdue: ${totalOverdue} | Not Completed: ${totalNotCompleted}`,
+    ],
+    csvHeaders,
+    csvRows,
+  );
+
+  const paged = paginateItems(flatRecords, query);
 
   return {
     companyName,
-    period,
-    periodLabel,
+    period: window.period,
+    periodLabel: window.periodLabel,
+    startDate: window.startDate,
+    endDate: window.endDate,
+    scope: scopeFilter,
     totalTasks,
     totalCompleted,
     totalInProgress,
     totalTodo,
     totalNotCompleted,
+    totalOverdue,
     overallCompletionRate,
-    totalEmployees: employees.length,
+    totalEmployees: userLookup.staffUsers.length,
     employeesWithTasks,
     employees: employeeStats,
-    records: flatRecords,
+    employeeOptions: userLookup.employeeOptions,
+    departments: userLookup.departments,
+    records: paged.items,
+    pagination: paged.pagination,
     csvContent,
   };
 };
@@ -619,10 +770,9 @@ export const buildSchedulesReportData = async (companyId, query = {}) => {
  */
 export const getSchedulesReport = async (req, res) => {
   try {
-    const companyId = req.companyId;
-    if (!companyId) return res.status(400).json({ message: 'Company context required' });
+    if (!assertCompanyReportAccess(req, res)) return;
 
-    const report = await buildSchedulesReportData(companyId, req.query);
+    const report = await buildSchedulesReportData(req.companyId, req.query);
     res.status(200).json(report);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -634,15 +784,14 @@ export const getSchedulesReport = async (req, res) => {
  */
 export const sendSchedulesReport = async (req, res) => {
   try {
-    const companyId = req.companyId;
-    if (!companyId) return res.status(400).json({ message: 'Company context required' });
+    if (!assertCompanyReportAccess(req, res)) return;
 
     const { recipientEmail, notes, ...filterParams } = req.body;
     if (!recipientEmail || !recipientEmail.trim()) {
       return res.status(400).json({ message: 'Recipient email is required' });
     }
 
-    const report = await buildSchedulesReportData(companyId, filterParams);
+    const report = await buildSchedulesReportData(req.companyId, { ...filterParams, limit: 'all' });
 
     const summaryMetrics = [
       { label: 'Total Tasks Assigned', value: `${report.totalTasks}` },

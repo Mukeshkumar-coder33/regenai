@@ -50,6 +50,13 @@ const paymentTransactionSchema = new mongoose.Schema({
     required: true,
     trim: true,
   },
+  batchId: {
+    type: String,
+    index: true,
+  },
+  idempotencyKey: {
+    type: String,
+  },
   status: {
     type: String,
     enum: ['completed', 'failed', 'refunded'],
@@ -71,5 +78,12 @@ const paymentTransactionSchema = new mongoose.Schema({
     type: String,
   },
 }, { timestamps: true });
+
+paymentTransactionSchema.index({ companyId: 1, referenceId: 1 }, { unique: true });
+paymentTransactionSchema.index(
+  { companyId: 1, idempotencyKey: 1 },
+  { unique: true, partialFilterExpression: { idempotencyKey: { $type: 'string' } } }
+);
+paymentTransactionSchema.index({ companyId: 1, paidAt: -1 });
 
 export default mongoose.model('PaymentTransaction', paymentTransactionSchema);

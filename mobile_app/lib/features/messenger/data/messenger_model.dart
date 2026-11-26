@@ -83,14 +83,7 @@ class MessageAttachmentModel {
         RegExp(r'\.(png|jpe?g|gif|webp|svg)$').hasMatch(lowerPath);
   }
 
-  String get resolvedUrl {
-    if (path.isEmpty) return '';
-    if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) {
-      return path;
-    }
-    final normalized = path.startsWith('/') ? path : '/$path';
-    return '${AppConfig.activeBaseUrl}$normalized';
-  }
+  String get resolvedUrl => AppConfig.resolveMediaUrl(path);
 
   Map<String, dynamic> toJson() {
     return {

@@ -14,10 +14,12 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 
 import {
   calculateEmployeeMonthlyPayroll,
+  computeBreakDelayDeductionAmount,
   round2,
   calculateWorkedHours,
   getWeeklyOffDays,
 } from './utils/payrollCalculator.js';
+import { generatePayslipPdfBuffer } from './utils/payslipPdf.js';
 import User from './models/User.js';
 import Company from './models/Company.js';
 import PayrollSetting from './models/PayrollSetting.js';
@@ -368,17 +370,17 @@ async function runTests() {
     });
     assert(tx1._id != null, 'First payment transaction created successfully');
 
-    // Attempt second payment with same payrollId
+    // Attempt second payment with duplicate referenceId for same company
     let duplicateFailed = false;
     try {
       await PaymentTransaction.create({
-        payrollId: finalizedPayroll._id, // same payrollId
+        payrollId: finalizedPayroll._id,
         companyId: testCompanyId,
         userId: testUserId,
         month: testMonth,
         amount: finalizedPayroll.netPayable,
         paymentMethod: 'bank_transfer',
-        referenceId: `REF-${Date.now()}-2`,
+        referenceId: tx1.referenceId, // duplicate referenceId
         status: 'completed',
         processedBy: 'admin',
       });
@@ -542,6 +544,279 @@ async function runTests() {
 
     assert(deductCalc.manualDeduction === 1500, `Manual deduction is recorded as 1500 (got ${deductCalc.manualDeduction})`);
     assert(deductCalc.totalAmount === round2(Math.max(0, baseCalc.netPayable - 1500)), `Total amount reflects deduction: ₹${deductCalc.totalAmount} = ₹${baseCalc.netPayable} - 1500`);
+  }
+
+  // --------------------------------------------------------------------------
+  console.log('\n--- Case 19: ₹1 per 10 excess break delay mins without double deduction ---');
+  // --------------------------------------------------------------------------
+  {
+    const bDed19 = computeBreakDelayDeductionAmount(25, 22000, {
+      breakDelayDeductionEnabled: true,
+      breakDelayRuleType: 'per_interval_flat',
+      breakDelayIntervalMinutes: 10,
+      breakDelayIntervalAmount: 1,
+    });
+    assert(bDed19 === 2, `25m excess break delay yields ₹2 deduction (got ₹${bDed19})`);
+
+    const attBreak = {
+      date: '2026-10-01',
+      checkIn: '2026-10-01T09:30:00.000Z',
+      checkOut: '2026-10-01T18:30:00.000Z', // 9h span
+      breakMinutes: 80, // 20m excess lunch break
+      casualBreakMinutes: 15,
+      breakDelayMinutes: 20,
+      casualBreakDelayMinutes: 0,
+      totalBreakDelayMinutes: 20,
+      totalWorkingHours: round2(9 - (95 / 60)), // 7.42h net worked
+      status: 'present',
+    };
+    const resBreak = calculateEmployeeMonthlyPayroll({
+      user: dummyEmployee,
+      month: testMonth,
+      settings: {
+        ...defaultSettings,
+        breakDelayDeductionEnabled: true,
+        breakDelayRuleType: 'per_interval_flat',
+        breakDelayIntervalMinutes: 10,
+        breakDelayIntervalAmount: 1,
+      },
+      attendances: [attBreak],
+      leaves: [],
+      holidays: [],
+      referenceDate: new Date('2026-10-01T23:59:59.000Z'),
+    });
+    const d1 = resBreak.dailyBreakdown.find(d => d.date === '2026-10-01');
+    assert(d1.breakDeduction === 2, `Daily break deduction is ₹2 for 20m delay (got ₹${d1.breakDeduction})`);
+    assert(resBreak.totalBreakDeduction === 2, `Monthly totalBreakDeduction is ₹2 (got ₹${resBreak.totalBreakDeduction})`);
+    assert(d1.shortfallHours <= 0.3, `Did not double-charge full 20m excess break into shortfall (shortfallHours=${d1.shortfallHours})`);
+  }
+
+  // --------------------------------------------------------------------------
+  console.log('\n--- Case 20: Company Leave Policy drives paid, unpaid & unapproved leaves ---');
+  // --------------------------------------------------------------------------
+  {
+    const leavePolicy = {
+      casualLeave: { enabled: true, requiresApproval: true, unapprovedDeductionRate: 50 },
+      sickLeave: { enabled: true, requiresApproval: true, unapprovedDeductionRate: 100 },
+      earnedLeave: { enabled: true, requiresApproval: true, unapprovedDeductionRate: 50 },
+      unpaidLeave: { enabled: true, approvedDeductionRate: 100, unapprovedDeductionRate: 100, sameDeductionRate: true },
+    };
+    const resPolicy = calculateEmployeeMonthlyPayroll({
+      user: dummyEmployee,
+      month: testMonth,
+      settings: defaultSettings,
+      leavePolicy,
+      leaveBalance: { casual: { remaining: 2 }, sick: { remaining: 1 }, earned: { remaining: 1 } },
+      attendances: [],
+      leaves: [
+        { startDate: '2026-10-01', endDate: '2026-10-01', type: 'casual', status: 'approved' }, // Paid -> 0 deduction
+        { startDate: '2026-10-02', endDate: '2026-10-02', type: 'earned', status: 'pending' },  // Unapproved paid -> 50%
+      ],
+      holidays: [],
+      referenceDate: new Date('2026-10-02T23:59:59.000Z'),
+    });
+    const oct1 = resPolicy.dailyBreakdown.find(d => d.date === '2026-10-01');
+    const oct2 = resPolicy.dailyBreakdown.find(d => d.date === '2026-10-02');
+    assert(oct1.leaveDeduction === 0, `Approved casual leave deducts ₹0 (got ₹${oct1.leaveDeduction})`);
+    assert(oct2.leaveDeduction === round2(resPolicy.dailySalaryBasis * 0.5), `Unapproved earned leave uses 50% policy rate (got ₹${oct2.leaveDeduction})`);
+    assert(oct1.explanation.includes('₹0 deduction'), `Readable explanation generated: ${oct1.explanation}`);
+  }
+
+  // --------------------------------------------------------------------------
+  console.log('\n--- Case 21: Overtime & Late toggles respected dynamically ---');
+  // --------------------------------------------------------------------------
+  {
+    const resToggled = calculateEmployeeMonthlyPayroll({
+      user: dummyEmployee,
+      month: testMonth,
+      settings: {
+        ...defaultSettings,
+        overtimeEnabled: false,
+        lateDeductionEnabled: true,
+        lateDeductionMode: 'fixed_per_late',
+        lateDeductionRate: 150,
+        graceMinutes: 10,
+      },
+      attendances: [{
+        date: '2026-10-01',
+        checkIn: '10:00', // 30m after 09:30 -> beyond 10m grace
+        checkOut: '20:00', // 10h worked (OT disabled)
+        status: 'present',
+      }],
+      leaves: [],
+      holidays: [],
+      referenceDate: new Date('2026-10-01T23:59:59.000Z'),
+    });
+    assert(resToggled.hourlyOvertimeAddition === 0, 'Overtime disabled yields ₹0 OT addition');
+    assert(resToggled.lateDeduction === 150, `Late deduction enabled fixed ₹150 applied (got ₹${resToggled.lateDeduction})`);
+  }
+
+  // --------------------------------------------------------------------------
+  console.log('\n--- Case 22: Multiple partial payments + independent pending months ---');
+  // --------------------------------------------------------------------------
+  {
+    const payDoc = await Payroll.create({
+      companyId: testCompanyId,
+      userId: `${testUserId}-PARTIAL`,
+      month: '2026-09',
+      baseSalary: 20000,
+      netPayable: 20000,
+      totalAmount: 20000,
+      status: 'finalized',
+      paymentStatus: 'partially_paid',
+      amountPaid: 8000,
+      pendingAmount: 12000,
+    });
+    const pt1 = await PaymentTransaction.create({
+      payrollId: payDoc._id,
+      companyId: testCompanyId,
+      userId: `${testUserId}-PARTIAL`,
+      month: '2026-09',
+      amount: 5000,
+      referenceId: `PART1-${Date.now()}`,
+      processedBy: 'admin',
+    });
+    const pt2 = await PaymentTransaction.create({
+      payrollId: payDoc._id,
+      companyId: testCompanyId,
+      userId: `${testUserId}-PARTIAL`,
+      month: '2026-09',
+      amount: 3000,
+      referenceId: `PART2-${Date.now()}`,
+      processedBy: 'admin',
+    });
+    assert(pt1._id && pt2._id && pt1._id.toString() !== pt2._id.toString(), 'Multiple partial PaymentTransactions allowed per payroll');
+  }
+
+  // --------------------------------------------------------------------------
+  console.log('\n--- Case 23: Pure PDF payslip buffer generation ---');
+  // --------------------------------------------------------------------------
+  {
+    const pdfBuf = generatePayslipPdfBuffer({
+      payslipNumber: 'PS-202610-EMP1',
+      companyName: 'ReGen Test Co',
+      month: '2026-10',
+      paymentStatus: 'partially_paid',
+      employee: { name: 'Alice', staffId: 'EMP01', department: 'Eng', designation: 'Dev' },
+      attendanceSummary: { presentDays: 20, scheduledWorkingDays: 22 },
+      earnings: { baseSalary: 22000, overtimeAddition: 150, bonus: 500 },
+      deductions: { breakDeduction: 2 },
+      paymentSummary: { netPayable: 22648, amountPaid: 10000, pendingAmount: 12648 },
+      dailyBreakdown: [{ explanation: 'October 1 — Present — ₹0 deduction' }],
+    });
+    const header = pdfBuf.subarray(0, 8).toString('utf8');
+    assert(header === '%PDF-1.4', `Valid PDF header generated (${header})`);
+    assert(pdfBuf.length > 500, `Payslip PDF buffer non-empty (${pdfBuf.length} bytes)`);
+  }
+
+  // --------------------------------------------------------------------------
+  console.log('\n--- Case 24: Formatted ₹/comma salaries & dynamic default proportional late deductions ---');
+  // --------------------------------------------------------------------------
+  {
+    const formattedEmp = { userId: `${testUserId}-FMT`, name: 'Comma Salary', salary: '₹22,000' };
+    const lateRes = calculateEmployeeMonthlyPayroll({
+      user: formattedEmp,
+      month: testMonth,
+      settings: {
+        ...defaultSettings,
+        lateDeductionEnabled: true,
+        lateDeductionMode: 'hourly_rate',
+        lateDeductionRate: 100,
+        graceMinutes: 5,
+      },
+      attendances: [{
+        date: '2026-10-01',
+        checkIn: '10:35 AM', // 60m after 09:35 (09:30 + 5m grace) -> 1h late
+        checkOut: '07:35 PM', // 9h worked -> 1h OT
+        status: 'late',
+      }],
+      leaves: [
+        { startDate: '2026-10-02', endDate: '2026-10-02', type: 'unpaid', status: 'pending' },
+      ],
+      holidays: [],
+      referenceDate: new Date('2026-10-02T23:59:59.000Z'),
+    });
+    assert(lateRes.baseSalary === 22000, `Formatted salary ₹22,000 parsed cleanly (${lateRes.baseSalary})`);
+    assert(lateRes.lateMinutes === 60, `Late minutes after grace calculated cleanly (${lateRes.lateMinutes})`);
+    assert(lateRes.lateDeduction > 0, `Dynamic proportional late deduction applied (₹${lateRes.lateDeduction})`);
+    assert(lateRes.unapprovedLeaveDeduction === 1000, `Dynamic unapproved leave deduction applied (₹${lateRes.unapprovedLeaveDeduction})`);
+    assert(lateRes.totalDeductions >= lateRes.lateDeduction + lateRes.unapprovedLeaveDeduction, `Total deductions sum properly (₹${lateRes.totalDeductions})`);
+  }
+
+  // --------------------------------------------------------------------------
+  console.log('\n--- Case 25: Disabled casual leave policy & past unapproved absences deduct 1 day salary ---');
+  // --------------------------------------------------------------------------
+  {
+    const disabledCasualPolicy = {
+      casualLeave: { enabled: false, requiresApproval: true, unapprovedDeductionRate: 0 },
+      sickLeave: { enabled: false, requiresApproval: true, unapprovedDeductionRate: 100 },
+      earnedLeave: { enabled: true, requiresApproval: true, unapprovedDeductionRate: 100 },
+      unpaidLeave: { enabled: true, approvedDeductionRate: 100, unapprovedDeductionRate: 100, sameDeductionRate: true },
+    };
+    const resUnapproved = calculateEmployeeMonthlyPayroll({
+      user: { userId: `${testUserId}-UNAPP`, name: 'Past Unapproved', salary: '30000' },
+      month: '2026-11',
+      settings: { ...defaultSettings, workingDaysPerWeek: 7, weeklyOffDays: [] }, // 30 days -> ₹1000/day
+      leavePolicy: disabledCasualPolicy,
+      leaveBalance: { casual: { remaining: 11 }, sick: { remaining: 1 }, earned: { remaining: 11 } },
+      attendances: [],
+      leaves: [
+        { startDate: '2026-11-01', endDate: '2026-11-01', type: 'casual', status: 'pending' },
+      ],
+      holidays: [],
+      referenceDate: new Date('2026-11-05T23:59:59.000Z'), // Nov 1..5 = 5 unapproved days
+    });
+    assert(resUnapproved.dailySalaryBasis === 1000, `1 day salary is ₹1000 (got ₹${resUnapproved.dailySalaryBasis})`);
+    assert(resUnapproved.unapprovedLeaveDays === 5, `5 past unapproved days counted (got ${resUnapproved.unapprovedLeaveDays})`);
+    assert(resUnapproved.unapprovedLeaveDeduction === 5000, `5 days * ₹1000 = ₹5000 unapproved deduction (got ₹${resUnapproved.unapprovedLeaveDeduction})`);
+    assert(resUnapproved.totalDeductions === 5000, `Total deductions ₹5000 applied cleanly (got ₹${resUnapproved.totalDeductions})`);
+  }
+
+  // --------------------------------------------------------------------------
+  console.log('\n--- Case 26: Company Payroll excludes removed (inactive) employees ---');
+  // --------------------------------------------------------------------------
+  {
+    const { getPayrollSummary } = await import('./controllers/payrollController.js');
+    const cFilterId = new mongoose.Types.ObjectId();
+    await User.create([
+      {
+        userId: `${testUserId}-ACT`,
+        username: `${testUserId}_act`,
+        name: 'Active Staff',
+        role: 'staff',
+        companyId: cFilterId,
+        salary: '30000',
+        status: 'active',
+      },
+      {
+        userId: `${testUserId}-REM`,
+        username: `${testUserId}_rem`,
+        name: 'Removed Staff',
+        role: 'staff',
+        companyId: cFilterId,
+        salary: '30000',
+        status: 'inactive',
+      },
+    ]);
+
+    const mockSummaryRes = async (includeInactive = false) => {
+      let payload = null;
+      await getPayrollSummary(
+        {
+          companyId: cFilterId,
+          user: { role: 'owner', userId: 'owner_test' },
+          query: { month: '2026-11', ...(includeInactive ? { includeInactive: 'true' } : {}) },
+        },
+        { status: () => ({ json: (d) => { payload = d; } }) }
+      );
+      return payload;
+    };
+
+    const currentOnly = await mockSummaryRes(false);
+    const withInactive = await mockSummaryRes(true);
+    assert(currentOnly.items.length === 1 && currentOnly.items[0].userId === `${testUserId}-ACT`, 'Company Payroll summary excludes removed/inactive users');
+    assert(withInactive.items.length === 2, 'Historical report includeInactive=true preserves former users');
+    await User.deleteMany({ companyId: cFilterId });
   }
 
   // Cleanup test records

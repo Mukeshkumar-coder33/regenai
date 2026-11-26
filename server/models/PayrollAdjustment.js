@@ -48,4 +48,6 @@ const payrollAdjustmentSchema = new mongoose.Schema({
   },
 }, { timestamps: true });
 
+payrollAdjustmentSchema.index({ companyId: 1, month: -1, userId: 1 });
+
 export default mongoose.model('PayrollAdjustment', payrollAdjustmentSchema);

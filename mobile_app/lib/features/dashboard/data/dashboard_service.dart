@@ -35,6 +35,22 @@ class DashboardService {
     return headers;
   }
 
+  AuthException _httpError(http.Response res, String fallbackPrefix) {
+    String? serverMessage;
+    String? code;
+    try {
+      final decoded = jsonDecode(res.body);
+      if (decoded is Map<String, dynamic>) {
+        serverMessage = decoded['message']?.toString();
+        code = decoded['code']?.toString();
+      }
+    } catch (_) {}
+    final msg = (serverMessage != null && serverMessage.trim().isNotEmpty)
+        ? '$serverMessage (${res.statusCode})'
+        : '$fallbackPrefix (${res.statusCode})';
+    return AuthException(message: msg, code: code, statusCode: res.statusCode);
+  }
+
   /// Fetch Companies
   ///
   /// For Super Admin (isSuperAdmin: true), returns all companies on the platform.
@@ -49,10 +65,7 @@ class DashboardService {
         final List<dynamic> data = jsonDecode(res.body) as List<dynamic>;
         return data.map((json) => CompanyModel.fromJson(json as Map<String, dynamic>)).toList();
       }
-      throw AuthException(
-        message: 'Failed to load companies (${res.statusCode})',
-        statusCode: res.statusCode,
-      );
+      throw _httpError(res, 'Failed to load companies');
     } on SocketException {
       throw const AuthException(message: 'Server connection unreachable', statusCode: 0);
     }
@@ -72,10 +85,7 @@ class DashboardService {
         final List<dynamic> data = jsonDecode(res.body) as List<dynamic>;
         return data.map((json) => UserModel.fromJson(json as Map<String, dynamic>)).toList();
       }
-      throw AuthException(
-        message: 'Failed to load user list (${res.statusCode})',
-        statusCode: res.statusCode,
-      );
+      throw _httpError(res, 'Failed to load user list');
     } on SocketException {
       throw const AuthException(message: 'Server connection unreachable', statusCode: 0);
     }
@@ -92,10 +102,7 @@ class DashboardService {
         final Map<String, dynamic> data = jsonDecode(res.body) as Map<String, dynamic>;
         return UserModel.fromJson(data);
       }
-      throw AuthException(
-        message: 'Failed to load profile (${res.statusCode})',
-        statusCode: res.statusCode,
-      );
+      throw _httpError(res, 'Failed to load profile');
     } on SocketException {
       throw const AuthException(message: 'Server connection unreachable', statusCode: 0);
     }
@@ -112,10 +119,7 @@ class DashboardService {
         final List<dynamic> data = jsonDecode(res.body) as List<dynamic>;
         return data.map((json) => TaskModel.fromJson(json as Map<String, dynamic>)).toList();
       }
-      throw AuthException(
-        message: 'Failed to load tasks (${res.statusCode})',
-        statusCode: res.statusCode,
-      );
+      throw _httpError(res, 'Failed to load tasks');
     } on SocketException {
       throw const AuthException(message: 'Server connection unreachable', statusCode: 0);
     }
@@ -132,10 +136,7 @@ class DashboardService {
         final List<dynamic> data = jsonDecode(res.body) as List<dynamic>;
         return data.map((json) => AttendanceModel.fromJson(json as Map<String, dynamic>)).toList();
       }
-      throw AuthException(
-        message: 'Failed to load attendance (${res.statusCode})',
-        statusCode: res.statusCode,
-      );
+      throw _httpError(res, 'Failed to load attendance');
     } on SocketException {
       throw const AuthException(message: 'Server connection unreachable', statusCode: 0);
     }
@@ -152,10 +153,7 @@ class DashboardService {
         final List<dynamic> data = jsonDecode(res.body) as List<dynamic>;
         return data.map((json) => LeaveModel.fromJson(json as Map<String, dynamic>)).toList();
       }
-      throw AuthException(
-        message: 'Failed to load leaves (${res.statusCode})',
-        statusCode: res.statusCode,
-      );
+      throw _httpError(res, 'Failed to load leaves');
     } on SocketException {
       throw const AuthException(message: 'Server connection unreachable', statusCode: 0);
     }

@@ -4,6 +4,7 @@ import 'package:geolocator/geolocator.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/storage/session_storage.dart';
 import '../../../core/theme/celadon_colors.dart';
+import '../../../core/widgets/regen_page_header.dart';
 import '../../auth/data/user_model.dart';
 import '../../company/data/company_model.dart';
 import '../../dashboard/data/dashboard_service.dart';
@@ -592,7 +593,7 @@ class _AttendanceViewState extends State<AttendanceView> {
                 color: CeladonColors.primary,
                 child: SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
+                  padding: const EdgeInsets.fromLTRB(18, 14, 18, 24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -660,69 +661,28 @@ class _AttendanceViewState extends State<AttendanceView> {
   // TASK 1: TOP HEADER (Messenger style straight to arrow, no line wrapping)
   // ---------------------------------------------------------------------------
   Widget _buildTopHeader() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        IconButton(
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-          icon: const Icon(
-            Icons.arrow_back_rounded,
-            color: CeladonColors.textPrimary,
-            size: 22,
-          ),
-          tooltip: 'Back',
-          onPressed: widget.onBack ??
-              () {
-                if (Navigator.of(context).canPop()) {
-                  Navigator.of(context).pop();
-                } else if (widget.onOpenDrawer != null) {
-                  widget.onOpenDrawer!();
-                }
-              },
+    return ReGenPageHeader(
+      title: 'Attendance',
+      subtitle: 'Track daily check-in, hours & breaks.',
+      onBack: widget.onBack ??
+          () {
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            } else if (widget.onOpenDrawer != null) {
+              widget.onOpenDrawer!();
+            }
+          },
+      trailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEAF5EE),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: CeladonColors.primary.withValues(alpha: 0.3)),
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: const [
-              Text(
-                'Attendance',
-                style: TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.w800,
-                  color: CeladonColors.textPrimary,
-                  letterSpacing: -0.2,
-                ),
-              ),
-              SizedBox(height: 2),
-              Text(
-                'Track daily check-in, hours & breaks.',
-                style: TextStyle(
-                  fontSize: 11.5,
-                  color: CeladonColors.textMuted,
-                  height: 1.25,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 8),
-        // Geofence chip badge (No Spacer, so Attendance never wraps)
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            color: const Color(0xFFEAF5EE),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: CeladonColors.primary.withValues(alpha: 0.3)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.location_on_rounded, size: 13, color: CeladonColors.primary),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.location_on_rounded, size: 13, color: CeladonColors.primary),
               const SizedBox(width: 4),
               Text(
                 _lastMeasuredDistance != null
@@ -737,7 +697,6 @@ class _AttendanceViewState extends State<AttendanceView> {
             ],
           ),
         ),
-      ],
     );
   }
 

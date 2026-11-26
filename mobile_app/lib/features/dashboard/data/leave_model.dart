@@ -94,11 +94,13 @@ class LeaveModel {
 class LeavePolicyModel {
   final LeaveTypePolicy casualLeave;
   final LeaveTypePolicy sickLeave;
+  final LeaveTypePolicy earnedLeave;
   final UnpaidLeavePolicy unpaidLeave;
 
   const LeavePolicyModel({
     required this.casualLeave,
     required this.sickLeave,
+    this.earnedLeave = const LeaveTypePolicy(maxCarryForward: 24.0),
     required this.unpaidLeave,
   });
 
@@ -106,6 +108,7 @@ class LeavePolicyModel {
     return LeavePolicyModel(
       casualLeave: LeaveTypePolicy.fromJson((json['casualLeave'] as Map<String, dynamic>?) ?? {}),
       sickLeave: LeaveTypePolicy.fromJson((json['sickLeave'] as Map<String, dynamic>?) ?? {}),
+      earnedLeave: LeaveTypePolicy.fromJson((json['earnedLeave'] as Map<String, dynamic>?) ?? {}),
       unpaidLeave: UnpaidLeavePolicy.fromJson((json['unpaidLeave'] as Map<String, dynamic>?) ?? {}),
     );
   }
@@ -128,6 +131,14 @@ class LeavePolicyModel {
         requiresApproval: true,
         unapprovedDeductionRate: 100.0,
       ),
+      earnedLeave: LeaveTypePolicy(
+        enabled: true,
+        monthlyEntitlement: 1.0,
+        carryForward: true,
+        maxCarryForward: 24.0,
+        requiresApproval: true,
+        unapprovedDeductionRate: 100.0,
+      ),
       unpaidLeave: UnpaidLeavePolicy(
         enabled: true,
         approvedDeductionRate: 100.0,
@@ -140,6 +151,7 @@ class LeavePolicyModel {
   Map<String, dynamic> toJson() => {
     'casualLeave': casualLeave.toJson(),
     'sickLeave': sickLeave.toJson(),
+    'earnedLeave': earnedLeave.toJson(),
     'unpaidLeave': unpaidLeave.toJson(),
   };
 }

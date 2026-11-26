@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../app/app_config.dart';
 import '../../../core/theme/celadon_colors.dart';
 import '../../../core/widgets/brand_logo.dart';
 import '../../auth/data/user_model.dart';
@@ -634,7 +635,7 @@ class _AddEmployeeViewState extends State<AddEmployeeView> {
       } catch (_) {}
     }
     return Image.network(
-      url,
+      AppConfig.resolveMediaUrl(url),
       fit: BoxFit.cover,
       errorBuilder: (context, error, stackTrace) => Container(
         color: CeladonColors.primaryLight,

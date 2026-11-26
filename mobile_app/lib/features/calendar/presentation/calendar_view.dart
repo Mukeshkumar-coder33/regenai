@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/celadon_colors.dart';
+import '../../../core/widgets/regen_page_header.dart';
 import '../../attendance/data/attendance_model.dart';
 import '../../attendance/data/attendance_service.dart';
 import '../../attendance/data/work_schedule_model.dart';
@@ -470,7 +471,7 @@ class _CalendarViewState extends State<CalendarView> {
           color: CeladonColors.primary,
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -527,57 +528,17 @@ class _CalendarViewState extends State<CalendarView> {
   }
 
   Widget _buildHeaderBar() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        IconButton(
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-          icon: const Icon(
-            Icons.arrow_back_rounded,
-            color: CeladonColors.textPrimary,
-            size: 22,
-          ),
-          tooltip: 'Back',
-          onPressed: widget.onBack ??
-              () {
-                if (Navigator.of(context).canPop()) {
-                  Navigator.of(context).pop();
-                } else if (widget.onOpenDrawer != null) {
-                  widget.onOpenDrawer!();
-                }
-              },
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: const [
-              Text(
-                'Calendar',
-                style: TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.w800,
-                  color: CeladonColors.textPrimary,
-                  letterSpacing: -0.2,
-                ),
-              ),
-              SizedBox(height: 2),
-              Text(
-                'View schedule, holidays and company events.',
-                style: TextStyle(
-                  fontSize: 11.5,
-                  color: CeladonColors.textMuted,
-                  height: 1.25,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-      ],
+    return ReGenPageHeader(
+      title: 'Calendar',
+      subtitle: 'View schedule, holidays and company events.',
+      onBack: widget.onBack ??
+          () {
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            } else if (widget.onOpenDrawer != null) {
+              widget.onOpenDrawer!();
+            }
+          },
     );
   }
 

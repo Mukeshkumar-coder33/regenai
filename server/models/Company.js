@@ -40,6 +40,14 @@ const companySchema = new mongoose.Schema({
       requiresApproval: { type: Boolean, default: true },
       unapprovedDeductionRate: { type: Number, default: 100 }
     },
+    earnedLeave: {
+      enabled: { type: Boolean, default: true },
+      monthlyEntitlement: { type: Number, default: 1 },
+      carryForward: { type: Boolean, default: true },
+      maxCarryForward: { type: Number, default: 24 },
+      requiresApproval: { type: Boolean, default: true },
+      unapprovedDeductionRate: { type: Number, default: 100 }
+    },
     unpaidLeave: {
       enabled: { type: Boolean, default: true },
       approvedDeductionRate: { type: Number, default: 100 },

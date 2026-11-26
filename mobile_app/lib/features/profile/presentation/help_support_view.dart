@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/celadon_colors.dart';
+import '../../../core/widgets/regen_page_header.dart';
 
 /// Screen: Help & Enterprise Support Screen
 ///
@@ -18,61 +19,22 @@ class HelpSupportView extends StatelessWidget {
       backgroundColor: CeladonColors.background,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 1. Top Bar
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                    icon: const Icon(
-                      Icons.arrow_back_rounded,
-                      size: 22,
-                      color: CeladonColors.textPrimary,
-                    ),
-                    tooltip: 'Back to Home',
-                    onPressed: () {
-                      if (onBack != null) {
-                        onBack!();
-                      } else {
-                        Navigator.of(context).pop();
-                      }
-                    },
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        Text(
-                          'Support',
-                          style: TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w800,
-                            color: CeladonColors.textPrimary,
-                            letterSpacing: -0.2,
-                          ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          'Get help and contact the support team.',
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            color: CeladonColors.textMuted,
-                            height: 1.25,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+              // 1. Top Bar matching Company Calendar
+              ReGenPageHeader(
+                title: 'Support',
+                subtitle: 'Get help and contact the support team.',
+                onBack: () {
+                  if (onBack != null) {
+                    onBack!();
+                  } else {
+                    Navigator.of(context).pop();
+                  }
+                },
+                backTooltip: 'Back to Home',
               ),
               const SizedBox(height: 16),
 

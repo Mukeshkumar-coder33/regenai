@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
+import '../../../app/app_config.dart';
 import '../../../core/storage/session_storage.dart';
 import '../../auth/data/user_model.dart';
 import '../../dashboard/data/dashboard_service.dart';
@@ -20,6 +21,7 @@ import '../data/task_service.dart';
 import '../../messenger/data/call_notification_service.dart';
 import '../../messenger/data/messenger_socket_service.dart';
 import '../../../core/theme/celadon_colors.dart';
+import '../../../core/widgets/regen_page_header.dart';
 
 /// Screen: Enterprise Tasks, Projects & Schedules
 ///
@@ -341,7 +343,7 @@ class _TasksViewState extends State<TasksView> {
       if (doc.data != null && doc.data!.isNotEmpty) {
         bytes = base64Decode(doc.data!);
       } else if (doc.url != null && doc.url!.isNotEmpty) {
-        final uri = Uri.parse(doc.url!);
+        final uri = Uri.parse(AppConfig.resolveMediaUrl(doc.url!));
         final request = await HttpClient().getUrl(uri);
         final response = await request.close();
         final chunks = <int>[];
@@ -1802,77 +1804,37 @@ class _TasksViewState extends State<TasksView> {
     );
   }
 
-  // Single Unified Header with Back Button, Title & Refresh (Messenger Style)
+  // Single Unified Header with Back Button, Title & Refresh matching Company Calendar
   Widget _buildSectionHeader() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 8, 16, 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          IconButton(
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-            icon: const Icon(
-              Icons.arrow_back_rounded,
-              color: CeladonColors.textPrimary,
-              size: 22,
-            ),
-            tooltip: 'Back',
-            onPressed: () {
-              if (_selectedProjectForDetail != null) {
-                setState(() => _selectedProjectForDetail = null);
-                return;
-              }
-              if (widget.onBack != null) {
-                widget.onBack!();
-              } else if (Navigator.of(context).canPop()) {
-                Navigator.of(context).pop();
-              } else if (widget.onOpenDrawer != null) {
-                widget.onOpenDrawer!();
-              }
-            },
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
+      child: ReGenPageHeader(
+        title: 'Tasks',
+        subtitle: 'Track project tasks and team deliverables.',
+        onBack: () {
+          if (_selectedProjectForDetail != null) {
+            setState(() => _selectedProjectForDetail = null);
+            return;
+          }
+          if (widget.onBack != null) {
+            widget.onBack!();
+          } else if (Navigator.of(context).canPop()) {
+            Navigator.of(context).pop();
+          } else if (widget.onOpenDrawer != null) {
+            widget.onOpenDrawer!();
+          }
+        },
+        trailing: IconButton(
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+          tooltip: 'Refresh tasks',
+          icon: const Icon(
+            Icons.refresh_rounded,
+            color: CeladonColors.primary,
+            size: 21,
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: const [
-                Text(
-                  'Tasks',
-                  style: TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w800,
-                    color: CeladonColors.textPrimary,
-                    letterSpacing: -0.2,
-                  ),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  'Track project tasks and team deliverables.',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    color: CeladonColors.textMuted,
-                    height: 1.25,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          const Spacer(),
-          IconButton(
-            tooltip: 'Refresh tasks',
-            icon: const Icon(
-              Icons.refresh_rounded,
-              color: CeladonColors.primary,
-              size: 21,
-            ),
-            onPressed: _loadInitialData,
-          ),
-        ],
+          onPressed: _loadInitialData,
+        ),
       ),
     );
   }

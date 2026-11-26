@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import '../../../app/app_config.dart';
 import '../../../core/navigation/bottom_nav_customizer.dart';
 import '../../../core/navigation/role_menu_registry.dart';
 import '../../../core/theme/celadon_colors.dart';
+import '../../../core/widgets/regen_page_header.dart';
+import '../../../core/widgets/server_connection_dialog.dart';
 import '../../auth/data/user_model.dart';
 
 /// Screen: App & Profile Settings Screen
@@ -18,6 +21,7 @@ class SettingsView extends StatefulWidget {
   final UserModel? user;
   final List<String>? currentSlots;
   final void Function(List<String> updatedSlots)? onNavSlotsChanged;
+  final Future<void> Function()? onSwitchServerLogout;
 
   const SettingsView({
     super.key,
@@ -25,6 +29,7 @@ class SettingsView extends StatefulWidget {
     this.user,
     this.currentSlots,
     this.onNavSlotsChanged,
+    this.onSwitchServerLogout,
   });
 
   @override
@@ -111,61 +116,21 @@ class _SettingsViewState extends State<SettingsView> {
       backgroundColor: CeladonColors.background,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 1. Top Bar (Messenger Style)
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                    icon: const Icon(
-                      Icons.arrow_back_rounded,
-                      size: 22,
-                      color: CeladonColors.textPrimary,
-                    ),
-                    tooltip: 'Back',
-                    onPressed: () {
-                      if (widget.onBack != null) {
-                        widget.onBack!();
-                      } else {
-                        Navigator.of(context).pop();
-                      }
-                    },
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        Text(
-                          'Settings',
-                          style: TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w800,
-                            color: CeladonColors.textPrimary,
-                            letterSpacing: -0.2,
-                          ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          'Manage account preferences and system settings.',
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            color: CeladonColors.textMuted,
-                            height: 1.25,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+              // 1. Top Bar matching Company Calendar
+              ReGenPageHeader(
+                title: 'Settings',
+                subtitle: 'Manage account preferences and system settings.',
+                onBack: () {
+                  if (widget.onBack != null) {
+                    widget.onBack!();
+                  } else {
+                    Navigator.of(context).pop();
+                  }
+                },
               ),
               const SizedBox(height: 16),
 
@@ -187,7 +152,43 @@ class _SettingsViewState extends State<SettingsView> {
               ]),
               const SizedBox(height: 20),
 
-              // 3. Notifications Group
+              // 3. Server Connection Group (Auto / Company Server / Local Server)
+              _buildSectionTitle('Server Connection'),
+              _buildSettingsCard([
+                _buildActionTile(
+                  icon: Icons.auto_awesome_rounded,
+                  title: 'Auto (Recommended)',
+                  subtitle: 'Local Wi-Fi when reachable → ${AppConfig.companyServerUrl}',
+                  onTap: () => _handleServerQuickSelect(ServerEnvironment.auto),
+                  trailing: _buildSelectionIndicator(AppConfig.isAutoMode),
+                ),
+                const Divider(color: CeladonColors.divider),
+                _buildActionTile(
+                  icon: Icons.cloud_done_outlined,
+                  title: 'Company Server',
+                  subtitle: AppConfig.companyServerUrl,
+                  onTap: () => _handleServerQuickSelect(ServerEnvironment.company),
+                  trailing: _buildSelectionIndicator(AppConfig.isCompanyServer),
+                ),
+                const Divider(color: CeladonColors.divider),
+                _buildActionTile(
+                  icon: Icons.lan_outlined,
+                  title: 'Local Server',
+                  subtitle: AppConfig.localServerUrl,
+                  onTap: () => _handleServerQuickSelect(ServerEnvironment.local),
+                  trailing: _buildSelectionIndicator(AppConfig.isLocalServer),
+                ),
+                const Divider(color: CeladonColors.divider),
+                _buildActionTile(
+                  icon: Icons.settings_ethernet_rounded,
+                  title: 'Configure Local IP & Test',
+                  subtitle: 'Active: ${AppConfig.serverDisplayName} (${AppConfig.activeBaseUrl})',
+                  onTap: _openServerConnectionDialog,
+                ),
+              ]),
+              const SizedBox(height: 20),
+
+              // 4. Notifications Group
               _buildSectionTitle('Notifications'),
               _buildSettingsCard([
                 _buildSwitchTile(
@@ -360,11 +361,70 @@ class _SettingsViewState extends State<SettingsView> {
     );
   }
 
+  Future<void> _openServerConnectionDialog() async {
+    final changed = await showServerConnectionDialog(
+      context,
+      isAuthenticatedSession: widget.user != null,
+      onSessionResetRequired: widget.onSwitchServerLogout != null
+          ? () {
+              widget.onSwitchServerLogout!.call();
+            }
+          : null,
+    );
+    if (changed && mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _handleServerQuickSelect(ServerEnvironment target) async {
+    if (target == AppConfig.serverEnvironment || target == ServerEnvironment.local) {
+      await _openServerConnectionDialog();
+      return;
+    }
+
+    final previousUrl = AppConfig.activeBaseUrl;
+    if (target == ServerEnvironment.auto) {
+      await AppConfig.useAutoMode();
+    } else {
+      await AppConfig.useCompanyServer();
+    }
+    final urlChanged = AppConfig.activeBaseUrl != previousUrl;
+    if (!mounted) return;
+
+    setState(() {});
+    if (urlChanged && widget.user != null) {
+      if (widget.onSwitchServerLogout != null) {
+        await widget.onSwitchServerLogout!();
+      } else {
+        await resetSessionForServerSwitch(context);
+      }
+    }
+  }
+
+  Widget _buildSelectionIndicator(bool selected) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: selected ? CeladonColors.primary : CeladonColors.primaryContainer,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        selected ? 'Active' : 'Select',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: selected ? Colors.white : CeladonColors.primary,
+        ),
+      ),
+    );
+  }
+
   Widget _buildActionTile({
     required IconData icon,
     required String title,
     required String subtitle,
     required VoidCallback onTap,
+    Widget? trailing,
   }) {
     return InkWell(
       onTap: onTap,
@@ -405,11 +465,12 @@ class _SettingsViewState extends State<SettingsView> {
                 ],
               ),
             ),
-            const Icon(
-              Icons.chevron_right_rounded,
-              color: CeladonColors.textMuted,
-              size: 20,
-            ),
+            trailing ??
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: CeladonColors.textMuted,
+                  size: 20,
+                ),
           ],
         ),
       ),

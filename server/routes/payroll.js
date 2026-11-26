@@ -5,9 +5,13 @@ import {
   getPayrollSummary,
   getEmployeePayrollPreview,
   finalizePayroll,
+  finalizeMonthPayroll,
   processPayment,
+  processBulkPayment,
+  getPendingPayrolls,
   getRecentTransactions,
   getEmployeeMyPayroll,
+  getEmployeePayslip,
   addPayrollAdjustment,
   getPayrollAdjustments,
   deletePayrollAdjustment,
@@ -28,9 +32,16 @@ router.put('/settings', updatePayrollSettings);
 // Company Payroll Management
 router.get('/summary', getPayrollSummary);
 router.get('/preview', getEmployeePayrollPreview);
+router.get('/pending', getPendingPayrolls);
 router.post('/finalize', finalizePayroll);
+router.post('/finalize-month', finalizeMonthPayroll);
 router.post('/pay', processPayment);
+router.post('/pay-bulk', processBulkPayment);
 router.get('/transactions', getRecentTransactions);
+
+// Payslip Generation & Download
+router.get('/payslip', getEmployeePayslip);
+router.get('/:id/payslip', getEmployeePayslip);
 
 // Bonus & Deduction Adjustments
 router.post('/adjustment', addPayrollAdjustment);

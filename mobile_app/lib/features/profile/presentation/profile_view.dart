@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../app/app_config.dart';
 import '../../../core/theme/celadon_colors.dart';
+import '../../../core/widgets/regen_page_header.dart';
 import '../../auth/data/auth_service.dart';
 import '../../auth/data/user_model.dart';
 import '../data/profile_service.dart';
@@ -602,69 +604,34 @@ class _ProfileViewState extends State<ProfileView> {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 26),
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 26),
           child: Column(
             children: [
-              // Top App Bar Row with Messenger-style header
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                    icon: const Icon(
-                      Icons.arrow_back_rounded,
-                      color: Colors.white,
-                      size: 22,
-                    ),
-                    tooltip: 'Back to Home',
-                    onPressed: () {
-                      if (widget.onNavigateToTab != null) {
-                        widget.onNavigateToTab!(0);
-                      } else {
-                        Navigator.maybePop(context);
-                      }
-                    },
+              // Top App Bar Row matching Company Calendar header & subheader
+              ReGenPageHeader(
+                title: 'Profile',
+                subtitle: 'View and manage your employee account details.',
+                foregroundColor: Colors.white,
+                subtitleColor: Colors.white70,
+                onBack: () {
+                  if (widget.onNavigateToTab != null) {
+                    widget.onNavigateToTab!(0);
+                  } else {
+                    Navigator.maybePop(context);
+                  }
+                },
+                backTooltip: 'Back to Home',
+                trailing: IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                  icon: const Icon(
+                    Icons.logout_rounded,
+                    color: Colors.white,
+                    size: 22,
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        Text(
-                          'Profile',
-                          style: TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                            letterSpacing: -0.2,
-                          ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          'View and manage your employee account details.',
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            color: Colors.white70,
-                            height: 1.25,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.logout_rounded,
-                      color: Colors.white,
-                      size: 22,
-                    ),
-                    tooltip: 'Log Out',
-                    onPressed: () => _confirmLogout(context),
-                  ),
-                ],
+                  tooltip: 'Log Out',
+                  onPressed: () => _confirmLogout(context),
+                ),
               ),
               const SizedBox(height: 12),
 
@@ -799,7 +766,7 @@ class _ProfileViewState extends State<ProfileView> {
       } catch (_) {}
     }
     return Image.network(
-      avatarUrl,
+      AppConfig.resolveMediaUrl(avatarUrl),
       fit: BoxFit.cover,
       errorBuilder: (context, error, stackTrace) => Center(
         child: Text(

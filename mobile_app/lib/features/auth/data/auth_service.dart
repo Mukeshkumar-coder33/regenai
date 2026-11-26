@@ -47,30 +47,48 @@ class AuthService {
       );
     }
 
-    final url = Uri.parse(AppConfig.loginUrl);
     final payload = jsonEncode({
       'identifier': cleanId,
       'password': cleanPassword,
       'portal': portal,
     });
 
+    Future<http.Response> sendLoginRequest() {
+      return _client
+          .post(
+            Uri.parse(AppConfig.loginUrl),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'x-portal-view': portal,
+            },
+            body: payload,
+          )
+          .timeout(const Duration(seconds: 12));
+    }
+
     try {
-      final response = await _client.post(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'x-portal-view': portal,
-        },
-        body: payload,
-      ).timeout(const Duration(seconds: 12));
+      await AppConfig.ensureReadyForRequest();
+      http.Response response;
+      try {
+        response = await sendLoginRequest();
+      } catch (e) {
+        if (await AppConfig.handleConnectionErrorFailover()) {
+          response = await sendLoginRequest();
+        } else {
+          rethrow;
+        }
+      }
 
       final Map<String, dynamic> body;
       try {
         body = jsonDecode(response.body) as Map<String, dynamic>;
       } catch (_) {
+        final message = response.statusCode == 403
+            ? 'Access forbidden (HTTP 403) at ${AppConfig.activeBaseUrl}'
+            : 'Invalid server response (${response.statusCode})';
         throw AuthException(
-          message: 'Invalid server response (${response.statusCode})',
+          message: message,
           statusCode: response.statusCode,
         );
       }
@@ -93,8 +111,12 @@ class AuthService {
         statusCode: response.statusCode,
       );
     } on SocketException {
+      final serverLabel = AppConfig.isCompanyServer ? 'Company Server' : 'Local Server';
+      final hint = AppConfig.isCompanyServer
+          ? 'Please verify internet connectivity or switch servers.'
+          : 'Make sure the Node.js backend is running on port ${AppConfig.backendPort} on your LAN.';
       throw AuthException(
-        message: 'Cannot reach ReGen server at ${AppConfig.activeBaseUrl}. Make sure the Node.js backend is running on port ${AppConfig.backendPort}.',
+        message: 'Cannot reach $serverLabel at ${AppConfig.activeBaseUrl}. $hint',
         statusCode: 0,
       );
     } on http.ClientException {

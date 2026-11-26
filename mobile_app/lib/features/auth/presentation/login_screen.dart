@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/celadon_colors.dart';
 import '../../../core/widgets/brand_logo.dart';
+import '../../../core/widgets/server_connection_dialog.dart';
 import '../../dashboard/presentation/dashboard_screen.dart';
 import 'auth_controller.dart';
 import '../../../app/app_config.dart';
@@ -39,11 +40,14 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    AppConfig.initCustomUrl().then((_) {
-      if (mounted) setState(() {});
-    });
+    AppConfig.baseUrlNotifier.addListener(_onBaseUrlChanged);
+    AppConfig.resolveBestBackend();
     _authController = widget.controller ?? AuthController();
     _authController.addListener(_onAuthStateChanged);
+  }
+
+  void _onBaseUrlChanged() {
+    if (mounted) setState(() {});
   }
 
   void _onAuthStateChanged() {
@@ -52,6 +56,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
+    AppConfig.baseUrlNotifier.removeListener(_onBaseUrlChanged);
     _authController.removeListener(_onAuthStateChanged);
     _usernameController.dispose();
     _passwordController.dispose();
@@ -210,7 +215,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                       ),
                                     ],
                                   ),
-                                  if (_authController.errorMessage!.contains('Cannot reach ReGen server') ||
+                                  if (_authController.errorMessage!.contains('Cannot reach') ||
+                                      _authController.errorMessage!.contains('Network connection error') ||
                                       _authController.errorMessage!.contains('SocketException') ||
                                       _authController.errorMessage!.contains('192.168.')) ...[
                                     const SizedBox(height: 8),
@@ -232,7 +238,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                               Icon(Icons.settings_ethernet_rounded, size: 15, color: CeladonColors.primary),
                                               SizedBox(width: 6),
                                               Text(
-                                                'Configure Server IP',
+                                                'Switch Server',
                                                 style: TextStyle(
                                                   fontSize: 11.5,
                                                   fontWeight: FontWeight.w700,
@@ -442,7 +448,41 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
+                  Center(
+                    child: InkWell(
+                      onTap: _showServerUrlDialog,
+                      borderRadius: BorderRadius.circular(20),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              AppConfig.isCompanyServer
+                                  ? Icons.cloud_done_outlined
+                                  : Icons.lan_outlined,
+                              size: 14,
+                              color: CeladonColors.primary,
+                            ),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                '${AppConfig.serverDisplayName} • ${AppConfig.activeBaseUrl}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: CeladonColors.textMuted,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -519,114 +559,20 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  void _showServerUrlDialog() {
-    final ctrl = TextEditingController(text: AppConfig.activeBaseUrl);
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: CeladonColors.border),
-        ),
-        title: Row(
-          children: const [
-            Icon(Icons.dns_rounded, color: CeladonColors.primary, size: 20),
-            SizedBox(width: 8),
-            Text(
-              'Server Configuration',
-              style: TextStyle(color: CeladonColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w700),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'Connect your mobile device to the ReGen backend API server:',
-              style: TextStyle(color: CeladonColors.textMuted, fontSize: 12),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: ctrl,
-              style: const TextStyle(color: CeladonColors.textPrimary, fontSize: 13),
-              decoration: InputDecoration(
-                filled: true,
-                fillColor: CeladonColors.inputBackground,
-                labelText: 'Backend Base URL',
-                labelStyle: const TextStyle(color: CeladonColors.primary, fontSize: 12),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: CeladonColors.border),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: CeladonColors.primary),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                _buildPresetUrlChip('Wi-Fi PC (192.168.1.37)', 'http://192.168.1.37:5006', ctrl),
-                _buildPresetUrlChip('Wi-Fi PC (192.168.1.50)', 'http://192.168.1.50:5006', ctrl),
-                _buildPresetUrlChip('Emulator (10.0.2.2)', 'http://10.0.2.2:5006', ctrl),
-                _buildPresetUrlChip('Localhost', 'http://127.0.0.1:5006', ctrl),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel', style: TextStyle(color: CeladonColors.textMuted)),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final newUrl = ctrl.text.trim();
-              if (newUrl.isNotEmpty) {
-                await AppConfig.setCustomUrl(newUrl);
-                if (mounted) setState(() {});
-              }
-              if (ctx.mounted) Navigator.pop(ctx);
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Server connected to ${AppConfig.activeBaseUrl}'),
-                    backgroundColor: CeladonColors.primary,
-                  ),
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: CeladonColors.primary,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            child: const Text('Save & Connect'),
-          ),
-        ],
-      ),
+  Future<void> _showServerUrlDialog() async {
+    final saved = await showServerConnectionDialog(
+      context,
+      isAuthenticatedSession: false,
     );
-  }
-
-  Widget _buildPresetUrlChip(String label, String url, TextEditingController ctrl) {
-    return InkWell(
-      onTap: () => ctrl.text = url,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: const Color(0xFFE8F3EC),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: CeladonColors.border),
+    if (saved && mounted) {
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Server set to ${AppConfig.serverDisplayName} (${AppConfig.activeBaseUrl})'),
+          backgroundColor: CeladonColors.primary,
         ),
-        child: Text(label, style: const TextStyle(fontSize: 10, color: CeladonColors.primary, fontWeight: FontWeight.w600)),
-      ),
-    );
+      );
+    }
   }
 }
 

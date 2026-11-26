@@ -134,7 +134,7 @@ class NotificationModel {
       (meetingId != null && meetingId!.isNotEmpty);
   bool get isTask => type.contains('task') || title.toLowerCase().contains('task') || message.toLowerCase().contains('task');
   bool get isAttendance => type.contains('attendance') || type.contains('leave') || title.toLowerCase().contains('leave') || message.toLowerCase().contains('leave');
-  bool get isPayment => type.contains('payment') || type.contains('payroll') || type.contains('salary') || type.contains('bonus');
+  bool get isPayment => type.contains('payment') || type.contains('payroll') || type.contains('salary') || type.contains('bonus') || type.contains('deduction');
   bool get isBirthday => title.toLowerCase().contains('birthday') || message.toLowerCase().contains('birthday');
   bool get isSystem => type == 'general' || type == 'policy';
 

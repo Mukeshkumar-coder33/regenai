@@ -3,12 +3,17 @@ import 'dart:convert';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'company_payroll_view.dart';
+import 'company_reports_view.dart';
 
+import '../../../app/app_config.dart';
 import '../../../core/navigation/bottom_nav_customizer.dart';
 import '../../../core/navigation/role_menu_registry.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/theme/celadon_colors.dart';
 import '../../../core/widgets/brand_logo.dart';
+import '../../../core/widgets/regen_page_header.dart';
+import '../../../core/widgets/server_connection_dialog.dart';
 import '../../attendance/data/attendance_model.dart';
 import '../../attendance/data/attendance_service.dart';
 import '../../attendance/data/work_schedule_model.dart';
@@ -2019,156 +2024,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   }
 
   void _showPayrollSheet() {
-    final totalStaff = _allNonAdminEmployees.length;
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: CeladonColors.cardBackground,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Payroll & Compensation',
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                      color: CeladonColors.textPrimary,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.close_rounded,
-                      color: CeladonColors.textSecondary,
-                    ),
-                    onPressed: () => Navigator.pop(ctx),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              _buildGlassCard(
-                borderRadius: 16,
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Active Pay Cycle',
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            color: CeladonColors.textSecondary,
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: CeladonColors.primaryLight,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: CeladonColors.primary.withValues(
-                                alpha: 0.3,
-                              ),
-                            ),
-                          ),
-                          child: const Text(
-                            'October 2026',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: CeladonColors.primary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Eligible Employees',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: CeladonColors.textSecondary,
-                          ),
-                        ),
-                        Text(
-                          '$totalStaff Staff Members',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: CeladonColors.textPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: const [
-                        Text(
-                          'Automated Pay Slips',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: CeladonColors.textSecondary,
-                          ),
-                        ),
-                        Text(
-                          'Ready for Dispatch',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: CeladonColors.primary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 18),
-              ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      backgroundColor: CeladonColors.primary,
-                      content: Text(
-                        'Payroll batch processed & payslips generated successfully!',
-                      ),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.receipt_long_rounded, size: 18),
-                label: const Text(
-                  'Process Monthly Payroll & Slips',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: CeladonColors.primary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-              ),
-            ],
-          ),
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (pCtx) => CompanyPayrollView(
+          embedded: false,
+          onBack: () => Navigator.of(pCtx).pop(),
         ),
       ),
     );
@@ -2487,285 +2347,16 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   }
 
   Widget _buildPayrollEmbeddedTab() {
-    final totalStaff = _allNonAdminEmployees.length;
-    final now = DateTime.now();
-    final cycleLabel = _getMonthYearName(now);
-    return SingleChildScrollView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              IconButton(
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                icon: const Icon(
-                  Icons.arrow_back_rounded,
-                  color: CeladonColors.textPrimary,
-                  size: 22,
-                ),
-                tooltip: 'Back to Home',
-                onPressed: () => _navigateToCompanyPage('home'),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    Text(
-                      'Payroll',
-                      style: TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.w800,
-                        color: CeladonColors.textPrimary,
-                        letterSpacing: -0.2,
-                      ),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      'Process salary disbursements and pay history.',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: CeladonColors.textMuted,
-                        height: 1.25,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildGlassCard(
-            borderRadius: 20,
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Active Pay Cycle',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: CeladonColors.textSecondary,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: CeladonColors.primaryLight,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: CeladonColors.primary.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      child: Text(
-                        cycleLabel,
-                        style: const TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w700,
-                          color: CeladonColors.primary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Eligible Employees',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: CeladonColors.textSecondary,
-                      ),
-                    ),
-                    Text(
-                      '$totalStaff Staff Members',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: CeladonColors.textPrimary,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                const Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Automated Pay Slips',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: CeladonColors.textSecondary,
-                      ),
-                    ),
-                    Text(
-                      'Ready for Dispatch',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: CeladonColors.primary,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                ElevatedButton.icon(
-                  onPressed: _showPayrollSheet,
-                  icon: const Icon(Icons.receipt_long_rounded, size: 18),
-                  label: const Text(
-                    'Process Monthly Payroll & Slips',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: CeladonColors.primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return CompanyPayrollView(
+      embedded: true,
+      onBack: () => _navigateToCompanyPage('home'),
     );
   }
 
   Widget _buildReportsEmbeddedTab() {
-    final totalStaff = _allNonAdminEmployees.length;
-    return SingleChildScrollView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              IconButton(
-                icon: const Icon(
-                  Icons.arrow_back_rounded,
-                  color: CeladonColors.textPrimary,
-                  size: 22,
-                ),
-                tooltip: 'Back to Home',
-                onPressed: () => _navigateToCompanyPage('home'),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text(
-                      'Reports',
-                      style: TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.w800,
-                        color: CeladonColors.textPrimary,
-                        letterSpacing: -0.2,
-                      ),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      'Analyze organizational metrics, attendance & productivity trends',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: CeladonColors.textMuted,
-                        height: 1.3,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildGlassCard(
-            borderRadius: 20,
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Tracked Workforce',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: CeladonColors.textSecondary,
-                      ),
-                    ),
-                    Text(
-                      '$totalStaff Employees',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: CeladonColors.textPrimary,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Attendance Logs Recorded',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: CeladonColors.textSecondary,
-                      ),
-                    ),
-                    Text(
-                      '${_attendance.length} Records',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: CeladonColors.primary,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                ElevatedButton.icon(
-                  onPressed: _showAttendanceReportSheet,
-                  icon: const Icon(Icons.bar_chart_rounded, size: 18),
-                  label: const Text(
-                    'Open Full Attendance Report',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: CeladonColors.primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return CompanyReportsView(
+      onBack: () => _navigateToCompanyPage('home'),
+      defaultRecipientEmail: widget.user.email,
     );
   }
 
@@ -5276,63 +4867,23 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         _selectedEmployeeDeptFilter != 'all';
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const SizedBox(height: 14),
           // Header with + Add Employee Button
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              IconButton(
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                icon: const Icon(
-                  Icons.arrow_back_rounded,
-                  color: CeladonColors.textPrimary,
-                  size: 22,
-                ),
-                tooltip: 'Back to Home',
-                onPressed: () => _navigateToCompanyPage('home'),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    Text(
-                      'Employees',
-                      style: TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.w800,
-                        color: CeladonColors.textPrimary,
-                        letterSpacing: -0.2,
-                      ),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      'Manage team members and employee directory.',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: CeladonColors.textMuted,
-                        height: 1.25,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              InkWell(
-                onTap: _showAddEmployeeDialog,
-                borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 8,
+          ReGenPageHeader(
+            title: 'Employees',
+            subtitle: 'Manage team members and employee directory.',
+            onBack: () => _navigateToCompanyPage('home'),
+            backTooltip: 'Back to Home',
+            trailing: InkWell(
+              onTap: _showAddEmployeeDialog,
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
                   ),
                   decoration: BoxDecoration(
                     color: CeladonColors.primary,
@@ -5363,8 +4914,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                   ),
                 ),
               ),
-            ],
-          ),
+            ),
           const SizedBox(height: 14),
 
           // Search Bar & Filter Button (Exact Match to User Image 2)
@@ -5598,7 +5148,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
         }
       } else {
         imageWidget = Image.network(
-          emp.avatar!,
+          AppConfig.resolveMediaUrl(emp.avatar!),
           fit: BoxFit.cover,
           errorBuilder: (context, error, stackTrace) =>
               _buildAvatarFallback(empName, initial, size: size),
@@ -9395,73 +8945,33 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const SizedBox(height: 14),
-          // Header
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              IconButton(
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                icon: const Icon(
-                  Icons.arrow_back_rounded,
-                  color: CeladonColors.textPrimary,
-                  size: 22,
+          // Header matching Company Calendar
+          ReGenPageHeader(
+            title: 'Leaves',
+            subtitle: 'Review leave requests, balances and approvals.',
+            onBack: () => _navigateToCompanyPage('home'),
+            backTooltip: 'Back to Home',
+            trailing: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: CeladonColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                tooltip: 'Back to Home',
-                onPressed: () => _navigateToCompanyPage('home'),
+                elevation: 0,
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    Text(
-                      'Leaves',
-                      style: TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.w800,
-                        color: CeladonColors.textPrimary,
-                        letterSpacing: -0.2,
-                      ),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      'Review leave requests, balances and approvals.',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: CeladonColors.textMuted,
-                        height: 1.25,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
+              icon: const Icon(Icons.tune_rounded, size: 16),
+              label: const Text(
+                'Leave Policy',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
               ),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: CeladonColors.primary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  elevation: 0,
-                ),
-                icon: const Icon(Icons.tune_rounded, size: 16),
-                label: const Text(
-                  'Leave Policy',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                ),
-                onPressed: _showLeavePolicySheet,
-              ),
-            ],
+              onPressed: _showLeavePolicySheet,
+            ),
           ),
           const SizedBox(height: 14),
 
@@ -10275,7 +9785,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   // ---------------------------------------------------------
   Widget _buildProfileTab() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -10353,50 +9863,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            IconButton(
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-              icon: const Icon(
-                Icons.arrow_back_rounded,
-                color: CeladonColors.textPrimary,
-                size: 22,
-              ),
-              tooltip: 'Back to Home',
-              onPressed: () => _navigateToCompanyPage('home'),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: const [
-                  Text(
-                    'Company',
-                    style: TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.w800,
-                      color: CeladonColors.textPrimary,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    'Manage company information and policies.',
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      color: CeladonColors.textMuted,
-                      height: 1.25,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-          ],
+        ReGenPageHeader(
+          title: 'Company',
+          subtitle: 'Manage company information and policies.',
+          onBack: () => _navigateToCompanyPage('home'),
+          backTooltip: 'Back to Home',
         ),
         const SizedBox(height: 14),
 
@@ -10716,50 +10187,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            IconButton(
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-              icon: const Icon(
-                Icons.arrow_back_rounded,
-                color: CeladonColors.textPrimary,
-                size: 22,
-              ),
-              tooltip: 'Back to Home',
-              onPressed: () => _navigateToCompanyPage('home'),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: const [
-                  Text(
-                    'Profile',
-                    style: TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.w800,
-                      color: CeladonColors.textPrimary,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    'Manage personal credentials and account.',
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      color: CeladonColors.textMuted,
-                      height: 1.25,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-          ],
+        ReGenPageHeader(
+          title: 'Profile',
+          subtitle: 'Manage personal credentials and account.',
+          onBack: () => _navigateToCompanyPage('home'),
+          backTooltip: 'Back to Home',
         ),
         const SizedBox(height: 14),
         // Avatar with Camera Overlay
@@ -10957,53 +10389,27 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            IconButton(
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-              icon: const Icon(
-                Icons.arrow_back_rounded,
-                color: CeladonColors.textPrimary,
-                size: 22,
-              ),
-              tooltip: 'Back to Home',
-              onPressed: () => _navigateToCompanyPage('home'),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: const [
-                  Text(
-                    'Settings',
-                    style: TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.w800,
-                      color: CeladonColors.textPrimary,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    'Configure system preferences and notifications.',
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      color: CeladonColors.textMuted,
-                      height: 1.25,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-          ],
+        ReGenPageHeader(
+          title: 'Settings',
+          subtitle: 'Configure system preferences and notifications.',
+          onBack: () => _navigateToCompanyPage('home'),
+          backTooltip: 'Back to Home',
         ),
         const SizedBox(height: 14),
 
+        _buildSettingsMenuCard(
+          icon: Icons.dns_outlined,
+          title: 'Server Connection',
+          subtitle: '${AppConfig.serverDisplayName} • ${AppConfig.activeBaseUrl}',
+          onTap: () async {
+            final changed = await showServerConnectionDialog(
+              context,
+              isAuthenticatedSession: true,
+              onSessionResetRequired: widget.onLogout,
+            );
+            if (changed && mounted) setState(() {});
+          },
+        ),
         _buildSettingsMenuCard(
           icon: Icons.palette_outlined,
           title: 'Appearance',
@@ -12720,67 +12126,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   }
 
   void _showAttendanceReportSheet() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: CeladonColors.cardBackground,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Workforce Attendance Reports',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: CeladonColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Total registered logs: ${_attendance.length} entries across ${_users.length} staff members.',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: CeladonColors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 18),
-              ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      backgroundColor: CeladonColors.primary,
-                      content: Text(
-                        'Attendance summary exported to CSV successfully!',
-                      ),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.download_rounded, size: 18),
-                label: const Text(
-                  'Download CSV Report',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: CeladonColors.primary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    _navigateToCompanyPage('reports');
   }
 
   void _showAttendanceRosterSheet() {

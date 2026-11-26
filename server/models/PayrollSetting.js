@@ -91,6 +91,58 @@ const payrollSettingSchema = new mongoose.Schema({
     enum: ['scheduled_days', 'calendar_days'],
     default: 'scheduled_days',
   },
+  lateDeductionEnabled: {
+    type: Boolean,
+    default: true,
+  },
+  lateDeductionMode: {
+    type: String,
+    enum: ['fixed_per_late', 'per_minute', 'hourly_rate'],
+    default: 'hourly_rate',
+  },
+  lateDeductionRate: {
+    type: Number,
+    default: 100,
+    min: 0,
+  },
+  shortfallDeductionEnabled: {
+    type: Boolean,
+    default: true,
+  },
+  overtimeEnabled: {
+    type: Boolean,
+    default: true,
+  },
+  overtimeMinMinutes: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 480,
+  },
+  breakDelayDeductionEnabled: {
+    type: Boolean,
+    default: true,
+  },
+  breakDelayRuleType: {
+    type: String,
+    enum: ['per_interval_flat', 'salary_minute_rate'],
+    default: 'per_interval_flat',
+  },
+  breakDelayIntervalMinutes: {
+    type: Number,
+    default: 10,
+    min: 1,
+    max: 120,
+  },
+  breakDelayIntervalAmount: {
+    type: Number,
+    default: 1,
+    min: 0,
+  },
+  policyVersion: {
+    type: Number,
+    default: 1,
+  },
   updatedBy: {
     type: String,
     trim: true,

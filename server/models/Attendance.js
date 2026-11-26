@@ -37,4 +37,6 @@ const attendanceSchema = new mongoose.Schema({
   notes: { type: String }
 }, { timestamps: true });
 
+attendanceSchema.index({ companyId: 1, date: -1, userId: 1 });
+
 export default mongoose.model('Attendance', attendanceSchema);

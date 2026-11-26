@@ -28,4 +28,6 @@ const projectSchema = new mongoose.Schema({
   createdBy: { type: String }, // User ID or name who created the project
 }, { timestamps: true });
 
+projectSchema.index({ companyId: 1, status: 1, createdAt: -1 });
+
 export default mongoose.model('Project', projectSchema);

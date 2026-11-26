@@ -4,6 +4,7 @@ import '../../../core/storage/session_storage.dart';
 import '../../../core/theme/celadon_colors.dart';
 import '../../../core/widgets/botanical_background.dart';
 import '../../../core/widgets/brand_logo.dart';
+import '../../auth/data/user_model.dart';
 import '../../auth/presentation/login_screen.dart';
 import '../../dashboard/presentation/dashboard_screen.dart';
 
@@ -62,10 +63,27 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _checkInitialRoute() async {
-    await AppConfig.initCustomUrl();
-    // Fast responsive session check without artificial delay that blocks engine frames
+    await AppConfig.initCustomUrl(autoProbe: false);
     final savedUser = await SessionStorage.getUserSession();
 
+    if (savedUser != null && savedUser.token.isNotEmpty) {
+      await AppConfig.ensureReadyForRequest();
+      final matchesServer = await SessionStorage.isSessionValidForCurrentServer();
+      if (!matchesServer) {
+        await SessionStorage.clearSession();
+        _routeAfterSplash(null);
+        return;
+      }
+      _routeAfterSplash(savedUser);
+      return;
+    }
+
+    // No saved session: navigate straight to LoginScreen without blocking on LAN probe.
+    AppConfig.resolveBestBackend();
+    _routeAfterSplash(null);
+  }
+
+  void _routeAfterSplash(UserModel? savedUser) {
     if (!mounted) return;
 
     if (widget.onInitializationComplete != null) {

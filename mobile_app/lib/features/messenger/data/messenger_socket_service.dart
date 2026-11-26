@@ -9,10 +9,19 @@ import '../../auth/data/user_model.dart';
 /// Singleton Socket.IO client connecting to the existing ReGen backend at `/ws`.
 /// Reuses the exact website transport, JWT auth handshake, and event names.
 class MessengerSocketService {
-  MessengerSocketService._();
+  MessengerSocketService._() {
+    AppConfig.baseUrlNotifier.addListener(_onBaseUrlChanged);
+  }
   static final MessengerSocketService instance = MessengerSocketService._();
 
+  void _onBaseUrlChanged() {
+    if (_socket != null && _activeServerUrl != null && _activeServerUrl != AppConfig.socketBaseUrl) {
+      reconnectForServerChange();
+    }
+  }
+
   io.Socket? _socket;
+  String? _activeServerUrl;
   String? _activeToken;
   String? _activeUserId;
   bool _isConnected = false;
@@ -96,9 +105,13 @@ class MessengerSocketService {
     if (token.isEmpty) return;
 
     final uid = user.userId.isNotEmpty ? user.userId : user.id;
+    final targetServerUrl = AppConfig.socketBaseUrl;
 
-    // Reuse active socket if token matches
-    if (_socket != null && _activeToken == token && _activeUserId == uid) {
+    // Reuse active socket only when server URL, token, and user ID all match
+    if (_socket != null &&
+        _activeServerUrl == targetServerUrl &&
+        _activeToken == token &&
+        _activeUserId == uid) {
       if (!(_socket!.connected)) {
         _socket!.connect();
       }
@@ -107,6 +120,7 @@ class MessengerSocketService {
 
     disconnect();
 
+    _activeServerUrl = targetServerUrl;
     _activeToken = token;
     _activeUserId = uid;
 
@@ -122,7 +136,7 @@ class MessengerSocketService {
         .setTimeout(10000)
         .build();
 
-    final socket = io.io(AppConfig.activeBaseUrl, options);
+    final socket = io.io(targetServerUrl, options);
 
     socket.onConnect((_) {
       _isConnected = true;
@@ -143,6 +157,9 @@ class MessengerSocketService {
       _isConnected = false;
       _connectionController.add(false);
       debugPrint('[ReGen WS] connect error: $err');
+      if (AppConfig.isAutoMode && AppConfig.isCurrentlyUsingLocal) {
+        AppConfig.handleConnectionErrorFailover();
+      }
     });
 
     // Messaging & Notifications
@@ -172,10 +189,28 @@ class MessengerSocketService {
     _socket = socket;
   }
 
-  /// Ensure socket reconnects when returning from background.
-  void ensureConnected() {
+  /// Ensure socket reconnects cleanly using the currently selected server.
+  Future<void> ensureConnected() async {
+    final targetServerUrl = AppConfig.socketBaseUrl;
+    if (_socket != null && _activeServerUrl != targetServerUrl) {
+      final savedUser = await SessionStorage.getUserSession();
+      disconnect();
+      if (savedUser != null && savedUser.token.isNotEmpty) {
+        await connect(user: savedUser);
+      }
+      return;
+    }
     if (_socket != null && !(_socket!.connected)) {
       _socket!.connect();
+    }
+  }
+
+  /// Force reconnection against [AppConfig.socketBaseUrl] without duplicating sockets.
+  Future<void> reconnectForServerChange({UserModel? user}) async {
+    disconnect();
+    final activeUser = user ?? await SessionStorage.getUserSession();
+    if (activeUser != null && activeUser.token.isNotEmpty) {
+      await connect(user: activeUser);
     }
   }
 
@@ -207,6 +242,7 @@ class MessengerSocketService {
       } catch (_) {}
       _socket = null;
     }
+    _activeServerUrl = null;
     _activeToken = null;
     _activeUserId = null;
     _activeConversationId = null;

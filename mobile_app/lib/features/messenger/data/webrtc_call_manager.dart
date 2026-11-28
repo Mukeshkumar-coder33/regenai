@@ -5,10 +5,13 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../../app/app_config.dart';
+import '../../../core/storage/session_storage.dart';
 import '../../auth/data/user_model.dart';
 import 'call_notification_service.dart';
 import 'communication_diagnostics.dart';
 import 'messenger_model.dart';
+import 'messenger_service.dart';
 import 'messenger_socket_service.dart';
 import 'messenger_sound_service.dart';
 
@@ -183,10 +186,14 @@ class WebRtcCallManager extends ChangeNotifier {
     }
   }
 
+  bool get hasBoundUser => _currentUser != null && _listenersAttached;
+
   void bindUser(UserModel user) {
     final prevUid = _myUserId;
     final nextUid = user.userId.isNotEmpty ? user.userId : user.id;
     _currentUser = user;
+
+    unawaited(_syncPersistedRejectedCalls());
 
     if (prevUid.isNotEmpty && prevUid != nextUid) {
       _cleanupCall();
@@ -215,6 +222,13 @@ class WebRtcCallManager extends ChangeNotifier {
       socket.onMeetingError.listen(_handleMeetingError),
     ]);
     CommunicationDiagnostics.instance.log('call_mgr:bound', {'userId': nextUid});
+  }
+
+  Future<void> _syncPersistedRejectedCalls() async {
+    final rejected = await CallNotificationService.loadPersistedRejectedCallIds();
+    for (final cid in rejected) {
+      _markCallTerminal(cid);
+    }
   }
 
   void _handleSocketConnectionChange(bool connected) {
@@ -546,28 +560,58 @@ class WebRtcCallManager extends ChangeNotifier {
     String mediaType = 'voice',
     bool autoAccept = false,
   }) async {
-    if (callId.isEmpty || _handledTerminalCallIds.contains(callId)) {
+    if (callId.isEmpty) return;
+
+    if (_handledTerminalCallIds.contains(callId) ||
+        await CallNotificationService.isCallIdRejected(callId)) {
+      _markCallTerminal(callId);
       await CallNotificationService.instance.cancelCallNotification(callId);
       await MessengerSoundService.instance.stopRingtone(reason: 'external_terminal');
+      return;
+    }
+
+    if (isCallLocallyAcceptedOrActive(callId)) {
+      CommunicationDiagnostics.instance.log('call_mgr:wakeup_already_active', {
+        'callId': callId,
+        'phase': _callPhase.name,
+      });
       return;
     }
 
     CommunicationDiagnostics.instance.log('call_mgr:external_wakeup', {
       'callId': callId,
       'autoAccept': autoAccept,
+      'bound': hasBoundUser,
     });
 
     final socket = MessengerSocketService.instance;
-    await socket.waitUntilConnected(timeout: const Duration(seconds: 5));
+    final connected = await socket.waitUntilConnected(timeout: const Duration(seconds: 6));
+    if (!connected || !hasBoundUser) {
+      CommunicationDiagnostics.instance.log('call_mgr:wakeup_deferred_no_socket', {
+        'callId': callId,
+        'connected': connected,
+        'bound': hasBoundUser,
+      });
+      return;
+    }
 
     final active = await socket.emitWithAck('call:get-active', {'callId': callId});
-    if (active is! Map || active['offer'] is! Map) {
-      CommunicationDiagnostics.instance.log('call_mgr:external_wakeup_expired', {'callId': callId});
+    if (active is! Map) {
+      CommunicationDiagnostics.instance.log('call_mgr:wakeup_no_ack', {'callId': callId});
+      return;
+    }
+    if (active['terminal'] == true ||
+        active['active'] == false ||
+        active['offer'] is! Map) {
+      CommunicationDiagnostics.instance.log('call_mgr:external_wakeup_expired', {
+        'callId': callId,
+        'state': active['state'] ?? 'unknown',
+      });
       _markCallTerminal(callId);
       await CallNotificationService.instance.cancelCallNotification(callId);
       await MessengerSoundService.instance.stopRingtone(reason: 'wakeup_expired');
       if (_callId == callId) {
-        await _cleanupCall();
+        await _cleanupCall(expectedCallId: callId);
       }
       return;
     }
@@ -593,7 +637,7 @@ class WebRtcCallManager extends ChangeNotifier {
       await _absorbBufferedCandidates(active['callerCandidates']);
     }
 
-    if (autoAccept && _callId == callId && _callPhase == CallPhase.incoming) {
+    if (autoAccept && _callId == callId && _callPhase == CallPhase.incoming && !_isAccepting) {
       await acceptIncomingCall();
     }
   }
@@ -678,6 +722,7 @@ class WebRtcCallManager extends ChangeNotifier {
   Future<void> rejectExternalCall({required String callId, String? callerId}) async {
     if (callId.isEmpty) return;
     _markCallTerminal(callId);
+    unawaited(CallNotificationService.persistRejectedCallId(callId));
     await MessengerSoundService.instance.stopRingtone(reason: 'notif_decline');
     await CallNotificationService.instance.cancelCallNotification(callId);
     if (_callId == callId) {
@@ -685,15 +730,34 @@ class WebRtcCallManager extends ChangeNotifier {
       return;
     }
     final socket = MessengerSocketService.instance;
-    if (!socket.isConnected) {
-      await socket.waitUntilConnected(timeout: const Duration(seconds: 3));
-    }
-    if (callerId != null && callerId.isNotEmpty) {
+    if (socket.isConnected && callerId != null && callerId.isNotEmpty) {
       socket.emit('call:reject', {
         'callId': callId,
         'callerId': callerId,
         'reason': 'declined',
       });
+      return;
+    }
+    if (!WidgetsBinding.instance.runtimeType.toString().contains('Test')) {
+      await AppConfig.initCustomUrl(autoProbe: false);
+      final user = _currentUser ?? await SessionStorage.getUserSession();
+      if (user != null && user.token.isNotEmpty) {
+        final ok = await MessengerService().rejectCallRest(
+          user: user,
+          callId: callId,
+          reason: 'declined',
+        );
+        if (ok) return;
+      }
+      if (await socket.waitUntilConnected(timeout: const Duration(seconds: 3)) &&
+          callerId != null &&
+          callerId.isNotEmpty) {
+        socket.emit('call:reject', {
+          'callId': callId,
+          'callerId': callerId,
+          'reason': 'declined',
+        });
+      }
     }
   }
 
@@ -860,6 +924,9 @@ class WebRtcCallManager extends ChangeNotifier {
     final cid = _callId;
     final pid = _peerId;
     _markCallTerminal(cid);
+    if (cid != null && cid.isNotEmpty) {
+      unawaited(CallNotificationService.persistRejectedCallId(cid));
+    }
     await MessengerSoundService.instance.stopRingtone(reason: reason, suppressCallId: cid);
     if (cid != null && pid != null) {
       await CallNotificationService.instance.cancelCallNotification(cid);

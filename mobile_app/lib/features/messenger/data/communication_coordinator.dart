@@ -89,13 +89,12 @@ class CommunicationCoordinator with WidgetsBindingObserver {
     await MessengerSocketService.instance.connect(user: user);
     unawaited(FcmPushService.instance.initializeForUser(user));
 
-    // 5. Consume any notification payload that cold-launched the app
+    // 5. Consume any notification payload that cold-launched the app, then flush queued call wakeups
     final launchPayload = CallNotificationService.instance.takePendingLaunchPayload();
     if (launchPayload != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        DashboardNavigation.handleNotificationTap(launchPayload);
-      });
+      DashboardNavigation.handleNotificationTap(launchPayload);
     }
+    DashboardNavigation.flushPendingCallWakeup();
 
     // 6. Start lightweight adaptive network-interface monitor for Wi-Fi <-> Mobile Data transitions
     _startNetworkMonitor();

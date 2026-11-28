@@ -129,16 +129,22 @@ class MessengerService {
     }
   }
 
+  static int _teamMsgSeq = 0;
+
   /// Send a Team Chat text or voice message (`POST /api/messages`)
   Future<TeamMessageModel?> sendTeamMessage({
     required UserModel user,
     required String content,
     List<Map<String, dynamic>>? attachments,
+    String? clientMessageId,
   }) async {
     final headers = await _getHeaders(user: user);
     final url = Uri.parse('${AppConfig.activeBaseUrl}/api/messages');
-    final msgId = 'msg-${DateTime.now().millisecondsSinceEpoch}';
+    _teamMsgSeq = (_teamMsgSeq + 1) & 0xFFFF;
     final senderId = user.userId.isNotEmpty ? user.userId : user.id;
+    final msgId = (clientMessageId != null && clientMessageId.isNotEmpty)
+        ? clientMessageId
+        : 'msg-${DateTime.now().microsecondsSinceEpoch}-${senderId.hashCode & 0xFFFF}-$_teamMsgSeq';
     final senderName = user.name.isNotEmpty ? user.name : user.username;
     final body = jsonEncode({
       'messageId': msgId,
@@ -606,6 +612,29 @@ class MessengerService {
     final url = Uri.parse('${AppConfig.activeBaseUrl}/api/dm/messages/$messageId?mode=$mode');
     try {
       final res = await _client.delete(url, headers: headers).timeout(const Duration(seconds: 8));
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Reject an incoming call over authenticated HTTP REST (for headless background Decline actions).
+  Future<bool> rejectCallRest({
+    required UserModel user,
+    required String callId,
+    String reason = 'declined',
+  }) async {
+    if (callId.isEmpty) return false;
+    final headers = await _getHeaders(user: user);
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/notifications/calls/$callId/reject');
+    try {
+      final res = await _client
+          .post(
+            url,
+            headers: headers,
+            body: jsonEncode({'reason': reason}),
+          )
+          .timeout(const Duration(seconds: 6));
       return res.statusCode == 200;
     } catch (_) {
       return false;

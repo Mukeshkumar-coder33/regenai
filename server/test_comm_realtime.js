@@ -25,6 +25,7 @@ import CallSession from './models/CallSession.js';
 import Notification from './models/Notification.js';
 import Conversation from './models/Conversation.js';
 import DirectMessage from './models/DirectMessage.js';
+import Message from './models/Message.js';
 import { createAndSendNotification } from './controllers/notificationController.js';
 import { sendFcmPushToUsers, isFcmConfigured, initializeFcmStartup, getFcmStatus } from './utils/fcmPush.js';
 
@@ -701,6 +702,73 @@ async function run() {
       );
       callerSock.emit('meeting:leave', { meetingId: mtgId });
       reconnectedRecv.emit('meeting:leave', { meetingId: mtgId });
+
+      // Background/terminated Decline REST rejection & terminal call:get-active contract
+      const restRejectCallId = `call-rest-reject-${suffix}`;
+      createdCallIds.push(restRejectCallId);
+      callerSock.clearEvents('call:rejected');
+      const restInitAck = await callerSock.emitAck('call:initiate', {
+        callId: restRejectCallId,
+        recipientId: receiverId,
+        mediaType: 'voice',
+        offer: { sdp: 'sdp-rest-reject', type: 'offer' },
+      });
+      const restRejectResp = await fetch(`${LOCAL_HTTP}/api/notifications/calls/${restRejectCallId}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${receiverJwt}` },
+        body: JSON.stringify({ reason: 'declined' }),
+      });
+      const restRejectJson = await restRejectResp.json().catch(() => ({}));
+      const callerGotRestReject = await callerSock.waitFor('call:rejected', (d) => d?.callId === restRejectCallId);
+      const getActiveAfterReject = await callerSock.emitAck('call:get-active', { callId: restRejectCallId });
+      assert(
+        restInitAck?.ok &&
+          restRejectResp.status === 200 &&
+          restRejectJson?.state === 'rejected' &&
+          callerGotRestReject?.reason === 'declined' &&
+          getActiveAfterReject?.terminal === true &&
+          getActiveAfterReject?.active === false,
+        'POST /api/notifications/calls/:callId/reject notifies caller cleanly & call:get-active reports terminal=true'
+      );
+
+      // Team Channel idempotent messageId persistence + single message:change socket emit
+      const teamMsgId = `team-dedup-${suffix}`;
+      reconnectedRecv.clearEvents('message:change');
+      const teamPost1 = await fetch(`${LOCAL_HTTP}/api/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${callerJwt}` },
+        body: JSON.stringify({
+          messageId: teamMsgId,
+          id: teamMsgId,
+          content: 'team-channel-single-emit-check',
+          timestamp: new Date().toISOString(),
+        }),
+      });
+      const firstTeamEvent = await reconnectedRecv.waitFor('message:change', (d) => d?.action === 'create' && d?.id === teamMsgId);
+      const teamPost2 = await fetch(`${LOCAL_HTTP}/api/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${callerJwt}` },
+        body: JSON.stringify({
+          messageId: teamMsgId,
+          id: teamMsgId,
+          content: 'team-channel-single-emit-check',
+          timestamp: new Date().toISOString(),
+        }),
+      });
+      await new Promise((r) => setTimeout(r, 200));
+      const extraTeamEmitCount = reconnectedRecv.events.filter(
+        (e) => e.event === 'message:change' && e.data?.action === 'create' && e.data?.id === teamMsgId
+      ).length;
+      const persistedTeamCount = await Message.countDocuments({ messageId: teamMsgId });
+      await Message.deleteMany({ messageId: teamMsgId });
+      assert(
+        teamPost1.status === 201 &&
+          teamPost2.status === 200 &&
+          Boolean(firstTeamEvent) &&
+          extraTeamEmitCount === 0 &&
+          persistedTeamCount === 1,
+        'Team Channel messageId retry persists once and emits message:change create exactly once'
+      );
     }
 
     // 6. FCM device-token cross-account cleanup & diagnostics endpoint

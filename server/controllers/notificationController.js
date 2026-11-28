@@ -4,7 +4,7 @@ import User from '../models/User.js';
 import SuperAdmin from '../models/SuperAdmin.js';
 import Company from '../models/Company.js';
 import { resolveCompanyId } from '../utils/resolveCompanyId.js';
-import { emitToUser } from '../socket.js';
+import { emitToUser, rejectCallSessionByUser } from '../socket.js';
 import { sendFcmPushToUsers, isFcmConfigured, getFcmStatus } from '../utils/fcmPush.js';
 import { createCorrelationId, logCommEvent, getRecentCommEvents } from '../utils/commLogger.js';
 
@@ -698,6 +698,27 @@ export const getCommunicationDiagnostics = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+};
+
+export const rejectCallFromNotification = async (req, res) => {
+  try {
+    const uid = String(req.user?.userId || '').trim();
+    const callId = String(req.params?.callId || '').trim();
+    if (!uid) return res.status(401).json({ message: 'Unauthorized' });
+    if (!callId) return res.status(400).json({ message: 'callId is required' });
+
+    const result = await rejectCallSessionByUser({
+      callId,
+      userId: uid,
+      reason: String(req.body?.reason || 'declined'),
+    });
+    if (!result.ok) {
+      return res.status(result.status || 400).json({ ok: false, reason: result.reason });
+    }
+    return res.status(200).json(result);
+  } catch (error) {
+    return res.status(500).json({ ok: false, message: error.message });
   }
 };
 

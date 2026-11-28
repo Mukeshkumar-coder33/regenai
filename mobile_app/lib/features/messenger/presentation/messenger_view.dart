@@ -378,6 +378,55 @@ class _MessengerViewState extends State<MessengerView> {
     return merged;
   }
 
+  int _compareTeamMessageTimestamps(TeamMessageModel a, TeamMessageModel b) {
+    final dtA = DateTime.tryParse(a.timestamp);
+    final dtB = DateTime.tryParse(b.timestamp);
+    if (dtA != null && dtB != null) {
+      return dtA.compareTo(dtB);
+    }
+    return a.timestamp.compareTo(b.timestamp);
+  }
+
+  bool _isSameTeamMessage(TeamMessageModel a, TeamMessageModel b) {
+    if (a.id.isNotEmpty && b.id.isNotEmpty && a.id == b.id) return true;
+    if (a.messageId.isNotEmpty && b.messageId.isNotEmpty && a.messageId == b.messageId) {
+      return true;
+    }
+    if (a.messageId.isNotEmpty && b.id.isNotEmpty && a.messageId == b.id) return true;
+    if (b.messageId.isNotEmpty && a.id.isNotEmpty && b.messageId == a.id) return true;
+    final isLocalOpt = a.id.startsWith('local-') || b.id.startsWith('local-');
+    if (isLocalOpt &&
+        a.senderId == b.senderId &&
+        a.content == b.content &&
+        a.attachments.length == b.attachments.length) {
+      return true;
+    }
+    return false;
+  }
+
+  /// Idempotently merges team messages across optimistic sends, HTTP responses,
+  /// Socket.IO `message:change` broadcasts, and REST history refreshes.
+  List<TeamMessageModel> _mergeTeamMessages(
+    List<TeamMessageModel> base,
+    List<TeamMessageModel> incoming,
+  ) {
+    final merged = List<TeamMessageModel>.from(base);
+    for (final msg in incoming) {
+      final idx = merged.indexWhere((m) => _isSameTeamMessage(m, msg));
+      if (idx >= 0) {
+        final existing = merged[idx];
+        // Prefer canonical persisted record (non-local id, or fuller metadata)
+        if (existing.id.startsWith('local-') || !msg.id.startsWith('local-')) {
+          merged[idx] = msg;
+        }
+      } else {
+        merged.add(msg);
+      }
+    }
+    merged.sort(_compareTeamMessageTimestamps);
+    return merged;
+  }
+
   void _attachSocketListeners() {
     final socket = MessengerSocketService.instance;
     _socketSubs.addAll([
@@ -402,23 +451,12 @@ class _MessengerViewState extends State<MessengerView> {
         final rawMsg = payload['message'];
         if (payload['action'] == 'create' && rawMsg is Map) {
           final teamMsg = TeamMessageModel.fromJson(normalizeJsonMap(rawMsg));
-          if (teamMsg.id.isNotEmpty) {
+          if (teamMsg.id.isNotEmpty || teamMsg.messageId.isNotEmpty) {
+            final hadBefore = _teamMessages.any((m) => _isSameTeamMessage(m, teamMsg));
             setState(() {
-              final idx = _teamMessages.indexWhere(
-                (m) =>
-                    m.id == teamMsg.id ||
-                    (m.messageId.isNotEmpty && m.messageId == teamMsg.messageId) ||
-                    (m.id.startsWith('local-') &&
-                        m.senderId == teamMsg.senderId &&
-                        m.content == teamMsg.content),
-              );
-              if (idx >= 0) {
-                _teamMessages[idx] = teamMsg;
-              } else {
-                _teamMessages.add(teamMsg);
-              }
+              _teamMessages = _mergeTeamMessages(_teamMessages, [teamMsg]);
             });
-            if (_isAtBottom || teamMsg.senderId == _myUserId) {
+            if (!hadBefore && (_isAtBottom || teamMsg.senderId == _myUserId)) {
               _scrollToBottom();
             }
             return;
@@ -778,7 +816,7 @@ class _MessengerViewState extends State<MessengerView> {
   Future<void> _refreshTeamMessages() async {
     final msgs = await _messengerService.getTeamMessages(user: widget.user);
     if (mounted) {
-      setState(() => _teamMessages = msgs);
+      setState(() => _teamMessages = _mergeTeamMessages(_teamMessages, msgs));
       _scrollToBottom();
     }
   }
@@ -1177,20 +1215,19 @@ class _MessengerViewState extends State<MessengerView> {
         );
         if (mounted) {
           if (overrideText == null) _messageController.clear();
+          final msgToDisplay = sent ??
+              TeamMessageModel(
+                id: 'local-${DateTime.now().millisecondsSinceEpoch}',
+                messageId: 'local-${DateTime.now().millisecondsSinceEpoch}',
+                senderId: _myUserId,
+                senderName: widget.user.name.isNotEmpty
+                    ? widget.user.name
+                    : widget.user.username,
+                content: text,
+                timestamp: DateTime.now().toIso8601String(),
+              );
           setState(() {
-            _teamMessages.add(
-              sent ??
-                  TeamMessageModel(
-                    id: 'local-${DateTime.now().millisecondsSinceEpoch}',
-                    messageId: 'local-${DateTime.now().millisecondsSinceEpoch}',
-                    senderId: _myUserId,
-                    senderName: widget.user.name.isNotEmpty
-                        ? widget.user.name
-                        : widget.user.username,
-                    content: text,
-                    timestamp: DateTime.now().toIso8601String(),
-                  ),
-            );
+            _teamMessages = _mergeTeamMessages(_teamMessages, [msgToDisplay]);
             _isSending = false;
           });
           _scrollToBottom();
@@ -1517,7 +1554,9 @@ class _MessengerViewState extends State<MessengerView> {
           attachments: [attachment],
         );
         if (mounted) {
-          if (sent != null) setState(() => _teamMessages.add(sent));
+          if (sent != null) {
+            setState(() => _teamMessages = _mergeTeamMessages(_teamMessages, [sent]));
+          }
           setState(() => _isSending = false);
           _scrollToBottom();
         }
@@ -1580,7 +1619,7 @@ class _MessengerViewState extends State<MessengerView> {
         );
         if (mounted) {
           if (sent != null) {
-            setState(() => _teamMessages.add(sent));
+            setState(() => _teamMessages = _mergeTeamMessages(_teamMessages, [sent]));
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(

@@ -13,7 +13,7 @@ void main() async {
   // Load persisted server preferences immediately without blocking frame 1 on LAN timeouts.
   await AppConfig.initCustomUrl(autoProbe: false);
   unawaited(AppConfig.resolveBestBackend());
-  unawaited(FcmPushService.registerBackgroundHandlerEarly());
+  await FcmPushService.registerBackgroundHandlerEarly();
   await CallNotificationService.instance.initialize(
     onTap: (payload) {
       DashboardNavigation.handleNotificationTap(payload);

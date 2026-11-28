@@ -35,10 +35,13 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         type == 'call' ||
         type == 'meeting') {
       if (callId.isNotEmpty) {
-        // Skip expired wakeup packets older than 50s
+        // Ignore stale wakeup packets older than 5 minutes while avoiding false drops from device clock skew
         final sentAtMs = int.tryParse((data['sentAt'] ?? '').toString());
         if (sentAtMs != null &&
-            DateTime.now().millisecondsSinceEpoch - sentAtMs > 50000) {
+            DateTime.now().millisecondsSinceEpoch - sentAtMs > 300000) {
+          return;
+        }
+        if (await CallNotificationService.isCallIdRejected(callId)) {
           return;
         }
         await CallNotificationService.instance.showIncomingCallNotification(

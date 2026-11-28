@@ -10,12 +10,14 @@ import {
   clearAllNotifications,
   registerDeviceToken,
   unregisterDeviceToken,
+  rejectCallFromNotification,
   getCommunicationDiagnostics
 } from '../controllers/notificationController.js';
 
 const router = express.Router();
 
 router.get('/diagnostics', getCommunicationDiagnostics);
+router.post('/calls/:callId/reject', rejectCallFromNotification);
 router.post('/', createNotification);
 router.post('/device-token', registerDeviceToken);
 router.delete('/device-token', unregisterDeviceToken);

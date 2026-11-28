@@ -12,6 +12,7 @@ class DashboardNavigation {
   static Future<void> Function(Map<String, dynamic> payload)? onOpenConversation;
   static String? pendingTargetPage;
   static Map<String, dynamic>? pendingConversationPayload;
+  static Map<String, dynamic>? pendingCallWakeupPayload;
   static final Map<String, DateTime> _recentTapTimestamps = <String, DateTime>{};
 
   @visibleForTesting
@@ -20,7 +21,67 @@ class DashboardNavigation {
     onOpenConversation = null;
     pendingTargetPage = null;
     pendingConversationPayload = null;
+    pendingCallWakeupPayload = null;
     _recentTapTimestamps.clear();
+  }
+
+  /// Replay a call/meeting notification wakeup queued during cold start or before login,
+  /// once [WebRtcCallManager] is bound to the authenticated user and Socket.IO is ready.
+  static void flushPendingCallWakeup() {
+    final pending = pendingCallWakeupPayload;
+    if (pending == null || !WebRtcCallManager.instance.hasBoundUser) return;
+    pendingCallWakeupPayload = null;
+    _dispatchCallOrMeetingPayload(pending);
+  }
+
+  static void _dispatchCallOrMeetingPayload(Map<String, dynamic> normalized) {
+    final type = (normalized['type'] ?? '').toString();
+    final actionId = (normalized['actionId'] ?? '').toString();
+    final callId = (normalized['callId'] ?? '').toString();
+    final meetingId = (normalized['meetingId'] ?? callId).toString();
+    final callerId =
+        (normalized['callerId'] ?? normalized['senderId'] ?? '').toString();
+    final callerName =
+        (normalized['callerName'] ?? normalized['senderName'] ?? 'Colleague')
+            .toString();
+    final mediaType =
+        (normalized['mediaType'] ?? (type == 'video_call' ? 'video' : 'voice'))
+            .toString();
+
+    if ((type == 'call' || type == 'voice_call' || type == 'video_call') &&
+        callId.isNotEmpty) {
+      if (actionId == 'decline_call') {
+        WebRtcCallManager.instance.rejectExternalCall(
+          callId: callId,
+          callerId: callerId.isNotEmpty ? callerId : null,
+        );
+        return;
+      }
+      WebRtcCallManager.instance.handleExternalCallWakeup(
+        callId: callId,
+        callerId: callerId.isNotEmpty ? callerId : null,
+        callerName: callerName,
+        mediaType: mediaType,
+        autoAccept: actionId == 'accept_call',
+      );
+      return;
+    }
+
+    if ((type == 'team_meeting' || type == 'meeting') && meetingId.isNotEmpty) {
+      if (actionId == 'decline_call') {
+        WebRtcCallManager.instance.rejectExternalMeeting(meetingId);
+        return;
+      }
+      WebRtcCallManager.instance.handleExternalMeetingWakeup(
+        meetingId: meetingId,
+        title: (normalized['title'] ?? callerName).toString(),
+        hostId: callerId.isNotEmpty ? callerId : null,
+        hostName: callerName,
+        mediaType: mediaType,
+        conversationId: normalized['conversationId']?.toString(),
+        autoJoin: actionId == 'accept_call',
+      );
+    }
   }
 
   /// Consume any queued deep-linked Messenger conversation payload (after mount/login).
@@ -102,48 +163,31 @@ class DashboardNavigation {
     final actionId = (normalized['actionId'] ?? '').toString();
     final callId = (normalized['callId'] ?? '').toString();
     final meetingId = (normalized['meetingId'] ?? callId).toString();
-    final callerId =
-        (normalized['callerId'] ?? normalized['senderId'] ?? '').toString();
-    final callerName =
-        (normalized['callerName'] ?? normalized['senderName'] ?? 'Colleague')
-            .toString();
-    final mediaType =
-        (normalized['mediaType'] ?? (type == 'video_call' ? 'video' : 'voice'))
-            .toString();
 
-    if ((type == 'call' || type == 'voice_call' || type == 'video_call') &&
-        callId.isNotEmpty) {
+    if (((type == 'call' || type == 'voice_call' || type == 'video_call') &&
+            callId.isNotEmpty) ||
+        ((type == 'team_meeting' || type == 'meeting') &&
+            meetingId.isNotEmpty)) {
       if (actionId == 'decline_call') {
-        WebRtcCallManager.instance.rejectExternalCall(
-          callId: callId,
-          callerId: callerId.isNotEmpty ? callerId : null,
-        );
+        if (pendingCallWakeupPayload != null) {
+          final pendingCid =
+              (pendingCallWakeupPayload!['callId'] ??
+                      pendingCallWakeupPayload!['meetingId'] ??
+                      '')
+                  .toString();
+          if (pendingCid == callId || pendingCid == meetingId) {
+            pendingCallWakeupPayload = null;
+          }
+        }
+        _dispatchCallOrMeetingPayload(normalized);
         return;
       }
-      WebRtcCallManager.instance.handleExternalCallWakeup(
-        callId: callId,
-        callerId: callerId.isNotEmpty ? callerId : null,
-        callerName: callerName,
-        mediaType: mediaType,
-        autoAccept: actionId == 'accept_call',
-      );
-      return;
-    }
 
-    if ((type == 'team_meeting' || type == 'meeting') && meetingId.isNotEmpty) {
-      if (actionId == 'decline_call') {
-        WebRtcCallManager.instance.rejectExternalMeeting(meetingId);
+      if (!WebRtcCallManager.instance.hasBoundUser) {
+        pendingCallWakeupPayload = normalized;
         return;
       }
-      WebRtcCallManager.instance.handleExternalMeetingWakeup(
-        meetingId: meetingId,
-        title: (normalized['title'] ?? callerName).toString(),
-        hostId: callerId.isNotEmpty ? callerId : null,
-        hostName: callerName,
-        mediaType: mediaType,
-        conversationId: normalized['conversationId']?.toString(),
-        autoJoin: actionId == 'accept_call',
-      );
+      _dispatchCallOrMeetingPayload(normalized);
       return;
     }
 

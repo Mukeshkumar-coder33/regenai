@@ -131,6 +131,12 @@ export const createMessage = async (req, res) => {
       }
       body.attachments = normalized;
     }
+    if (body.messageId) {
+      const existingMsg = await Message.findOne({ messageId: body.messageId }).lean();
+      if (existingMsg) {
+        return res.status(200).json(existingMsg);
+      }
+    }
     const msg = new Message(body);
     await msg.save();
     emitToCompany('message:change', msg.companyId, { action: 'create', id: msg.messageId || msg.id, message: msg });

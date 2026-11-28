@@ -1,7 +1,12 @@
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../../app/app_config.dart';
+import '../../../core/storage/session_storage.dart';
 import '../../auth/data/user_model.dart';
 import 'communication_diagnostics.dart';
 import 'messenger_service.dart';
@@ -9,13 +14,16 @@ import 'messenger_service.dart';
 /// Top-level background notification action handler required when the user taps
 /// notification action buttons (e.g. Decline) while the app UI isolate is terminated.
 @pragma('vm:entry-point')
-Future<void> onBackgroundNotificationResponse(NotificationResponse response) async {
+Future<void> onBackgroundNotificationResponse(
+  NotificationResponse response,
+) async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
     final rawPayload = response.payload;
     if (rawPayload != null && rawPayload.isNotEmpty) {
       final decoded = jsonDecode(rawPayload) as Map<String, dynamic>;
-      final callId = (decoded['callId'] ?? decoded['meetingId'] ?? '').toString();
+      final callId = (decoded['callId'] ?? decoded['meetingId'] ?? '')
+          .toString();
       if (callId.isNotEmpty) {
         final plugin = FlutterLocalNotificationsPlugin();
         const settings = InitializationSettings(
@@ -30,7 +38,22 @@ Future<void> onBackgroundNotificationResponse(NotificationResponse response) asy
       if (response.actionId != null && response.actionId!.isNotEmpty) {
         decoded['actionId'] = response.actionId;
       }
-      CallNotificationService.instance.queueBackgroundResponseForTestOrLaunch(decoded);
+      if (response.actionId == 'decline_call' && callId.isNotEmpty) {
+        await CallNotificationService.persistRejectedCallId(callId);
+        await AppConfig.initCustomUrl(autoProbe: false);
+        final savedUser = await SessionStorage.getUserSession();
+        if (savedUser != null && savedUser.token.isNotEmpty) {
+          await MessengerService().rejectCallRest(
+            user: savedUser,
+            callId: callId,
+            reason: 'declined',
+          );
+        }
+        return;
+      }
+      CallNotificationService.instance.queueBackgroundResponseForTestOrLaunch(
+        decoded,
+      );
     }
   } catch (_) {}
 }
@@ -52,7 +75,8 @@ class CallNotificationService {
   static const String legacyCallChannelId = 'regen_incoming_calls_v2';
   static const String callChannelName = 'Incoming Voice & Video Calls';
   static const String callSilentChannelId = 'regen_incoming_calls_silent_v2';
-  static const String callSilentChannelName = 'Incoming Calls (In-App Ringtone)';
+  static const String callSilentChannelName =
+      'Incoming Calls (In-App Ringtone)';
   static const String messageChannelId = 'regen_messages_v2';
   static const String messageChannelName = 'ReGen Messages';
   static const String missedCallChannelId = 'regen_missed_calls_v2';
@@ -60,7 +84,8 @@ class CallNotificationService {
   static const String ringtoneRawResource = 'regen_ringtone';
   static const int flagInsistent = 4; // Android Notification.FLAG_INSISTENT
 
-  final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin _plugin =
+      FlutterLocalNotificationsPlugin();
   bool _initialized = false;
   bool _channelsInitialized = false;
   final Set<String> _activeCallNotificationIds = <String>{};
@@ -85,7 +110,8 @@ class CallNotificationService {
 
   /// Record a deduplication key and return whether it is new (exposed for regression tests).
   @visibleForTesting
-  bool rememberNotificationOnceForTest(String dedupKey) => _rememberOnce(dedupKey);
+  bool rememberNotificationOnceForTest(String dedupKey) =>
+      _rememberOnce(dedupKey);
 
   /// Reset in-memory deduplication state between tests.
   @visibleForTesting
@@ -93,6 +119,40 @@ class CallNotificationService {
     _activeCallNotificationIds.clear();
     _recentDedupIds.clear();
     _launchPayload = null;
+  }
+
+  static const String _rejectedCallsPrefsKey = 'regen_rejected_call_ids';
+
+  /// Persist a rejected call ID across background/headless notification actions
+  /// so cold-start recovery never resurrects an already declined call.
+  static Future<void> persistRejectedCallId(String callId) async {
+    if (callId.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = List<String>.from(prefs.getStringList(_rejectedCallsPrefsKey) ?? const <String>[]);
+      if (!list.contains(callId)) {
+        list.add(callId);
+        if (list.length > 50) {
+          list.removeRange(0, list.length - 50);
+        }
+        await prefs.setStringList(_rejectedCallsPrefsKey, list);
+      }
+    } catch (_) {}
+  }
+
+  static Future<Set<String>> loadPersistedRejectedCallIds() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return Set<String>.from(prefs.getStringList(_rejectedCallsPrefsKey) ?? const <String>[]);
+    } catch (_) {
+      return <String>{};
+    }
+  }
+
+  static Future<bool> isCallIdRejected(String callId) async {
+    if (callId.isEmpty) return false;
+    final set = await loadPersistedRejectedCallIds();
+    return set.contains(callId);
   }
 
   void queueBackgroundResponseForTestOrLaunch(Map<String, dynamic> payload) {
@@ -105,7 +165,9 @@ class CallNotificationService {
     bool silent = false,
   }) {
     final effectiveChannelId = silent ? callSilentChannelId : callChannelId;
-    final effectiveChannelName = silent ? callSilentChannelName : callChannelName;
+    final effectiveChannelName = silent
+        ? callSilentChannelName
+        : callChannelName;
     return AndroidNotificationDetails(
       effectiveChannelId,
       effectiveChannelName,
@@ -121,7 +183,9 @@ class CallNotificationService {
       autoCancel: false,
       onlyAlertOnce: true,
       playSound: !silent,
-      sound: silent ? null : const RawResourceAndroidNotificationSound(ringtoneRawResource),
+      sound: silent
+          ? null
+          : const RawResourceAndroidNotificationSound(ringtoneRawResource),
       additionalFlags: silent ? null : Int32List.fromList(<int>[flagInsistent]),
       enableVibration: true,
       timeoutAfter: 46000,
@@ -162,7 +226,9 @@ class CallNotificationService {
     if (!isBackgroundIsolate && _initialized) return;
 
     try {
-      const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const androidSettings = AndroidInitializationSettings(
+        '@mipmap/ic_launcher',
+      );
       const darwinSettings = DarwinInitializationSettings(
         requestAlertPermission: true,
         requestBadgePermission: true,
@@ -178,11 +244,14 @@ class CallNotificationService {
         onDidReceiveNotificationResponse: (response) {
           _dispatchNotificationResponse(response);
         },
-        onDidReceiveBackgroundNotificationResponse: onBackgroundNotificationResponse,
+        onDidReceiveBackgroundNotificationResponse:
+            onBackgroundNotificationResponse,
       );
 
       final androidImpl = _plugin
-          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
 
       const callChannel = AndroidNotificationChannel(
         callChannelId,
@@ -198,7 +267,8 @@ class CallNotificationService {
       const callSilentChannel = AndroidNotificationChannel(
         callSilentChannelId,
         callSilentChannelName,
-        description: 'Visual incoming call notification when in-app ringtone is active',
+        description:
+            'Visual incoming call notification when in-app ringtone is active',
         importance: Importance.max,
         playSound: false,
         enableVibration: true,
@@ -234,7 +304,9 @@ class CallNotificationService {
         // Capture cold-start notification launch payload only when an Activity exists
         try {
           final details = await _plugin.getNotificationAppLaunchDetails();
-          if (details != null && details.didNotificationLaunchApp && details.notificationResponse != null) {
+          if (details != null &&
+              details.didNotificationLaunchApp &&
+              details.notificationResponse != null) {
             final parsed = _parseResponse(details.notificationResponse!);
             if (parsed != null) {
               _launchPayload = parsed;
@@ -257,7 +329,9 @@ class CallNotificationService {
         'background': isBackgroundIsolate,
       });
     } catch (e) {
-      CommunicationDiagnostics.instance.log('notif:init_failed', {'error': e.toString()});
+      CommunicationDiagnostics.instance.log('notif:init_failed', {
+        'error': e.toString(),
+      });
     }
   }
 
@@ -321,7 +395,9 @@ class CallNotificationService {
       await _plugin.show(
         id: _notifIntId('call:$callId'),
         title: title,
-        body: isMeeting ? '$callerName started a group call' : '$callerName is calling you...',
+        body: isMeeting
+            ? '$callerName started a group call'
+            : '$callerName is calling you...',
         notificationDetails: details,
         payload: jsonEncode({
           'type': isMeeting ? 'team_meeting' : 'call',
@@ -332,9 +408,15 @@ class CallNotificationService {
           'mediaType': mediaType,
         }),
       );
-      CommunicationDiagnostics.instance.log('notif:call_shown', {'callId': callId, 'silent': silent});
+      CommunicationDiagnostics.instance.log('notif:call_shown', {
+        'callId': callId,
+        'silent': silent,
+      });
     } catch (e) {
-      CommunicationDiagnostics.instance.log('notif:call_error', {'callId': callId, 'error': e.toString()});
+      CommunicationDiagnostics.instance.log('notif:call_error', {
+        'callId': callId,
+        'error': e.toString(),
+      });
     }
   }
 
@@ -400,7 +482,8 @@ class CallNotificationService {
         android: AndroidNotificationDetails(
           messageChannelId,
           messageChannelName,
-          channelDescription: 'New text, voice, task and approval notifications in ReGen',
+          channelDescription:
+              'New text, voice, task and approval notifications in ReGen',
           importance: Importance.high,
           priority: Priority.high,
           category: AndroidNotificationCategory.message,
@@ -432,7 +515,10 @@ class CallNotificationService {
           'notificationId': id,
         }),
       );
-      CommunicationDiagnostics.instance.log('notif:message_shown', {'id': id, 'type': notificationType});
+      CommunicationDiagnostics.instance.log('notif:message_shown', {
+        'id': id,
+        'type': notificationType,
+      });
     } catch (_) {}
   }
 
@@ -446,7 +532,8 @@ class CallNotificationService {
     String? callId,
   }) async {
     final normalizedCallId = (callId ?? '').trim();
-    final dedupKey = 'missed:${normalizedCallId.isNotEmpty ? normalizedCallId : id}';
+    final dedupKey =
+        'missed:${normalizedCallId.isNotEmpty ? normalizedCallId : id}';
     if (!_rememberOnce(dedupKey)) return;
     if (!_initialized || !_isMobilePlatform) return;
     try {
@@ -513,7 +600,8 @@ class CallNotificationService {
         android: AndroidNotificationDetails(
           'regen_tasks',
           'Task Reminders & Alerts',
-          channelDescription: 'Daily alerts for tasks assigned or needing completion',
+          channelDescription:
+              'Daily alerts for tasks assigned or needing completion',
           importance: Importance.high,
           priority: Priority.high,
           playSound: NotificationPreferences.instance.isSoundEnabled,

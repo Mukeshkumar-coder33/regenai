@@ -803,7 +803,7 @@ export function initSocketIO(httpServer) {
           userIds: targetIds,
           title: callMediaType === 'video' ? 'Incoming Video Call' : 'Incoming Voice Call',
           body: `${callerName} is calling you...`,
-          channelId: 'regen_incoming_calls_v2',
+          channelId: 'regen_incoming_calls_v3',
           highPriority: true,
           dataOnly: true,
           ttlSeconds: 45,
@@ -871,15 +871,22 @@ export function initSocketIO(httpServer) {
           call = await CallSession.findOne({ callId }).lean();
         }
         if (typeof callback === 'function') {
-          if (
-            call &&
-            (call.recipientId === userId || call.callerId === userId) &&
-            !TERMINAL_CALL_STATES.has(call.state) &&
-            (!call.expiresAt || new Date(call.expiresAt).getTime() > Date.now())
-          ) {
-            callback(call);
-          } else {
+          const isParticipant =
+            call && (call.recipientId === userId || call.callerId === userId);
+          if (!isParticipant) {
             callback(null);
+            return;
+          }
+          const isExpired = call.expiresAt && new Date(call.expiresAt).getTime() <= Date.now();
+          if (!TERMINAL_CALL_STATES.has(call.state) && !isExpired) {
+            callback({ ...call, active: true });
+          } else {
+            callback({
+              active: false,
+              terminal: true,
+              state: isExpired && !TERMINAL_CALL_STATES.has(call.state) ? 'missed' : call.state,
+              callId: call.callId,
+            });
           }
         }
       } catch (_) {
@@ -1380,7 +1387,7 @@ export function initSocketIO(httpServer) {
             userIds: pushRecipientIds,
             title: meetingTitle,
             body: `${hostName} started a ${effectiveMediaType === 'voice' ? 'group voice call' : 'team video call'}`,
-            channelId: 'regen_incoming_calls_v2',
+            channelId: 'regen_incoming_calls_v3',
             highPriority: true,
             dataOnly: true,
             ttlSeconds: 45,
@@ -1586,12 +1593,71 @@ export function getIO() {
 
 export function emitToCompany(event, companyId, payload = {}) {
   if (!io) return;
-  if (companyId) {
-    io.to(`company:${companyId.toString()}`).emit(event, payload);
+  const targets = [];
+  if (companyId) targets.push(`company:${companyId.toString()}`);
+  if (!event.startsWith('dm:')) targets.push('global');
+  if (targets.length > 0) {
+    io.to(targets).emit(event, payload);
   }
-  if (!event.startsWith('dm:')) {
-    io.to('global').emit(event, payload);
+}
+
+/**
+ * Authoritatively reject an incoming/ringing call on behalf of a recipient user
+ * (used by both Socket.IO `call:reject` and REST background-notification Decline).
+ */
+export async function rejectCallSessionByUser({ callId, userId, reason = 'declined' }) {
+  if (!callId || !userId) return { ok: false, status: 400, reason: 'invalid_payload' };
+  const actorId = normalizeId(userId);
+  const existingCall = activeCalls.get(callId) || (await CallSession.findOne({ callId }).lean());
+  if (!existingCall) {
+    return { ok: false, status: 404, reason: 'not_found' };
   }
+  if (existingCall.recipientId !== actorId && existingCall.callerId !== actorId) {
+    return { ok: false, status: 403, reason: 'forbidden' };
+  }
+  if (existingCall.state === 'accepted' || TERMINAL_CALL_STATES.has(existingCall.state)) {
+    return { ok: true, alreadyTerminal: true, state: existingCall.state };
+  }
+
+  const res = await transitionCallSession(callId, 'rejected', { reason: reason || 'declined' });
+  if (!res.ok) {
+    return { ok: false, status: 409, reason: res.reason || 'transition_failed' };
+  }
+
+  await Notification.updateOne(
+    { id: `call-notif-${callId}` },
+    { $set: { actionStatus: 'rejected', read: true } }
+  ).catch(() => {});
+
+  const [callerRooms, receiverRooms] = await Promise.all([
+    resolveUserRooms(existingCall.callerId),
+    resolveUserRooms(existingCall.recipientId),
+  ]);
+  const allRooms = new Set([...callerRooms, ...receiverRooms]);
+
+  broadcastToRooms(callerRooms, 'call:rejected', {
+    callId,
+    correlationId: res.call.correlationId,
+    recipientId: existingCall.recipientId,
+    reason: reason || 'declined',
+  });
+  broadcastToRooms(allRooms, 'call:state', {
+    callId,
+    correlationId: res.call.correlationId,
+    state: 'rejected',
+    reason: reason || 'declined',
+  });
+
+  sendFcmPushToUsers({
+    userIds: Array.from(receiverRooms).map((r) => r.replace(/^user:/, '')),
+    dataOnly: true,
+    highPriority: true,
+    ttlSeconds: 15,
+    correlationId: res.call.correlationId,
+    data: { type: 'call_cancelled', callId, reason: reason || 'declined' },
+  }).catch(() => {});
+
+  return { ok: true, state: 'rejected', callId };
 }
 
 export async function emitToUser(userId, event, payload = {}) {

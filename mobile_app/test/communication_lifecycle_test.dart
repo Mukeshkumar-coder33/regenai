@@ -879,7 +879,153 @@ void main() {
       expect(navigatedPage, isNull);
       DashboardNavigation.resetForTest();
     });
+
+    test('DashboardNavigation defers cold-start call Accept until user bound and honors persisted background Reject', () async {
+      await WebRtcCallManager.instance.resetOnLogout();
+      DashboardNavigation.resetForTest();
+      expect(WebRtcCallManager.instance.hasBoundUser, isFalse);
+
+      DashboardNavigation.handleNotificationTap({
+        'type': 'voice_call',
+        'callId': 'call-cold-accept-1',
+        'callerId': 'USR-CALLER-1',
+        'callerName': 'Kiran',
+        'mediaType': 'voice',
+        'actionId': 'accept_call',
+      });
+
+      expect(DashboardNavigation.pendingCallWakeupPayload?['callId'], 'call-cold-accept-1');
+      expect(DashboardNavigation.pendingCallWakeupPayload?['actionId'], 'accept_call');
+
+      // Persist a background notification Decline decision and ensure wakeup stays blocked
+      await CallNotificationService.persistRejectedCallId('call-bg-declined-99');
+      expect(await CallNotificationService.isCallIdRejected('call-bg-declined-99'), isTrue);
+
+      const boundUser = UserModel(
+        id: 'mongo-cold-u1',
+        userId: 'USR-COLD-1',
+        username: 'cold_u1',
+        name: 'Cold User',
+        role: 'staff',
+        token: 'tok-cold-1',
+      );
+      WebRtcCallManager.instance.bindUser(boundUser);
+      expect(WebRtcCallManager.instance.hasBoundUser, isTrue);
+
+      await WebRtcCallManager.instance.handleExternalCallWakeup(
+        callId: 'call-bg-declined-99',
+        callerId: 'USR-CALLER-1',
+        callerName: 'Kiran',
+        autoAccept: true,
+      );
+      expect(WebRtcCallManager.instance.callPhase, CallPhase.idle);
+
+      DashboardNavigation.flushPendingCallWakeup();
+      expect(DashboardNavigation.pendingCallWakeupPayload, isNull);
+      DashboardNavigation.resetForTest();
+    });
+
+    testWidgets('Team Channel prevents duplicate message rendering when HTTP response, Socket message:change, and REST refresh overlap', (tester) async {
+      const staffUser = UserModel(
+        id: 'mongo-team-u1',
+        userId: 'USR-TEAM-1',
+        username: 'team_u1',
+        name: 'Ananya',
+        role: 'staff',
+        companyId: 'co-team-1',
+        token: 'tok-team-1',
+      );
+      final teamSvc = _FakeTeamChannelMessengerService();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MessengerView(
+            user: staffUser,
+            messengerService: teamSvc,
+            dashboardService: DashboardService(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Switch to Team Channel tab
+      await tester.tap(find.text('Team Channel'));
+      await tester.pumpAndSettle();
+
+      // Enter & send message; _FakeTeamChannelMessengerService emits message:change BEFORE returning HTTP response
+      await tester.enterText(find.byType(TextField).last, 'Team meeting starting at 4 PM');
+      await tester.tap(find.byIcon(Icons.send_rounded));
+      await tester.pumpAndSettle();
+
+      // Inject duplicate socket message:change packets (reconnect / multi-room replay)
+      final created = teamSvc.persistedTeamMessages.first;
+      MessengerSocketService.instance.debugInjectRawEvent('message:change', {
+        'action': 'create',
+        'id': created.messageId,
+        'message': {
+          '_id': created.id,
+          'messageId': created.messageId,
+          'senderId': created.senderId,
+          'senderName': created.senderName,
+          'content': created.content,
+          'timestamp': created.timestamp,
+        },
+      });
+      await tester.pumpAndSettle();
+
+      // Simulate reconnect REST history refresh
+      MessengerSocketService.instance.debugInjectRawEvent('connection', true);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Team meeting starting at 4 PM'), findsOneWidget);
+      expect(teamSvc.persistedTeamMessages.length, 1);
+    });
   });
+}
+
+class _FakeTeamChannelMessengerService extends _FakeLiveMessengerService {
+  final List<TeamMessageModel> persistedTeamMessages = [];
+
+  _FakeTeamChannelMessengerService()
+      : super(
+          conversations: const [],
+          contacts: const [],
+          serverMessages: const [],
+        );
+
+  @override
+  Future<List<TeamMessageModel>> getTeamMessages({required UserModel user}) async =>
+      List<TeamMessageModel>.from(persistedTeamMessages);
+
+  @override
+  Future<TeamMessageModel?> sendTeamMessage({
+    required UserModel user,
+    required String content,
+    List<Map<String, dynamic>>? attachments,
+    String? clientMessageId,
+  }) async {
+    final msgId = clientMessageId ?? 'msg-team-fixed-101';
+    final serverJson = <String, dynamic>{
+      '_id': 'mongo-team-msg-101',
+      'messageId': msgId,
+      'id': msgId,
+      'senderId': user.userId,
+      'senderName': user.name,
+      'content': content,
+      'timestamp': '2026-11-28T16:00:00.000Z',
+    };
+    final model = TeamMessageModel.fromJson(serverJson);
+    persistedTeamMessages.add(model);
+
+    // Reproduce exact server race: emit Socket.IO `message:change` BEFORE HTTP 201 returns to sender!
+    MessengerSocketService.instance.debugInjectRawEvent('message:change', {
+      'action': 'create',
+      'id': msgId,
+      'message': serverJson,
+    });
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    return model;
+  }
 }
 
 class _FakePeerConnection extends Fake implements RTCPeerConnection {

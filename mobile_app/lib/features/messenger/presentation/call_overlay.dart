@@ -81,25 +81,47 @@ class _CallOverlayState extends State<CallOverlay> {
       return;
     }
 
+    // Ignore call/meeting control alerts here — WebRtcCallManager renders dedicated call/meeting UI
+    if (const {
+      'voice_call',
+      'video_call',
+      'team_meeting',
+      'call',
+      'meeting',
+      'call_cancelled',
+      'call_ended',
+    }.contains(type)) {
+      return;
+    }
+
     // Play in-app sound & only show Android system tray notification when app is not actively resumed
     // (avoids duplicate tray + in-app alerts in foreground per Section 8A).
     final isForegroundResumed = WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     final callId = notif['callId']?.toString();
+    final effectiveSenderId =
+        senderId.isNotEmpty ? senderId : (notif['callerId'] ?? '').toString();
+    final callerName = (notif['senderName'] ?? notif['callerName'] ?? title).toString();
     if (type == 'missed_call') {
-      MessengerSoundService.instance.playMissedCallTone();
+      if (isForegroundResumed) {
+        MessengerSoundService.instance.playMissedCallTone();
+      }
+      final cid = (callId != null && callId.isNotEmpty) ? callId : id;
       CallNotificationService.instance.showMissedCallNotification(
-        id: id,
-        callId: (callId != null && callId.isNotEmpty) ? callId : id,
-        callerName: notif['senderName']?.toString() ?? title,
+        id: cid.startsWith('missed-') ? cid : 'missed-$cid',
+        callId: cid,
+        callerId: effectiveSenderId,
+        callerName: callerName,
         mediaType: notif['mediaType']?.toString() ?? 'voice',
         conversationId: convId,
       );
-    } else if (type != 'voice_call' && type != 'video_call' && type != 'team_meeting') {
+    } else {
       if (!NotificationPreferences.instance.isPushEnabled) return;
-      MessengerSoundService.instance.playMessageReceivedTone();
-      if (!isForegroundResumed) {
+      if (isForegroundResumed) {
+        MessengerSoundService.instance.playMessageReceivedTone();
+      } else {
         CallNotificationService.instance.showMessageNotification(
           id: id,
+          senderId: effectiveSenderId,
           senderName: title,
           preview: body.isNotEmpty ? body : 'You have a new update',
           conversationId: convId,
@@ -113,10 +135,15 @@ class _CallOverlayState extends State<CallOverlay> {
     setState(() {
       _liveBanner = {
         'id': id,
+        'notificationId': id,
         'type': type,
         'title': title,
         'message': body,
         'conversationId': convId,
+        'senderId': effectiveSenderId,
+        'callerId': effectiveSenderId,
+        'senderName': callerName,
+        'callId': callId ?? '',
       };
     });
     _bannerTimer = Timer(const Duration(seconds: 4), () {

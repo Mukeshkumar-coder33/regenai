@@ -729,17 +729,40 @@ class VideoMessageBubble extends StatelessWidget {
                 ],
               ),
             ),
-            IconButton(
-              icon: const Icon(Icons.download_rounded, color: Colors.white70, size: 20),
-              tooltip: 'Save to Gallery',
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              onPressed: () {
-                MediaDownloadService.instance.downloadMedia(
-                  context: context,
-                  fileName: attachment.name.isNotEmpty ? attachment.name : 'VID_${DateTime.now().millisecondsSinceEpoch}.mp4',
-                  url: attachment.resolvedUrl,
-                  isVideo: true,
+            ValueListenableBuilder<Map<String, double>>(
+              valueListenable: MediaDownloadService.instance.progressMap,
+              builder: (_, progressMap, _) {
+                final progress = progressMap[attachment.resolvedUrl];
+                if (progress != null) {
+                  return SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: Padding(
+                      padding: const EdgeInsets.all(2),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.2,
+                        value: progress > 0.05 ? progress : null,
+                        color: Colors.white,
+                      ),
+                    ),
+                  );
+                }
+                return IconButton(
+                  icon: const Icon(Icons.download_rounded, color: Colors.white70, size: 20),
+                  tooltip: 'Save to Gallery',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () {
+                    MediaDownloadService.instance.downloadMedia(
+                      context: context,
+                      fileName: attachment.name.isNotEmpty
+                          ? attachment.name
+                          : 'VID_${DateTime.now().millisecondsSinceEpoch}.mp4',
+                      url: attachment.resolvedUrl,
+                      mimeType: attachment.type,
+                      isVideo: true,
+                    );
+                  },
                 );
               },
             ),
@@ -917,6 +940,7 @@ class DocumentAttachmentCard extends StatelessWidget {
           context: context,
           fileName: attachment.name,
           url: attachment.resolvedUrl,
+          mimeType: attachment.type,
           dataUri: attachment.path.startsWith('data:') ? attachment.path : null,
         );
       },
@@ -972,10 +996,27 @@ class DocumentAttachmentCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            Icon(
-              Icons.download_rounded,
-              size: 20,
-              color: isMine ? Colors.white70 : CeladonColors.primary,
+            ValueListenableBuilder<Map<String, double>>(
+              valueListenable: MediaDownloadService.instance.progressMap,
+              builder: (_, progressMap, _) {
+                final progress = progressMap[attachment.resolvedUrl];
+                if (progress != null) {
+                  return SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      value: progress > 0.05 ? progress : null,
+                      color: isMine ? Colors.white : CeladonColors.primary,
+                    ),
+                  );
+                }
+                return Icon(
+                  Icons.download_rounded,
+                  size: 20,
+                  color: isMine ? Colors.white70 : CeladonColors.primary,
+                );
+              },
             ),
           ],
         ),
@@ -1009,15 +1050,32 @@ class FullScreenImageViewer extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                IconButton(
-                  icon: const Icon(Icons.download_rounded, color: Colors.white, size: 26),
-                  tooltip: 'Save to Gallery',
-                  onPressed: () {
-                    MediaDownloadService.instance.downloadMedia(
-                      context: context,
-                      fileName: fileName ?? 'IMG_${DateTime.now().millisecondsSinceEpoch}.jpg',
-                      url: imageUrl,
-                      isImage: true,
+                ValueListenableBuilder<Map<String, double>>(
+                  valueListenable: MediaDownloadService.instance.progressMap,
+                  builder: (_, progressMap, _) {
+                    final progress = progressMap[imageUrl];
+                    if (progress != null) {
+                      return SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          value: progress > 0.05 ? progress : null,
+                          color: Colors.white,
+                        ),
+                      );
+                    }
+                    return IconButton(
+                      icon: const Icon(Icons.download_rounded, color: Colors.white, size: 26),
+                      tooltip: 'Save to Gallery',
+                      onPressed: () {
+                        MediaDownloadService.instance.downloadMedia(
+                          context: context,
+                          fileName: fileName ?? 'IMG_${DateTime.now().millisecondsSinceEpoch}.jpg',
+                          url: imageUrl,
+                          isImage: true,
+                        );
+                      },
                     );
                   },
                 ),

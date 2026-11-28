@@ -467,7 +467,15 @@ export const createAndSendNotification = async (payload) => {
 
     // Trigger FCM push fallback for messages & alerts when recipient devices hold registered tokens
     // (1:1 calls & team meetings dispatch high-priority call wakeup pushes directly in socket.js)
-    const isCallAlert = ['voice_call', 'video_call', 'team_meeting'].includes(doc.type);
+    const isCallAlert = [
+      'voice_call',
+      'video_call',
+      'team_meeting',
+      'call',
+      'meeting',
+      'call_cancelled',
+      'call_ended',
+    ].includes(doc.type);
     if (!isCallAlert) {
       const correlationId = createCorrelationId('notif');
       const isMissed = doc.type === 'missed_call';
@@ -477,7 +485,7 @@ export const createAndSendNotification = async (payload) => {
         body: doc.message,
         channelId: isMissed ? 'regen_missed_calls_v2' : 'regen_messages_v2',
         highPriority: isMissed || ['text_message', 'voice_message', 'leave', 'project_task', 'attendance', 'task'].includes(doc.type),
-        dataOnly: isMissed,
+        dataOnly: false,
         correlationId,
         data: {
           notificationId: doc.id,
@@ -488,6 +496,8 @@ export const createAndSendNotification = async (payload) => {
           conversationId: doc.conversationId || '',
           senderId: doc.senderId || '',
           senderName: doc.senderName || '',
+          callerId: isMissed ? (doc.senderId || '') : '',
+          callerName: isMissed ? (doc.senderName || '') : '',
           callId: doc.callId || '',
           meetingId: doc.meetingId || '',
         },

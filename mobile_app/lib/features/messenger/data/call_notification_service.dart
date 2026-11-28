@@ -6,20 +6,50 @@ import '../../auth/data/user_model.dart';
 import 'communication_diagnostics.dart';
 import 'messenger_service.dart';
 
+/// Top-level background notification action handler required when the user taps
+/// notification action buttons (e.g. Decline) while the app UI isolate is terminated.
+@pragma('vm:entry-point')
+Future<void> onBackgroundNotificationResponse(NotificationResponse response) async {
+  try {
+    WidgetsFlutterBinding.ensureInitialized();
+    final rawPayload = response.payload;
+    if (rawPayload != null && rawPayload.isNotEmpty) {
+      final decoded = jsonDecode(rawPayload) as Map<String, dynamic>;
+      final callId = (decoded['callId'] ?? decoded['meetingId'] ?? '').toString();
+      if (callId.isNotEmpty) {
+        final plugin = FlutterLocalNotificationsPlugin();
+        const settings = InitializationSettings(
+          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+          iOS: DarwinInitializationSettings(),
+        );
+        await plugin.initialize(settings: settings);
+        await plugin.cancel(id: callId.hashCode & 0x7FFFFFFF);
+        await plugin.cancel(id: ('call:$callId').hashCode & 0x7FFFFFFF);
+        await plugin.cancel(id: 0, tag: 'call:$callId');
+      }
+      if (response.actionId != null && response.actionId!.isNotEmpty) {
+        decoded['actionId'] = response.actionId;
+      }
+      CallNotificationService.instance.queueBackgroundResponseForTestOrLaunch(decoded);
+    }
+  } catch (_) {}
+}
+
 /// Mobile Call & Message Notification Service (Android & iOS)
 ///
 /// - Configures dedicated Android notification channels:
-///   1. `regen_incoming_calls_v2`: Background/locked incoming calls (max priority, ringtone audio, vibration, fullScreenIntent)
+///   1. `regen_incoming_calls_v3`: Background/terminated incoming calls (max priority, looping ringtone WAV `FLAG_INSISTENT`, vibration, fullScreenIntent)
 ///   2. `regen_incoming_calls_silent_v2`: Foreground heads-up calls (`playSound: false` so it never overlaps MessengerSoundService ringtone)
 ///   3. `regen_messages_v2`: Messages (respects message/sound settings)
 ///   4. `regen_missed_calls_v2`: Missed call alerts
 /// - Provides Accept & Decline Android notification actions directly on incoming calls.
-/// - Deduplicates notifications so Socket.IO + FCM never display duplicates.
+/// - Deduplicates notifications across Socket.IO + FCM by sharing exact Android `(tag, id: 0)` slots.
 class CallNotificationService {
   CallNotificationService._();
   static final CallNotificationService instance = CallNotificationService._();
 
-  static const String callChannelId = 'regen_incoming_calls_v2';
+  static const String callChannelId = 'regen_incoming_calls_v3';
+  static const String legacyCallChannelId = 'regen_incoming_calls_v2';
   static const String callChannelName = 'Incoming Voice & Video Calls';
   static const String callSilentChannelId = 'regen_incoming_calls_silent_v2';
   static const String callSilentChannelName = 'Incoming Calls (In-App Ringtone)';
@@ -27,6 +57,8 @@ class CallNotificationService {
   static const String messageChannelName = 'ReGen Messages';
   static const String missedCallChannelId = 'regen_missed_calls_v2';
   static const String missedCallChannelName = 'Missed Calls';
+  static const String ringtoneRawResource = 'regen_ringtone';
+  static const int flagInsistent = 4; // Android Notification.FLAG_INSISTENT
 
   final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
   bool _initialized = false;
@@ -49,6 +81,66 @@ class CallNotificationService {
       _recentDedupIds.remove(_recentDedupIds.first);
     }
     return true;
+  }
+
+  /// Record a deduplication key and return whether it is new (exposed for regression tests).
+  @visibleForTesting
+  bool rememberNotificationOnceForTest(String dedupKey) => _rememberOnce(dedupKey);
+
+  /// Reset in-memory deduplication state between tests.
+  @visibleForTesting
+  void resetDedupForTest() {
+    _activeCallNotificationIds.clear();
+    _recentDedupIds.clear();
+    _launchPayload = null;
+  }
+
+  void queueBackgroundResponseForTestOrLaunch(Map<String, dynamic> payload) {
+    _launchPayload = payload;
+  }
+
+  /// Build incoming call Android details for inspection in unit tests and notification posting.
+  @visibleForTesting
+  static AndroidNotificationDetails buildIncomingCallAndroidDetails({
+    bool silent = false,
+  }) {
+    final effectiveChannelId = silent ? callSilentChannelId : callChannelId;
+    final effectiveChannelName = silent ? callSilentChannelName : callChannelName;
+    return AndroidNotificationDetails(
+      effectiveChannelId,
+      effectiveChannelName,
+      channelDescription:
+          'Real-time incoming voice and video calls from ReGen Messenger',
+      importance: Importance.max,
+      priority: Priority.max,
+      category: AndroidNotificationCategory.call,
+      audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
+      visibility: NotificationVisibility.public,
+      fullScreenIntent: true,
+      ongoing: true,
+      autoCancel: false,
+      onlyAlertOnce: true,
+      playSound: !silent,
+      sound: silent ? null : const RawResourceAndroidNotificationSound(ringtoneRawResource),
+      additionalFlags: silent ? null : Int32List.fromList(<int>[flagInsistent]),
+      enableVibration: true,
+      timeoutAfter: 46000,
+      vibrationPattern: Int64List.fromList([0, 1000, 800, 1000, 800, 1000]),
+      actions: const [
+        AndroidNotificationAction(
+          'accept_call',
+          'Accept',
+          showsUserInterface: true,
+          cancelNotification: true,
+        ),
+        AndroidNotificationAction(
+          'decline_call',
+          'Decline',
+          showsUserInterface: false,
+          cancelNotification: true,
+        ),
+      ],
+    );
   }
 
   Map<String, dynamic>? takePendingLaunchPayload() {
@@ -86,6 +178,7 @@ class CallNotificationService {
         onDidReceiveNotificationResponse: (response) {
           _dispatchNotificationResponse(response);
         },
+        onDidReceiveBackgroundNotificationResponse: onBackgroundNotificationResponse,
       );
 
       final androidImpl = _plugin
@@ -94,9 +187,10 @@ class CallNotificationService {
       const callChannel = AndroidNotificationChannel(
         callChannelId,
         callChannelName,
-        description: 'Real-time incoming voice and video calls when app is backgrounded or locked',
+        description: 'Real-time incoming voice and video calls when app is backgrounded or terminated',
         importance: Importance.max,
         playSound: true,
+        sound: RawResourceAndroidNotificationSound(ringtoneRawResource),
         enableVibration: true,
         audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
       );
@@ -210,41 +304,8 @@ class CallNotificationService {
     _activeCallNotificationIds.add(callId);
 
     try {
-      final effectiveChannelId = silent ? callSilentChannelId : callChannelId;
-      final effectiveChannelName = silent ? callSilentChannelName : callChannelName;
-
       final details = NotificationDetails(
-        android: AndroidNotificationDetails(
-          effectiveChannelId,
-          effectiveChannelName,
-          channelDescription: 'Real-time incoming voice and video calls from ReGen Messenger',
-          importance: Importance.max,
-          priority: Priority.max,
-          category: AndroidNotificationCategory.call,
-          audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
-          visibility: NotificationVisibility.public,
-          fullScreenIntent: true,
-          ongoing: true,
-          autoCancel: false,
-          playSound: !silent,
-          enableVibration: true,
-          timeoutAfter: 46000,
-          vibrationPattern: Int64List.fromList([0, 1000, 800, 1000, 800, 1000]),
-          actions: const [
-            AndroidNotificationAction(
-              'accept_call',
-              'Accept',
-              showsUserInterface: true,
-              cancelNotification: true,
-            ),
-            AndroidNotificationAction(
-              'decline_call',
-              'Decline',
-              showsUserInterface: false,
-              cancelNotification: true,
-            ),
-          ],
-        ),
+        android: buildIncomingCallAndroidDetails(silent: silent),
         iOS: DarwinNotificationDetails(
           presentAlert: true,
           presentSound: !silent,
@@ -284,12 +345,13 @@ class CallNotificationService {
     if (!_initialized || !_isMobilePlatform) return;
     try {
       await _plugin.cancel(id: _notifIntId('call:$callId'));
+      await _plugin.cancel(id: 0, tag: 'call:$callId');
       // Backward compatibility for legacy unprefixed ID
       await _plugin.cancel(id: callId.hashCode & 0x7FFFFFFF);
     } catch (_) {}
   }
 
-  /// Cancels ONLY active incoming call notifications (never wipes message/task alerts!).
+  /// Cancels ONLY active incoming call notifications across isolates (never wipes message/task alerts!).
   Future<void> cancelAllCallNotifications() async {
     final ids = List<String>.from(_activeCallNotificationIds);
     _activeCallNotificationIds.clear();
@@ -297,15 +359,29 @@ class CallNotificationService {
     for (final callId in ids) {
       try {
         await _plugin.cancel(id: _notifIntId('call:$callId'));
+        await _plugin.cancel(id: 0, tag: 'call:$callId');
         await _plugin.cancel(id: callId.hashCode & 0x7FFFFFFF);
       } catch (_) {}
     }
+    try {
+      final active = await _plugin.getActiveNotifications();
+      for (final notif in active) {
+        if (notif.channelId == callChannelId ||
+            notif.channelId == legacyCallChannelId ||
+            notif.channelId == callSilentChannelId) {
+          if (notif.id != null) {
+            await _plugin.cancel(id: notif.id!, tag: notif.tag);
+          }
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> showMessageNotification({
     required String id,
     required String senderName,
     required String preview,
+    String? senderId,
     String? conversationId,
     String notificationType = 'message',
   }) async {
@@ -319,6 +395,7 @@ class CallNotificationService {
     if (!_initialized || !_isMobilePlatform) return;
     try {
       final playSound = NotificationPreferences.instance.isSoundEnabled;
+      final useTag = defaultTargetPlatform == TargetPlatform.android;
       final details = NotificationDetails(
         android: AndroidNotificationDetails(
           messageChannelId,
@@ -328,9 +405,11 @@ class CallNotificationService {
           priority: Priority.high,
           category: AndroidNotificationCategory.message,
           visibility: NotificationVisibility.public,
+          onlyAlertOnce: true,
           autoCancel: true,
           playSound: playSound,
           enableVibration: true,
+          tag: id,
         ),
         iOS: DarwinNotificationDetails(
           presentAlert: true,
@@ -339,14 +418,17 @@ class CallNotificationService {
         ),
       );
 
+      // Share `(id: 0, tag: id)` on Android so OS-rendered FCM and local fallback never duplicate.
       await _plugin.show(
-        id: _notifIntId('msg:$id'),
+        id: useTag ? 0 : _notifIntId('msg:$id'),
         title: senderName,
         body: preview,
         notificationDetails: details,
         payload: jsonEncode({
           'type': notificationType,
           'conversationId': conversationId ?? '',
+          'senderId': senderId ?? '',
+          'senderName': senderName,
           'notificationId': id,
         }),
       );
@@ -358,15 +440,21 @@ class CallNotificationService {
   Future<void> showMissedCallNotification({
     required String id,
     required String callerName,
+    String? callerId,
     String mediaType = 'voice',
     String? conversationId,
     String? callId,
   }) async {
-    final dedupKey = 'missed:${callId ?? id}';
+    final normalizedCallId = (callId ?? '').trim();
+    final dedupKey = 'missed:${normalizedCallId.isNotEmpty ? normalizedCallId : id}';
     if (!_rememberOnce(dedupKey)) return;
     if (!_initialized || !_isMobilePlatform) return;
     try {
-      final details = const NotificationDetails(
+      final tagId = normalizedCallId.isNotEmpty
+          ? (id.startsWith('missed-') ? id : 'missed-$normalizedCallId')
+          : id;
+      final useTag = defaultTargetPlatform == TargetPlatform.android;
+      final details = NotificationDetails(
         android: AndroidNotificationDetails(
           missedCallChannelId,
           missedCallChannelName,
@@ -375,11 +463,13 @@ class CallNotificationService {
           priority: Priority.high,
           category: AndroidNotificationCategory.missedCall,
           visibility: NotificationVisibility.public,
+          onlyAlertOnce: true,
           autoCancel: true,
           playSound: true,
           enableVibration: true,
+          tag: tagId,
         ),
-        iOS: DarwinNotificationDetails(
+        iOS: const DarwinNotificationDetails(
           presentAlert: true,
           presentSound: true,
           presentBadge: true,
@@ -388,15 +478,18 @@ class CallNotificationService {
       );
 
       await _plugin.show(
-        id: _notifIntId(dedupKey),
+        id: useTag ? 0 : _notifIntId(dedupKey),
         title: 'Missed ${mediaType == 'video' ? 'Video' : 'Voice'} Call',
         body: '$callerName called you',
         notificationDetails: details,
         payload: jsonEncode({
           'type': 'missed_call',
+          'notificationId': tagId,
+          'callerId': callerId ?? '',
           'callerName': callerName,
           'conversationId': conversationId ?? '',
-          'callId': callId ?? '',
+          'callId': normalizedCallId,
+          'mediaType': mediaType,
         }),
       );
     } catch (_) {}

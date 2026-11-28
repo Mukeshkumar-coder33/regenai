@@ -5,6 +5,7 @@ import '../../auth/data/auth_service.dart';
 import '../../auth/data/user_model.dart';
 import '../../company/data/company_model.dart';
 import '../../dashboard/data/dashboard_service.dart';
+import '../../dashboard/presentation/dashboard_navigation.dart';
 import '../../notifications/data/notification_service.dart';
 import '../../notifications/data/notification_store.dart';
 
@@ -1344,6 +1345,15 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
                                       NotificationStore.instance.markAsRead(notif);
                                       if (mounted) setState(() {});
                                       Navigator.pop(ctx);
+                                      if (notif.isMessenger ||
+                                          notif.isTask ||
+                                          notif.type.toLowerCase().contains('leave') ||
+                                          notif.type.toLowerCase().contains('payroll') ||
+                                          notif.type.toLowerCase().contains('attendance')) {
+                                        DashboardNavigation.handleNotificationTap(
+                                          notif.toJson(),
+                                        );
+                                      }
                                     },
                                   ),
                                 ),

@@ -429,7 +429,12 @@ export async function sendFcmPushToUsers({
     };
 
     if (!dataOnly) {
-      const tag = stringData.notificationId || stringData.callId || undefined;
+      const tag =
+        stringData.notificationId ||
+        (stringData.type === 'missed_call' && stringData.callId
+          ? `missed-${stringData.callId}`
+          : stringData.callId) ||
+        undefined;
       androidConfig.notification = {
         channel_id: channelId,
         sound: 'default',

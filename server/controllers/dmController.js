@@ -1,6 +1,7 @@
 import Conversation from '../models/Conversation.js';
 import DirectMessage from '../models/DirectMessage.js';
-import { emitToUser, getOnlineUserIds, isUserActiveInConversation } from '../socket.js';
+import Message from '../models/Message.js';
+import { emitToParticipantsAndRoom, emitToUser, getOnlineUserIds, isUserActiveInConversation } from '../socket.js';
 import { createAndSendNotification } from './notificationController.js';
 import {
   resolveMessengerActor,
@@ -363,6 +364,39 @@ export const getConversationMessages = async (req, res) => {
       .limit(limit)
       .lean();
 
+    // Active web/client UI fetching the latest open thread (without x-skip-auto-read)
+    // marks unread incoming messages read and broadcasts the genuine read receipt.
+    const skipAutoRead = req.headers['x-skip-auto-read'] === '1';
+    if (!skipAutoRead && !before && msgs.length > 0) {
+      const upd = await DirectMessage.updateMany(
+        {
+          conversationId: convo._id,
+          senderId: { $ne: actor.userId },
+          readBy: { $ne: actor.userId },
+        },
+        { $addToSet: { readBy: actor.userId } }
+      );
+      if (upd?.modifiedCount > 0) {
+        for (const m of msgs) {
+          if (m.senderId !== actor.userId) {
+            const rb = Array.isArray(m.readBy) ? m.readBy : [];
+            if (!rb.includes(actor.userId)) m.readBy = [...rb, actor.userId];
+          }
+        }
+        await emitToParticipantsAndRoom(
+          convo.participants,
+          `dm:${convo._id.toString()}`,
+          'dm:change',
+          {
+            action: 'read',
+            conversationId: convo._id.toString(),
+            userId: actor.userId,
+            readBy: [actor.userId],
+          }
+        );
+      }
+    }
+
     const keysObj = convo.publicKeys
       ? (convo.publicKeys instanceof Map ? Object.fromEntries(convo.publicKeys) : convo.publicKeys)
       : {};
@@ -583,12 +617,8 @@ export const sendDirectMessage = async (req, res) => {
       }
     }
 
-    // If recipient is already inside the conversation, automatically mark as read!
-    if (activeRecipients.length > 0) {
-      body.readBy = Array.from(new Set([myId, ...activeRecipients]));
-    } else {
-      body.readBy = [myId];
-    }
+    // Receiver-side UI triggers explicit read receipts (dm:read / PUT /read) once rendered in chat
+    body.readBy = [myId];
 
     // Handle attachments (voice notes, images, videos, files)
     if (Array.isArray(body.attachments)) {
@@ -628,30 +658,28 @@ export const sendDirectMessage = async (req, res) => {
     convo.lastMessage = { content: preview, senderId: myId, timestamp: msg.createdAt };
     await convo.save();
 
-    // Emit strictly to all participants (both website & Flutter receive instantly)
+    // Emit strictly to all participants + active conversation sockets for zero-latency delivery
     const activeKeys = convo.publicKeys
       ? (convo.publicKeys instanceof Map ? Object.fromEntries(convo.publicKeys) : convo.publicKeys)
       : {};
 
-    await emitToParticipants(convo.participants, 'dm:change', {
+    const serializedMsg = msg.toObject ? msg.toObject() : { ...msg };
+    serializedMsg.conversationId = convo._id.toString();
+
+    const dmEventPayload = {
       action: 'create',
       conversationId: convo._id.toString(),
       senderId: myId,
-      message: msg,
+      message: serializedMsg,
       publicKeys: activeKeys,
-    });
+    };
 
-    // If recipient was already in the chat, send immediate read receipt so sender gets 2 blue ticks without delay!
-    if (activeRecipients.length > 0) {
-      for (const rId of activeRecipients) {
-        await emitToParticipants(convo.participants, 'dm:change', {
-          action: 'read',
-          conversationId: convo._id.toString(),
-          userId: rId,
-          readBy: msg.readBy,
-        });
-      }
-    }
+    await emitToParticipantsAndRoom(
+      convo.participants,
+      `dm:${convo._id.toString()}`,
+      'dm:change',
+      dmEventPayload
+    );
 
     const notificationMessage = describeAttachmentsSummary(msg.attachments, body.content, {
       isVoice,
@@ -703,16 +731,24 @@ export const markAsRead = async (req, res) => {
       return res.status(convo ? 403 : 404).json({ message: access.reason });
     }
 
-    await DirectMessage.updateMany(
-      { conversationId: convo._id, readBy: { $ne: actor.userId } },
+    const upd = await DirectMessage.updateMany(
+      { conversationId: convo._id, senderId: { $ne: actor.userId }, readBy: { $ne: actor.userId } },
       { $addToSet: { readBy: actor.userId } }
     );
 
-    await emitToParticipants(convo.participants, 'dm:change', {
-      action: 'read',
-      conversationId: convo._id.toString(),
-      userId: actor.userId,
-    });
+    if (upd?.modifiedCount > 0) {
+      await emitToParticipantsAndRoom(
+        convo.participants,
+        `dm:${convo._id.toString()}`,
+        'dm:change',
+        {
+          action: 'read',
+          conversationId: convo._id.toString(),
+          userId: actor.userId,
+          readBy: [actor.userId],
+        }
+      );
+    }
 
     res.status(200).json({ success: true });
   } catch (error) {
@@ -840,6 +876,73 @@ export const deleteDirectMessage = async (req, res) => {
     }
 
     res.status(200).json({ message: 'Message deleted for everyone', mode: 'for_everyone' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ─── Authenticated Media Download (Images, Videos, Documents) ───
+export const downloadMediaAttachment = async (req, res) => {
+  try {
+    const actor = await resolveMessengerActor(req.user?.userId, req.user?.role);
+    if (!actor) return res.status(401).json({ message: 'Unauthorized' });
+
+    const rawParam = String(req.params.filename || '').trim();
+    const safeFilename = path.basename(rawParam);
+    if (!safeFilename || safeFilename !== rawParam || safeFilename.includes('..') || safeFilename.includes('\0')) {
+      return res.status(400).json({ message: 'Invalid media filename' });
+    }
+
+    const fullPath = path.resolve(assetsDir, safeFilename);
+    if (!fullPath.startsWith(assetsDir + path.sep) || !fs.existsSync(fullPath)) {
+      return res.status(404).json({ message: 'Media file not found' });
+    }
+
+    const relPath = `/assets/${safeFilename}`;
+    let authorized = false;
+    let downloadName = safeFilename;
+
+    const dm = await DirectMessage.findOne({ 'attachments.path': relPath }).lean();
+    if (dm) {
+      const convo = await Conversation.findById(dm.conversationId).lean();
+      const access = canAccessConversation(actor, convo);
+      if (!access.allowed) {
+        return res.status(403).json({ message: 'Forbidden: you do not have access to this conversation media' });
+      }
+      authorized = true;
+      const att = (dm.attachments || []).find((a) => a.path === relPath);
+      if (att?.name) downloadName = sanitizeFileBase(att.name);
+    } else {
+      const teamMsg = await Message.findOne({ 'attachments.path': relPath }).lean();
+      if (teamMsg) {
+        if (!actor.companyId || String(teamMsg.companyId) !== String(actor.companyId)) {
+          return res.status(403).json({ message: 'Forbidden: cross-company media access denied' });
+        }
+        authorized = true;
+        const att = (teamMsg.attachments || []).find((a) => a.path === relPath);
+        if (att?.name) downloadName = sanitizeFileBase(att.name);
+      }
+    }
+
+    if (!authorized) {
+      return res.status(403).json({ message: 'Forbidden: unauthorized media access' });
+    }
+
+    const stat = await fs.promises.stat(fullPath);
+    const asDownload = req.query.download === '1' || req.query.download === 'true';
+    res.type(path.extname(safeFilename) || 'application/octet-stream');
+    res.setHeader('Content-Length', String(stat.size));
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.setHeader(
+      'Content-Disposition',
+      `${asDownload ? 'attachment' : 'inline'}; filename="${downloadName.replace(/"/g, '')}"`
+    );
+
+    const stream = fs.createReadStream(fullPath);
+    stream.on('error', () => {
+      if (!res.headersSent) res.status(500).end();
+    });
+    stream.pipe(res);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

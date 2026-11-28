@@ -24,6 +24,7 @@ import '../../calendar/data/leave_service.dart';
 import '../../calendar/presentation/widgets/calendar_item_detail_dialog.dart';
 import '../../dashboard/data/dashboard_service.dart';
 import '../../dashboard/data/leave_model.dart';
+import '../../dashboard/presentation/dashboard_navigation.dart';
 import '../../messenger/data/communication_coordinator.dart';
 import '../../messenger/presentation/messenger_view.dart';
 import '../../notifications/data/notification_model.dart';
@@ -210,6 +211,14 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   @override
   void initState() {
     super.initState();
+    DashboardNavigation.navigateToPage = _navigateToCompanyPage;
+    if (DashboardNavigation.pendingTargetPage != null) {
+      final target = DashboardNavigation.pendingTargetPage!;
+      DashboardNavigation.pendingTargetPage = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _navigateToCompanyPage(target);
+      });
+    }
     _dashboardService = widget.dashboardService ?? DashboardService();
     _authService = widget.authService ?? AuthService();
     _notifications = NotificationStore.instance.items.toList();
@@ -272,6 +281,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
 
   @override
   void dispose() {
+    if (DashboardNavigation.navigateToPage == _navigateToCompanyPage) {
+      DashboardNavigation.navigateToPage = null;
+    }
     NotificationStore.instance.removeListener(_onNotifStoreChanged);
     _employeeSearchController.dispose();
     _attendanceSearchController.dispose();
@@ -10870,7 +10882,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                           sheetNav.pop();
 
                                           if (notif.isMessenger) {
-                                            _navigateToCompanyPage('messenger');
+                                            DashboardNavigation.handleNotificationTap(
+                                              notif.toJson(),
+                                            );
                                           } else if (notif.isTask ||
                                               notif.type.toLowerCase().contains(
                                                 'task',

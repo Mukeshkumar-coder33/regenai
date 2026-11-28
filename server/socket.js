@@ -157,74 +157,114 @@ function clearCallTimer(callId) {
   }
 }
 
-async function transitionCallSession(callId, toState, updates = {}) {
-  if (!callId) return { ok: false, reason: 'missing_call_id', call: null };
-  let memCall = activeCalls.get(callId);
-  let dbCall = null;
+const _callTransitionLocks = new Map();
 
-  if (!memCall) {
-    dbCall = await CallSession.findOne({ callId }).lean();
-    if (dbCall) {
-      memCall = {
-        callId: dbCall.callId,
-        correlationId: dbCall.correlationId,
-        callerId: dbCall.callerId,
-        callerName: dbCall.callerName,
-        recipientId: dbCall.recipientId,
-        recipientName: dbCall.recipientName,
-        companyId: dbCall.companyId,
-        mediaType: dbCall.mediaType,
-        offer: dbCall.offer,
-        answer: dbCall.answer,
-        state: dbCall.state,
-        actionStatus: dbCall.state === 'accepted' ? 'accepted' : 'pending',
-        startedAt: dbCall.initiatedAt ? new Date(dbCall.initiatedAt).getTime() : Date.now(),
-        expiresAt: dbCall.expiresAt ? new Date(dbCall.expiresAt).getTime() : Date.now() + CALL_RING_TIMEOUT_MS,
-      };
+async function withCallTransitionLock(callId, task) {
+  const prev = _callTransitionLocks.get(callId) || Promise.resolve();
+  let release;
+  const current = new Promise((resolve) => {
+    release = resolve;
+  });
+  const chained = prev.catch(() => {}).then(() => current);
+  _callTransitionLocks.set(callId, chained);
+  await prev.catch(() => {});
+  try {
+    return await task();
+  } finally {
+    release();
+    if (_callTransitionLocks.get(callId) === chained) {
+      _callTransitionLocks.delete(callId);
     }
   }
+}
 
-  if (!memCall) {
-    return { ok: false, reason: 'not_found', call: null };
+async function resolveDirectConversationId(userA, userB) {
+  try {
+    const a = normalizeId(userA);
+    const b = normalizeId(userB);
+    if (!a || !b || a === b) return '';
+    const convo = await Conversation.findOne({
+      isGroup: false,
+      participants: { $all: [a, b] },
+    })
+      .select('_id')
+      .lean();
+    return convo?._id ? convo._id.toString() : '';
+  } catch {
+    return '';
   }
+}
 
-  const fromState = memCall.state || 'initiated';
-  if (TERMINAL_CALL_STATES.has(fromState) || !isValidCallTransition(fromState, toState)) {
-    return { ok: false, reason: `invalid_transition:${fromState}->${toState}`, call: memCall };
-  }
+async function transitionCallSession(callId, toState, updates = {}) {
+  if (!callId) return { ok: false, reason: 'missing_call_id', call: null };
+  return withCallTransitionLock(callId, async () => {
+    let memCall = activeCalls.get(callId);
+    let dbCall = null;
 
-  Object.assign(memCall, updates, { state: toState });
-  if (toState === 'accepted') {
-    memCall.actionStatus = 'accepted';
-    memCall.acceptedAt = memCall.acceptedAt || new Date().toISOString();
-  }
-  if (TERMINAL_CALL_STATES.has(toState)) {
-    clearCallTimer(callId);
-    activeCalls.delete(callId);
-  } else {
-    activeCalls.set(callId, memCall);
-  }
+    if (!memCall) {
+      dbCall = await CallSession.findOne({ callId }).lean();
+      if (dbCall) {
+        memCall = {
+          callId: dbCall.callId,
+          correlationId: dbCall.correlationId,
+          callerId: dbCall.callerId,
+          callerName: dbCall.callerName,
+          recipientId: dbCall.recipientId,
+          recipientName: dbCall.recipientName,
+          companyId: dbCall.companyId,
+          mediaType: dbCall.mediaType,
+          offer: dbCall.offer,
+          answer: dbCall.answer,
+          state: dbCall.state,
+          actionStatus: dbCall.state === 'accepted' ? 'accepted' : 'pending',
+          startedAt: dbCall.initiatedAt ? new Date(dbCall.initiatedAt).getTime() : Date.now(),
+          expiresAt: dbCall.expiresAt ? new Date(dbCall.expiresAt).getTime() : Date.now() + CALL_RING_TIMEOUT_MS,
+        };
+      }
+    }
 
-  const dbSet = {
-    state: toState,
-    ...updates,
-    ...(toState === 'ringing' ? { ringingAt: new Date() } : {}),
-    ...(toState === 'accepted' ? { acceptedAt: new Date() } : {}),
-    ...(TERMINAL_CALL_STATES.has(toState) ? { endedAt: new Date() } : {}),
-  };
+    if (!memCall) {
+      return { ok: false, reason: 'not_found', call: null };
+    }
 
-  await CallSession.updateOne({ callId }, { $set: dbSet }).catch(() => {});
+    const fromState = memCall.state || 'initiated';
+    if (TERMINAL_CALL_STATES.has(fromState) || !isValidCallTransition(fromState, toState)) {
+      return { ok: false, reason: `invalid_transition:${fromState}->${toState}`, call: memCall };
+    }
 
-  logCommEvent('call:state_transition', {
-    callId,
-    correlationId: memCall.correlationId,
-    from: fromState,
-    to: toState,
-    callerId: memCall.callerId,
-    recipientId: memCall.recipientId,
+    Object.assign(memCall, updates, { state: toState });
+    if (toState === 'accepted') {
+      memCall.actionStatus = 'accepted';
+      memCall.acceptedAt = memCall.acceptedAt || new Date().toISOString();
+    }
+    if (TERMINAL_CALL_STATES.has(toState)) {
+      clearCallTimer(callId);
+      activeCalls.delete(callId);
+    } else {
+      activeCalls.set(callId, memCall);
+    }
+
+    const dbSet = {
+      state: toState,
+      ...updates,
+      ...(toState === 'ringing' ? { ringingAt: new Date() } : {}),
+      ...(toState === 'accepted' ? { acceptedAt: new Date() } : {}),
+      ...(TERMINAL_CALL_STATES.has(toState) ? { endedAt: new Date() } : {}),
+    };
+
+    await CallSession.updateOne({ callId }, { $set: dbSet }).catch(() => {});
+
+    logCommEvent('call:state_transition', {
+      callId,
+      correlationId: memCall.correlationId,
+      from: fromState,
+      to: toState,
+      callerId: memCall.callerId,
+      recipientId: memCall.recipientId,
+    });
+
+    return { ok: true, call: memCall, previousState: fromState };
   });
-
-  return { ok: true, call: memCall, previousState: fromState };
 }
 
 function scheduleCallTimeout(callId) {
@@ -275,23 +315,6 @@ function scheduleCallTimeout(callId) {
         wasPending: true,
       });
 
-      const missedNotif = new Notification({
-        id: `missed-${Date.now()}-${callId}`,
-        companyId: call.companyId || null,
-        userId: call.recipientId,
-        title: `Missed ${call.mediaType === 'video' ? 'Video' : 'Voice'} Call`,
-        message: `${call.callerName || 'Someone'} called you`,
-        type: 'missed_call',
-        senderId: call.callerId,
-        senderName: call.callerName || 'Someone',
-        callId,
-        metadata: { mediaType: call.mediaType || 'voice', callId, reason: 'timeout' },
-        createdAt: new Date().toISOString(),
-        read: false,
-      });
-      await missedNotif.save().catch(() => {});
-      broadcastToRooms(recipientRooms, 'notification:new', missedNotif);
-
       await Promise.all([
         sendFcmPushToUsers({
           userIds: Array.from(recipientRooms).map((r) => r.replace(/^user:/, '')),
@@ -308,23 +331,56 @@ function scheduleCallTimeout(callId) {
             mediaType: call.mediaType || 'voice',
           },
         }),
-        sendFcmPushToUsers({
-          userIds: Array.from(recipientRooms).map((r) => r.replace(/^user:/, '')),
-          title: `Missed ${call.mediaType === 'video' ? 'Video' : 'Voice'} Call`,
-          body: `${call.callerName || 'Someone'} called you`,
-          channelId: 'regen_missed_calls_v2',
-          highPriority: true,
-          dataOnly: true,
-          correlationId: call.correlationId,
-          data: {
-            type: 'missed_call',
-            callId,
-            callerId: call.callerId,
-            callerName: call.callerName || 'Someone',
-            mediaType: call.mediaType || 'voice',
-          },
-        }),
       ]);
+
+      const conversationId = await resolveDirectConversationId(call.callerId, call.recipientId);
+      const missedNotifId = `missed-${callId}`;
+      const missedNotifData = {
+        id: missedNotifId,
+        companyId: call.companyId || null,
+        userId: call.recipientId,
+        title: `Missed ${call.mediaType === 'video' ? 'Video' : 'Voice'} Call`,
+        message: `${call.callerName || 'Someone'} called you`,
+        type: 'missed_call',
+        senderId: call.callerId,
+        senderName: call.callerName || 'Someone',
+        callId,
+        conversationId,
+        metadata: {
+          mediaType: call.mediaType || 'voice',
+          callId,
+          callerId: call.callerId,
+          conversationId,
+          reason: 'timeout',
+        },
+        createdAt: new Date().toISOString(),
+        read: false,
+      };
+      const missedNotif = await Notification.findOneAndUpdate(
+        { id: missedNotifId },
+        { $setOnInsert: missedNotifData },
+        { upsert: true, new: true }
+      ).catch(() => new Notification(missedNotifData));
+      broadcastToRooms(recipientRooms, 'notification:new', missedNotif);
+
+      await sendFcmPushToUsers({
+        userIds: Array.from(recipientRooms).map((r) => r.replace(/^user:/, '')),
+        title: missedNotifData.title,
+        body: missedNotifData.message,
+        channelId: 'regen_missed_calls_v2',
+        highPriority: true,
+        dataOnly: false,
+        correlationId: call.correlationId,
+        data: {
+          type: 'missed_call',
+          notificationId: missedNotifId,
+          callId,
+          callerId: call.callerId,
+          callerName: call.callerName || 'Someone',
+          mediaType: call.mediaType || 'voice',
+          conversationId,
+        },
+      });
     } catch (err) {
       logCommEvent('call:timeout_error', { callId, error: err.message });
     }
@@ -528,11 +584,17 @@ export function initSocketIO(httpServer) {
     };
 
     // ── Active Conversation Tracking ───────────────────────────────
-    socket.on('dm:join-conversation', (data) => {
-      const convId = data?.conversationId ? String(data.conversationId) : null;
-      if (convId) {
+    socket.on('dm:join-conversation', async (data) => {
+      try {
+        const convId = data?.conversationId ? String(data.conversationId) : null;
+        if (!convId) return;
+        const convo = await Conversation.findById(convId).select('participants companyId isGroup scope').lean();
+        if (!convo) return;
+        const access = canAccessConversation(socket.user, convo);
+        if (!access.allowed) return;
         socketActiveConversations.set(socket.id, { userId: String(userId), conversationId: convId });
-      }
+        socket.join(`dm:${convId}`);
+      } catch (_) {}
     });
 
     socket.on('dm:leave-conversation', (data) => {
@@ -540,6 +602,9 @@ export function initSocketIO(httpServer) {
       const current = socketActiveConversations.get(socket.id);
       if (current && (!convId || current.conversationId === convId)) {
         socketActiveConversations.delete(socket.id);
+      }
+      if (convId) {
+        socket.leave(`dm:${convId}`);
       }
     });
 
@@ -549,16 +614,19 @@ export function initSocketIO(httpServer) {
         if (!convId) return;
         const convo = await Conversation.findById(convId);
         if (!convo) return;
-        await DirectMessage.updateMany(
-          { conversationId: convo._id, readBy: { $ne: String(userId) } },
+        const access = canAccessConversation(socket.user, convo);
+        if (!access.allowed) return;
+
+        const upd = await DirectMessage.updateMany(
+          { conversationId: convo._id, senderId: { $ne: String(userId) }, readBy: { $ne: String(userId) } },
           { $addToSet: { readBy: String(userId) } }
         );
-        const unique = new Set((convo.participants || []).map(normalizeId).filter(Boolean));
-        for (const pid of unique) {
-          emitToUser(pid, 'dm:change', {
+        if (upd?.modifiedCount > 0) {
+          await emitToParticipantsAndRoom(convo.participants, `dm:${convo._id.toString()}`, 'dm:change', {
             action: 'read',
             conversationId: convo._id.toString(),
             userId: String(userId),
+            readBy: [String(userId)],
           });
         }
       } catch (err) {
@@ -603,13 +671,19 @@ export function initSocketIO(httpServer) {
           return;
         }
 
-        // Busy check: if recipient already has an active accepted call, fail fast with busy
+        // Busy check: if recipient already has an active accepted or live ringing call, fail fast with busy
         const busyCall = await CallSession.findOne({
-          state: 'accepted',
-          expiresAt: { $gt: new Date(Date.now() - 3600000) },
           $or: [
-            { callerId: targetActor.userId },
-            { recipientId: targetActor.userId },
+            { state: 'accepted', expiresAt: { $gt: new Date(Date.now() - 3600000) } },
+            { state: { $in: ['initiated', 'ringing'] }, expiresAt: { $gt: new Date() } },
+          ],
+          $and: [
+            {
+              $or: [
+                { callerId: targetActor.userId },
+                { recipientId: targetActor.userId },
+              ],
+            },
           ],
         }).lean();
 
@@ -648,6 +722,8 @@ export function initSocketIO(httpServer) {
           companyId: socket.user.companyId || targetActor.companyId || null,
           mediaType: callMediaType,
           offer,
+          callerCandidates: [],
+          recipientCandidates: [],
           state: initialState,
           actionStatus: 'pending',
           startedAt: now,
@@ -666,6 +742,8 @@ export function initSocketIO(httpServer) {
           mediaType: callMediaType,
           state: initialState,
           offer,
+          callerCandidates: [],
+          recipientCandidates: [],
           initiatedAt: new Date(now),
           ...(initialState === 'ringing' ? { ringingAt: new Date(now) } : {}),
           expiresAt,
@@ -838,6 +916,8 @@ export function initSocketIO(httpServer) {
               ? {
                   answer: callSnapshot.answer || null,
                   offer: callSnapshot.offer || null,
+                  callerCandidates: callSnapshot.callerCandidates || [],
+                  recipientCandidates: callSnapshot.recipientCandidates || [],
                   callerId: callSnapshot.callerId,
                   callerName: callSnapshot.callerName,
                   recipientId: callSnapshot.recipientId,
@@ -890,8 +970,9 @@ export function initSocketIO(httpServer) {
           { $set: { actionStatus: 'accepted', read: true } }
         ).catch(() => {});
 
+        const authCallerId = existingDb.callerId || callerId;
         const [callerRooms, receiverRooms] = await Promise.all([
-          resolveUserRooms(callerId),
+          resolveUserRooms(authCallerId),
           resolveUserRooms(userId),
         ]);
         const acceptedByDeviceId = String(deviceId || '');
@@ -901,6 +982,7 @@ export function initSocketIO(httpServer) {
           correlationId: res.call.correlationId,
           recipientId: userId,
           answer,
+          recipientCandidates: res.call.recipientCandidates || [],
           acceptedBySocketId: socket.id,
           acceptedByDeviceId,
         });
@@ -912,6 +994,7 @@ export function initSocketIO(httpServer) {
           state: 'accepted',
           recipientId: userId,
           answer,
+          recipientCandidates: res.call.recipientCandidates || [],
           acceptedBySocketId: socket.id,
           acceptedByDeviceId,
         });
@@ -1008,9 +1091,24 @@ export function initSocketIO(httpServer) {
         if (!targetId || !callId) return;
 
         // Validate call isn't already terminal (prevent late signaling resurrecting expired calls)
-        const existing = activeCalls.get(callId) || (await CallSession.findOne({ callId }).select('state').lean());
+        const existing = activeCalls.get(callId) || (await CallSession.findOne({ callId }).lean());
         if (existing && TERMINAL_CALL_STATES.has(existing.state)) {
           return;
+        }
+
+        // Buffer trickle ICE candidates on the call session so waking/reconnecting peers never lose candidates
+        if (signal && signal.candidate && existing) {
+          const isCallerSignal = String(existing.callerId) === String(userId);
+          const candField = isCallerSignal ? 'callerCandidates' : 'recipientCandidates';
+          if (Array.isArray(existing[candField])) {
+            existing[candField].push(signal.candidate);
+          } else {
+            existing[candField] = [signal.candidate];
+          }
+          CallSession.updateOne(
+            { callId },
+            { $push: { [candField]: signal.candidate } }
+          ).catch(() => {});
         }
 
         const targetActor = await resolveMessengerActor(targetId);
@@ -1082,8 +1180,21 @@ export function initSocketIO(httpServer) {
         if (wasPending && otherPartyId) {
           const callerName = socket.user?.name || socket.user?.username || 'Someone';
           const mediaType = existingCall?.mediaType || 'voice';
-          const missedNotif = new Notification({
-            id: `missed-${Date.now()}-${callId}`,
+          const recipientIds = Array.from(otherRooms).map((r) => r.replace(/^user:/, ''));
+
+          await sendFcmPushToUsers({
+            userIds: recipientIds,
+            dataOnly: true,
+            highPriority: true,
+            ttlSeconds: 20,
+            correlationId: res.call.correlationId,
+            data: { type: 'call_cancelled', callId, reason: 'cancelled' },
+          }).catch(() => {});
+
+          const conversationId = await resolveDirectConversationId(userId, existingCall.recipientId);
+          const missedNotifId = `missed-${callId}`;
+          const missedNotifData = {
+            id: missedNotifId,
             companyId: socket.user.companyId || null,
             userId: existingCall.recipientId,
             title: `Missed ${mediaType === 'video' ? 'Video' : 'Voice'} Call`,
@@ -1092,36 +1203,34 @@ export function initSocketIO(httpServer) {
             senderId: userId,
             senderName: callerName,
             callId,
-            metadata: { mediaType, callId },
+            conversationId,
+            metadata: { mediaType, callId, callerId: userId, conversationId },
             createdAt: new Date().toISOString(),
             read: false,
-          });
-          await missedNotif.save().catch(() => {});
+          };
+          const missedNotif = await Notification.findOneAndUpdate(
+            { id: missedNotifId },
+            { $setOnInsert: missedNotifData },
+            { upsert: true, new: true }
+          ).catch(() => new Notification(missedNotifData));
           broadcastToRooms(otherRooms, 'notification:new', missedNotif);
 
-          const recipientIds = Array.from(otherRooms).map((r) => r.replace(/^user:/, ''));
-          sendFcmPushToUsers({
+          await sendFcmPushToUsers({
             userIds: recipientIds,
-            dataOnly: true,
-            highPriority: true,
-            ttlSeconds: 20,
-            correlationId: res.call.correlationId,
-            data: { type: 'call_cancelled', callId, reason: 'cancelled' },
-          }).catch(() => {});
-          sendFcmPushToUsers({
-            userIds: recipientIds,
-            title: `Missed ${mediaType === 'video' ? 'Video' : 'Voice'} Call`,
-            body: `${callerName} called you`,
+            title: missedNotifData.title,
+            body: missedNotifData.message,
             channelId: 'regen_missed_calls_v2',
             highPriority: true,
-            dataOnly: true,
+            dataOnly: false,
             correlationId: res.call.correlationId,
             data: {
               type: 'missed_call',
+              notificationId: missedNotifId,
               callId,
               callerId: userId,
               callerName,
               mediaType,
+              conversationId,
             },
           }).catch(() => {});
         }
@@ -1489,4 +1598,20 @@ export async function emitToUser(userId, event, payload = {}) {
   if (!io || !userId) return;
   const targetRooms = await resolveUserRooms(userId);
   broadcastToRooms(targetRooms, event, payload);
+}
+
+/**
+ * Emit once across all participant user-alias rooms AND an optional conversation room
+ * using Socket.IO's multi-room chain so multi-room sockets receive only ONE packet.
+ */
+export async function emitToParticipantsAndRoom(participants, roomName, event, payload = {}) {
+  if (!io) return;
+  const roomSet = new Set();
+  if (roomName) roomSet.add(roomName);
+  const unique = Array.from(new Set((participants || []).map(normalizeId).filter(Boolean)));
+  const perUserRooms = await Promise.all(unique.map((pid) => resolveUserRooms(pid)));
+  for (const rSet of perUserRooms) {
+    for (const r of rSet) roomSet.add(r);
+  }
+  broadcastToRooms(roomSet, event, payload);
 }

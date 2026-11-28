@@ -409,8 +409,26 @@ async function run() {
       offer: { sdp: 'sdp', type: 'offer' },
     });
     await receiverSock1.waitFor('call:incoming', (d) => d.callId === activeCallId);
+    callerSock.emit('call:signal', {
+      targetUserId: receiverId,
+      callId: activeCallId,
+      signal: { candidate: { candidate: 'candidate:1 1 UDP 2122252543 192.168.1.5 50000 typ host', sdpMid: '0', sdpMLineIndex: 0 } },
+    });
+    await new Promise((r) => setTimeout(r, 80));
+    const activeMeta = await receiverSock1.emitAck('call:get-active', { callId: activeCallId });
+    assert(
+      Array.isArray(activeMeta?.callerCandidates) && activeMeta.callerCandidates.length >= 1,
+      'call:get-active returns buffered caller ICE candidates for background/wakeup recovery'
+    );
+
     await receiverSock1.emitAck('call:accept', { callId: activeCallId, callerId, answer: { sdp: 'ans', type: 'answer' } });
     await callerSock.waitFor('call:accepted', (d) => d.callId === activeCallId);
+    receiverSock1.emit('call:signal', {
+      targetUserId: callerId,
+      callId: activeCallId,
+      signal: { candidate: { candidate: 'candidate:2 1 UDP 2122252543 192.168.1.6 50001 typ host', sdpMid: '0', sdpMLineIndex: 0 } },
+    });
+    await new Promise((r) => setTimeout(r, 80));
 
     const busyCallId = `call-busy2-${suffix}`;
     createdCallIds.push(busyCallId);
@@ -431,8 +449,10 @@ async function run() {
     assert(
       callerSyncActive?.ok &&
         callerSyncActive?.state === 'accepted' &&
-        callerSyncActive?.answer?.sdp === 'ans',
-      'call:sync returns authoritative SDP answer to caller for accepted call recovery'
+        callerSyncActive?.answer?.sdp === 'ans' &&
+        Array.isArray(callerSyncActive?.recipientCandidates) &&
+        callerSyncActive.recipientCandidates.length >= 1,
+      'call:sync returns authoritative SDP answer and buffered ICE candidates to caller for accepted call recovery'
     );
 
     // End activeCallId and verify terminal immutability
@@ -467,11 +487,33 @@ async function run() {
       recoveredIncoming?.callId === offlineCallId && syncResp?.state === 'ringing',
       'Reconnected receiver automatically receives pending incoming call & call:sync transitions to ringing'
     );
+    const ringingBusyCallId = `call-ring-busy-${suffix}`;
+    createdCallIds.push(ringingBusyCallId);
+    const ringingBusyAck = await thirdSock.emitAck('call:initiate', {
+      callId: ringingBusyCallId,
+      recipientId: receiverId,
+      mediaType: 'voice',
+      offer: { sdp: 'sdp-busy', type: 'offer' },
+    });
+    assert(
+      ringingBusyAck?.ok === false && ringingBusyAck?.reason === 'busy',
+      'Calling a participant with an active ringing call fails fast with reason="busy"'
+    );
+
     callerSock.emit('call:end', { targetUserId: receiverId, callId: offlineCallId });
     await reconnectedRecv.waitFor('call:cancelled', (d) => d.callId === offlineCallId);
+    const missedNotifSock = await reconnectedRecv.waitFor(
+      'notification:new',
+      (d) => d?.type === 'missed_call' && d?.callId === offlineCallId
+    );
 
     const cancelDb = await CallSession.findOne({ callId: offlineCallId }).lean();
+    const missedDb = await Notification.findOne({ id: `missed-${offlineCallId}` }).lean();
     assert(cancelDb?.state === 'cancelled', 'Cancelled pending call persists authoritative state="cancelled" in MongoDB');
+    assert(
+      Boolean(missedNotifSock && missedDb && missedDb.type === 'missed_call' && missedDb.senderId === callerId),
+      'Cancelled pending call emits & persists deterministic missed-${callId} notification for receiver'
+    );
 
     // 5. Real-time DM & per-socket active-conversation tracking
     console.log('\n5. Direct Messages & Multi-Device Active-Chat Notification Suppression:');
@@ -497,6 +539,7 @@ async function run() {
 
       reconnectedRecv.clearEvents('dm:change');
       reconnectedRecv.clearEvents('notification:new');
+      callerSock.clearEvents('dm:change');
       await fetch(`${LOCAL_HTTP}/api/dm/conversations/${createdConvId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${callerJwt}` },
@@ -505,7 +548,50 @@ async function run() {
       const gotDmWhileActive = await reconnectedRecv.waitFor('dm:change', (d) => d?.action === 'create' && d?.message?.content === 'hello-active-check');
       await new Promise((r) => setTimeout(r, 250));
       const suppressedNotif = reconnectedRecv.events.find((e) => e.event === 'notification:new' && e.data?.conversationId === createdConvId);
+      const extraCreateDupCount = reconnectedRecv.events.filter((e) => e.event === 'dm:change' && e.data?.action === 'create' && e.data?.message?.content === 'hello-active-check').length;
       assert(Boolean(gotDmWhileActive) && !suppressedNotif, 'Second device disconnect does not wipe primary active-conversation suppression');
+      assert(extraCreateDupCount === 0, 'dm:change create is delivered once without room+participant duplication');
+      assert(
+        Array.isArray(gotDmWhileActive?.message?.readBy) &&
+          gotDmWhileActive.message.readBy.length === 1 &&
+          gotDmWhileActive.message.readBy[0] === callerId,
+        'Server does NOT pre-mark message read before receiver client acknowledges rendering it'
+      );
+      reconnectedRecv.emit('dm:read', { conversationId: createdConvId });
+      const readReceiptForCaller = await callerSock.waitFor('dm:change', (d) => d?.action === 'read' && d?.conversationId === createdConvId);
+      assert(readReceiptForCaller?.userId === receiverId, 'Receiver explicit dm:read delivers blue-tick read receipt to caller');
+
+      // Verify x-skip-auto-read: 1 (Flutter REST fetch) preserves unread state, whereas Chrome-style GET /messages marks read & emits read receipt
+      callerSock.clearEvents('dm:change');
+      await fetch(`${LOCAL_HTTP}/api/dm/conversations/${createdConvId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${callerJwt}` },
+        body: JSON.stringify({ content: 'hello-chrome-read-check', type: 'text' }),
+      });
+      await reconnectedRecv.waitFor('dm:change', (d) => d?.action === 'create' && d?.message?.content === 'hello-chrome-read-check');
+      const skipReadResp = await fetch(`${LOCAL_HTTP}/api/dm/conversations/${createdConvId}/messages`, {
+        headers: { Authorization: `Bearer ${receiverJwt}`, 'x-skip-auto-read': '1' },
+      });
+      const skipReadList = await skipReadResp.json();
+      const targetSkipMsg = Array.isArray(skipReadList) ? skipReadList.find((m) => m.content === 'hello-chrome-read-check') : null;
+      assert(
+        Array.isArray(targetSkipMsg?.readBy) && !targetSkipMsg.readBy.includes(receiverId),
+        'GET /messages with x-skip-auto-read: 1 does NOT prematurely mark unread messages read'
+      );
+
+      callerSock.clearEvents('dm:change');
+      const chromeReadResp = await fetch(`${LOCAL_HTTP}/api/dm/conversations/${createdConvId}/messages`, {
+        headers: { Authorization: `Bearer ${receiverJwt}` },
+      });
+      const chromeReadList = await chromeReadResp.json();
+      const targetChromeMsg = Array.isArray(chromeReadList) ? chromeReadList.find((m) => m.content === 'hello-chrome-read-check') : null;
+      const chromeReadReceipt = await callerSock.waitFor('dm:change', (d) => d?.action === 'read' && d?.conversationId === createdConvId);
+      assert(
+        Array.isArray(targetChromeMsg?.readBy) &&
+          targetChromeMsg.readBy.includes(receiverId) &&
+          chromeReadReceipt?.userId === receiverId,
+        'Chrome-style GET /messages (active thread fetch) marks read and delivers blue-tick read receipt to Flutter sender'
+      );
 
       // Clear active conversation -> next DM generates both dm:change AND notification:new
       reconnectedRecv.emit('dm:leave-conversation', { conversationId: createdConvId });
@@ -556,8 +642,26 @@ async function run() {
       const readAllEv = await reconnectedRecv.waitFor('notification:read_all', () => true);
       assert(Boolean(readAllEv), 'PUT /read-all emits notification:read_all for live badge synchronization');
 
-      // Remove temporary uploaded file on disk if created
+      // Authenticated Media Download Security & Integrity Tests (Feature 4)
       if (uploadJson?.path) {
+        const fname = encodeURIComponent(uploadJson.path.split('/').pop());
+        const unauthDl = await fetch(`${LOCAL_HTTP}/api/dm/media/${fname}?download=1`);
+        const nonParticipantDl = await fetch(`${LOCAL_HTTP}/api/dm/media/${fname}?download=1`, {
+          headers: { Authorization: `Bearer ${thirdJwt}` },
+        });
+        const authDl = await fetch(`${LOCAL_HTTP}/api/dm/media/${fname}?download=1`, {
+          headers: { Authorization: `Bearer ${receiverJwt}` },
+        });
+        const authBody = await authDl.text();
+        assert(
+          unauthDl.status === 401 &&
+            nonParticipantDl.status === 403 &&
+            authDl.status === 200 &&
+            String(authDl.headers.get('content-disposition') || '').includes('attachment') &&
+            authBody === 'fake-mp4-stream',
+          'GET /api/dm/media/:filename enforces JWT auth + conversation isolation and streams intact media bytes'
+        );
+
         try {
           const fsMod = await import('fs');
           const pathMod = await import('path');
@@ -566,7 +670,7 @@ async function run() {
         } catch (_) {}
       }
 
-      // Group call meeting:get-active wakeup check
+      // Group call meeting:get-active + join + signal relay check
       const mtgId = `mtg-test-${suffix}`;
       callerSock.emit('meeting:start', {
         meetingId: mtgId,
@@ -576,11 +680,27 @@ async function run() {
       });
       const mtgInvite = await reconnectedRecv.waitFor('meeting:started', (d) => d?.meetingId === mtgId);
       const mtgActive = await reconnectedRecv.emitAck('meeting:get-active', { meetingId: mtgId });
+      callerSock.emit('meeting:join', { meetingId: mtgId, userInfo: { userId: callerId, username: 'Caller' } });
+      await new Promise((r) => setTimeout(r, 80));
+      reconnectedRecv.emit('meeting:join', { meetingId: mtgId, userInfo: { userId: receiverId, username: 'Receiver' } });
+      const existingUsersEv = await reconnectedRecv.waitFor('meeting:existing-users', (d) => d?.meetingId === mtgId);
+      reconnectedRecv.clearEvents('meeting:signal');
+      callerSock.emit('meeting:signal', {
+        meetingId: mtgId,
+        targetUserId: receiverId,
+        signal: { type: 'offer', offer: { type: 'offer', sdp: 'v=0\r\nmock-group-offer' } },
+      });
+      const relayedMtgSig = await reconnectedRecv.waitFor('meeting:signal', (d) => d?.meetingId === mtgId && d?.fromUserId === callerId);
       assert(
-        Boolean(mtgInvite) && mtgActive?.meetingId === mtgId && mtgActive?.mediaType === 'video',
-        'meeting:get-active returns active group call metadata for background/terminated wakeup'
+        Boolean(mtgInvite) &&
+          mtgActive?.meetingId === mtgId &&
+          mtgActive?.mediaType === 'video' &&
+          Array.isArray(existingUsersEv?.users) &&
+          relayedMtgSig?.signal?.type === 'offer',
+        'meeting:get-active returns metadata and group call join/signal relay works cleanly'
       );
       callerSock.emit('meeting:leave', { meetingId: mtgId });
+      reconnectedRecv.emit('meeting:leave', { meetingId: mtgId });
     }
 
     // 6. FCM device-token cross-account cleanup & diagnostics endpoint

@@ -19,6 +19,8 @@ class MessengerSoundService {
 
   bool _isRinging = false;
   String? _activeCallId;
+  int _ringSessionToken = 0;
+  final Set<String> _suppressedCallIds = <String>{};
   Timer? _ringtoneLoopTimer;
 
   static Uint8List? _cachedRingtoneWav;
@@ -81,9 +83,11 @@ class MessengerSoundService {
   }
 
   /// Start playing the incoming call ringtone on repeat for [callId].
-  /// Safe against duplicate calls: never starts two parallel ringtones.
+  /// Safe against duplicate calls: never starts two parallel ringtones or restarts stopped calls.
   Future<void> startIncomingCallRingtone({String? callId}) async {
-    await NotificationPreferences.instance.ensureLoaded();
+    if (callId != null && callId.isNotEmpty && _suppressedCallIds.contains(callId)) {
+      return;
+    }
     if (_isRinging) {
       if (callId != null && _activeCallId == callId) return;
       return;
@@ -91,19 +95,37 @@ class MessengerSoundService {
 
     _isRinging = true;
     _activeCallId = callId;
+    final int myToken = ++_ringSessionToken;
+    await NotificationPreferences.instance.ensureLoaded();
+    if (!_isRinging || myToken != _ringSessionToken) {
+      return;
+    }
+    if (callId != null && callId.isNotEmpty && _suppressedCallIds.contains(callId)) {
+      _isRinging = false;
+      _activeCallId = null;
+      return;
+    }
     CommunicationDiagnostics.instance.log('ringtone:start', {'callId': callId ?? 'unknown'});
 
     try {
       final player = _getRingtonePlayer();
       if (player == null) return;
       await player.setReleaseMode(ReleaseMode.stop);
+      if (!_isRinging || myToken != _ringSessionToken) {
+        await player.stop().catchError((_) {});
+        return;
+      }
       final wav = _getRingtoneWav();
 
       await player.play(BytesSource(wav));
+      if (!_isRinging || myToken != _ringSessionToken) {
+        await player.stop().catchError((_) {});
+        return;
+      }
 
       _ringtoneLoopTimer?.cancel();
       _ringtoneLoopTimer = Timer.periodic(const Duration(milliseconds: 3400), (timer) async {
-        if (!_isRinging) {
+        if (!_isRinging || myToken != _ringSessionToken) {
           timer.cancel();
           return;
         }
@@ -116,12 +138,20 @@ class MessengerSoundService {
     }
   }
 
-  /// Immediately stops any active call ringtone.
-  Future<void> stopRingtone({String? reason}) async {
+  /// Immediately stops any active call ringtone and suppresses replay for [suppressCallId].
+  Future<void> stopRingtone({String? reason, String? suppressCallId}) async {
     final wasRinging = _isRinging;
     final prevCallId = _activeCallId;
+    final targetSuppress = suppressCallId ?? _activeCallId;
+    if (targetSuppress != null && targetSuppress.isNotEmpty) {
+      _suppressedCallIds.add(targetSuppress);
+      if (_suppressedCallIds.length > 200) {
+        _suppressedCallIds.remove(_suppressedCallIds.first);
+      }
+    }
     _isRinging = false;
     _activeCallId = null;
+    _ringSessionToken++;
     _ringtoneLoopTimer?.cancel();
     _ringtoneLoopTimer = null;
     try {

@@ -6,9 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../../../core/theme/celadon_colors.dart';
+import '../../../core/utils/json_normalizer.dart';
 import '../../../core/widgets/regen_page_header.dart';
 import '../../auth/data/user_model.dart';
 import '../../dashboard/data/dashboard_service.dart';
+import '../../dashboard/presentation/dashboard_navigation.dart';
 import '../data/e2e_crypto_service.dart';
 import '../data/media_download_service.dart';
 import '../data/messenger_model.dart';
@@ -85,6 +87,19 @@ class _MessengerViewState extends State<MessengerView> {
   String get _myUserId =>
       widget.user.userId.isNotEmpty ? widget.user.userId : widget.user.id;
 
+  Set<String> get _myIdentitySet => <String>{
+        _myUserId.trim().toLowerCase(),
+        widget.user.userId.trim().toLowerCase(),
+        widget.user.id.trim().toLowerCase(),
+        widget.user.username.trim().toLowerCase(),
+      }..removeWhere((s) => s.isEmpty);
+
+  bool _isFromMe(String? rawId) {
+    final normalized = (rawId ?? '').trim().toLowerCase();
+    if (normalized.isEmpty) return false;
+    return _myIdentitySet.contains(normalized);
+  }
+
   bool get _showTeamChannelTab => !widget.user.isSuperAdmin;
 
   bool get _isInChatOrTeam =>
@@ -102,6 +117,7 @@ class _MessengerViewState extends State<MessengerView> {
     MessengerStore.instance.init(widget.user);
     WebRtcCallManager.instance.bindUser(widget.user);
     MessengerSocketService.instance.connect(user: widget.user);
+    DashboardNavigation.onOpenConversation = _openConversationFromPayload;
     _activeTab = 0;
     _scrollController.addListener(_handleScroll);
     _attachSocketListeners();
@@ -133,17 +149,20 @@ class _MessengerViewState extends State<MessengerView> {
     if (_activeConversation == null) return;
     final convId = _activeConversation!.conversationId;
     final hasUnread = _directMessages.any(
-      (m) => m.senderId != _myUserId && !m.readBy.contains(_myUserId),
+      (m) => !_isFromMe(m.senderId) && !m.readBy.any(_isFromMe),
     );
     if (!hasUnread) return;
 
     setState(() {
       _directMessages = _directMessages.map((m) {
-        if (!m.readBy.contains(_myUserId)) {
+        if (!m.readBy.any(_isFromMe)) {
           return m.copyWith(readBy: [...m.readBy, _myUserId]);
         }
         return m;
       }).toList();
+      _conversations = _conversations
+          .map((c) => c.conversationId == convId ? c.copyWith(unreadCount: 0) : c)
+          .toList();
     });
 
     MessengerSocketService.instance.emit('dm:read', {
@@ -195,6 +214,9 @@ class _MessengerViewState extends State<MessengerView> {
     }
     _socketSubs.clear();
     _messageController.dispose();
+    if (DashboardNavigation.onOpenConversation == _openConversationFromPayload) {
+      DashboardNavigation.onOpenConversation = null;
+    }
     _searchController.dispose();
     _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
@@ -317,105 +339,226 @@ class _MessengerViewState extends State<MessengerView> {
   // REAL-TIME SOCKET & DATA LOADING
   // ═══════════════════════════════════════════════════════════════
 
+  int _compareMessageTimestamps(DirectMessageModel a, DirectMessageModel b) {
+    final dtA = DateTime.tryParse(a.timestamp);
+    final dtB = DateTime.tryParse(b.timestamp);
+    if (dtA != null && dtB != null) {
+      return dtA.compareTo(dtB);
+    }
+    return a.timestamp.compareTo(b.timestamp);
+  }
+
+  List<DirectMessageModel> _mergeDirectMessages(
+    List<DirectMessageModel> base,
+    List<DirectMessageModel> incoming,
+  ) {
+    final merged = List<DirectMessageModel>.from(base);
+    for (final msg in incoming) {
+      final idx = merged.indexWhere((m) =>
+          (msg.id.isNotEmpty && m.id == msg.id) ||
+          (m.id.startsWith('local-dm-') &&
+              (_isFromMe(m.senderId) && _isFromMe(msg.senderId) || m.senderId == msg.senderId) &&
+              m.content == msg.content));
+      if (idx >= 0) {
+        final prev = merged[idx];
+        final preservedPlain = msg.decryptedContent ??
+            (prev.decryptedContent != null && prev.content == msg.content
+                ? prev.decryptedContent
+                : null);
+        final mergedReadBy = <String>{...prev.readBy, ...msg.readBy}.toList();
+        merged[idx] = msg.copyWith(
+          decryptedContent: preservedPlain,
+          readBy: mergedReadBy,
+        );
+      } else {
+        merged.add(msg);
+      }
+    }
+    merged.sort(_compareMessageTimestamps);
+    return merged;
+  }
+
   void _attachSocketListeners() {
     final socket = MessengerSocketService.instance;
     _socketSubs.addAll([
       socket.onConnectionChange.listen((connected) {
-        if (mounted) setState(() => _socketConnected = connected);
+        if (!mounted) return;
+        setState(() => _socketConnected = connected);
+        if (connected) {
+          if (_activeConversation != null) {
+            socket.emit('dm:join-conversation', {
+              'conversationId': _activeConversation!.conversationId,
+            });
+            _refreshActiveDmMessages();
+          }
+          if (_activeTab == 1 && _showTeamChannelTab) {
+            _refreshTeamMessages();
+          }
+          _refreshConversations();
+        }
       }),
-      socket.onMessageChange.listen((_) {
-        if (_showTeamChannelTab) _refreshTeamMessages();
+      socket.onMessageChange.listen((payload) {
+        if (!_showTeamChannelTab || !mounted) return;
+        final rawMsg = payload['message'];
+        if (payload['action'] == 'create' && rawMsg is Map) {
+          final teamMsg = TeamMessageModel.fromJson(normalizeJsonMap(rawMsg));
+          if (teamMsg.id.isNotEmpty) {
+            setState(() {
+              final idx = _teamMessages.indexWhere(
+                (m) =>
+                    m.id == teamMsg.id ||
+                    (m.messageId.isNotEmpty && m.messageId == teamMsg.messageId) ||
+                    (m.id.startsWith('local-') &&
+                        m.senderId == teamMsg.senderId &&
+                        m.content == teamMsg.content),
+              );
+              if (idx >= 0) {
+                _teamMessages[idx] = teamMsg;
+              } else {
+                _teamMessages.add(teamMsg);
+              }
+            });
+            if (_isAtBottom || teamMsg.senderId == _myUserId) {
+              _scrollToBottom();
+            }
+            return;
+          }
+        }
+        _refreshTeamMessages();
       }),
       socket.onDmChange.listen((payload) async {
-        final convId = (payload['conversationId'] ?? '').toString();
-        if (_activeConversation != null &&
-            convId.isNotEmpty &&
-            convId == _activeConversation!.conversationId) {
-          if (payload['publicKeys'] is Map) {
-            final newKeys = <String, String>{};
-            (payload['publicKeys'] as Map).forEach((k, v) {
-              if (v != null) newKeys[k.toString()] = v.toString();
-            });
-            _messengerService.cacheKeys(_activeConversation!.conversationId, newKeys);
-            final merged = Map<String, String>.from(_activeConversation!.publicKeys)..addAll(newKeys);
-            _activeConversation = _activeConversation!.copyWith(publicKeys: merged);
-            if (_activeSharedKey == null) {
-              await _setupE2eForConversation(_activeConversation!);
-            }
-          }
-
-          // Real-time WhatsApp-like in-place read receipt updates (grey ticks -> blue ticks)
-          if (payload['action'] == 'read') {
-            final readUserId = (payload['userId'] ?? '').toString();
-            final readByList = (payload['readBy'] is List)
-                ? (payload['readBy'] as List).map((e) => e.toString()).toList()
-                : <String>[];
-            if (mounted) {
-              setState(() {
-                _directMessages = _directMessages.map<DirectMessageModel>((m) {
-                  final updatedReadBy = Set<String>.from(m.readBy);
-                  if (readUserId.isNotEmpty) updatedReadBy.add(readUserId);
-                  if (readByList.isNotEmpty) updatedReadBy.addAll(readByList);
-                  return m.copyWith(readBy: updatedReadBy.toList());
-                }).toList();
-              });
-            }
-          }
-
-          // Real-time instant decryption & append for zero latency
+        try {
+          final action = (payload['action'] ?? '').toString();
           final rawMsg = payload['message'];
-          if (rawMsg is Map && payload['action'] == 'create') {
-            final incomingMsg = DirectMessageModel.fromJson(Map<String, dynamic>.from(rawMsg));
-            if (incomingMsg.conversationId != _activeConversation!.conversationId) {
-              return;
+          String convId = (payload['conversationId'] ?? '').toString().trim();
+          if (convId.isEmpty && rawMsg is Map) {
+            convId = (rawMsg['conversationId'] ?? '').toString().trim();
+          }
+
+          if (_activeConversation != null &&
+              convId.isNotEmpty &&
+              convId == _activeConversation!.conversationId.trim()) {
+            if (payload['publicKeys'] is Map) {
+              final newKeys = <String, String>{};
+              (payload['publicKeys'] as Map).forEach((k, v) {
+                if (v != null) newKeys[k.toString()] = v.toString();
+              });
+              _messengerService.cacheKeys(_activeConversation!.conversationId, newKeys);
+              final merged = Map<String, String>.from(_activeConversation!.publicKeys)..addAll(newKeys);
+              _activeConversation = _activeConversation!.copyWith(publicKeys: merged);
             }
-            final isMine = incomingMsg.senderId == _myUserId;
 
-            // Deduplicate: check if message already present (either by real ID or local optimistic ID)
-            final existingIndex = _directMessages.indexWhere((m) =>
-                m.id == incomingMsg.id ||
-                (m.id.startsWith('local-dm-') &&
-                    m.senderId == incomingMsg.senderId &&
-                    m.content == incomingMsg.content));
-
-            DirectMessageModel decryptedMsg = incomingMsg;
-            if (incomingMsg.encrypted && incomingMsg.iv.isNotEmpty) {
-              SecretKey? keyToUse = _activeSharedKey;
-              if (keyToUse == null) {
-                await _setupE2eForConversation(_activeConversation!);
-                keyToUse = _activeSharedKey;
+            // Real-time WhatsApp-like in-place read receipt updates (grey ticks -> blue ticks)
+            if (action == 'read') {
+              final readUserId = (payload['userId'] ?? '').toString().trim();
+              final readByList = (payload['readBy'] is List)
+                  ? (payload['readBy'] as List).map((e) => e.toString()).where((s) => s.isNotEmpty).toList()
+                  : <String>[];
+              if (mounted) {
+                setState(() {
+                  _directMessages = _directMessages.map<DirectMessageModel>((m) {
+                    final updatedReadBy = Set<String>.from(m.readBy);
+                    if (readUserId.isNotEmpty) updatedReadBy.add(readUserId);
+                    if (readByList.isNotEmpty) updatedReadBy.addAll(readByList);
+                    return m.copyWith(readBy: updatedReadBy.toList());
+                  }).toList();
+                  if (_isFromMe(readUserId)) {
+                    _conversations = _conversations
+                        .map((c) => c.conversationId == convId ? c.copyWith(unreadCount: 0) : c)
+                        .toList();
+                  }
+                });
               }
-              if (keyToUse != null) {
-                final plain = await E2eCryptoService.decryptMessage(keyToUse, incomingMsg.content, incomingMsg.iv);
-                decryptedMsg = incomingMsg.copyWith(
+            }
+
+            // Real-time instant append & decryption for zero latency (insert BEFORE any network key-setup awaits)
+            if (rawMsg is Map && (action == 'create' || action.isEmpty)) {
+              final incomingMsg = DirectMessageModel.fromJson(normalizeJsonMap(rawMsg));
+              final targetConvId = incomingMsg.conversationId.trim().isNotEmpty
+                  ? incomingMsg.conversationId.trim()
+                  : convId;
+              if (targetConvId != _activeConversation!.conversationId.trim()) {
+                return;
+              }
+              final isMine = _isFromMe(incomingMsg.senderId);
+
+              DirectMessageModel initialMsg = incomingMsg;
+              if (incomingMsg.encrypted && incomingMsg.iv.isNotEmpty && _activeSharedKey != null) {
+                final plain = await E2eCryptoService.decryptMessage(
+                  _activeSharedKey!,
+                  incomingMsg.content,
+                  incomingMsg.iv,
+                );
+                initialMsg = incomingMsg.copyWith(
                   decryptedContent: (plain != '🔒 Unable to decrypt') ? plain : '🔒 Encrypted message',
                 );
-              } else {
-                decryptedMsg = incomingMsg.copyWith(decryptedContent: '🔒 Encrypted message');
+              } else if (incomingMsg.encrypted) {
+                initialMsg = incomingMsg.copyWith(decryptedContent: '🔒 Encrypted message');
               }
-            }
 
-            if (mounted) {
-              setState(() {
-                if (existingIndex >= 0) {
-                  _directMessages[existingIndex] = decryptedMsg;
-                } else {
-                  _directMessages.add(decryptedMsg);
-                  if (!_isAtBottom && !isMine) {
+              // Insert immediately so UI updates without waiting on extra HTTP roundtrips
+              if (mounted && _activeConversation?.conversationId.trim() == targetConvId) {
+                setState(() {
+                  final beforeCount = _directMessages.length;
+                  _directMessages = _mergeDirectMessages(_directMessages, [initialMsg]);
+                  final addedNew = _directMessages.length > beforeCount;
+                  if (addedNew && !_isAtBottom && !isMine) {
                     _unreadBelowCount++;
                   }
-                }
-              });
+                });
 
-              if (_isAtBottom || isMine) {
-                _scrollToBottom();
-                if (!isMine) {
+                if (_isAtBottom || isMine) {
+                  _scrollToBottom();
+                }
+
+                // Only emit receiver read receipt AFTER the message is actually inserted & visible in the active foreground chat
+                final isForeground = WidgetsBinding.instance.lifecycleState == null ||
+                    WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+                if (!isMine && (_isAtBottom || _directMessages.isNotEmpty) && isForeground) {
                   _markCurrentConversationRead();
                 }
               }
+
+              // If encrypted and shared key wasn't cached yet, derive & decrypt in-place asynchronously
+              if (incomingMsg.encrypted && incomingMsg.iv.isNotEmpty && _activeSharedKey == null) {
+                await _setupE2eForConversation(_activeConversation!);
+                if (_activeSharedKey != null && mounted && _activeConversation?.conversationId.trim() == targetConvId) {
+                  final plain = await E2eCryptoService.decryptMessage(
+                    _activeSharedKey!,
+                    incomingMsg.content,
+                    incomingMsg.iv,
+                  );
+                  final resolved = incomingMsg.copyWith(
+                    decryptedContent: (plain != '🔒 Unable to decrypt') ? plain : '🔒 Encrypted message',
+                  );
+                  if (mounted && _activeConversation?.conversationId.trim() == targetConvId) {
+                    setState(() {
+                      _directMessages = _mergeDirectMessages(_directMessages, [resolved]);
+                    });
+                  }
+                }
+              }
+            } else if (action == 'edit' || action == 'update') {
+              if (rawMsg is Map) {
+                final editedMsg = DirectMessageModel.fromJson(normalizeJsonMap(rawMsg));
+                if (mounted) {
+                  setState(() {
+                    _directMessages = _mergeDirectMessages(_directMessages, [editedMsg]);
+                  });
+                }
+              } else {
+                await _refreshActiveDmMessages();
+              }
+            } else if (action == 'delete') {
+              final delId = (payload['messageId'] ?? '').toString();
+              if (delId.isNotEmpty && mounted) {
+                setState(() {
+                  _directMessages.removeWhere((m) => m.id == delId);
+                });
+              }
             }
           }
-        }
+        } catch (_) {}
         _refreshConversations();
       }),
       socket.onDmKeyExchange.listen((payload) async {
@@ -481,8 +624,110 @@ class _MessengerViewState extends State<MessengerView> {
         _contacts = results[2] as List<MessengerContactModel>;
         _isLoading = false;
       });
+      final pendingPayload = DashboardNavigation.takePendingConversationPayload();
+      if (pendingPayload != null) {
+        unawaited(_openConversationFromPayload(pendingPayload));
+      }
     } catch (_) {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  /// Opens a deep-linked conversation, caller thread, or Team Channel from a notification tap.
+  Future<void> _openConversationFromPayload(Map<String, dynamic> payload) async {
+    if (!mounted) return;
+    final convId = (payload['conversationId'] ?? '').toString().trim();
+    final peerId = (payload['callerId'] ?? payload['senderId'] ?? '').toString().trim();
+    final type = (payload['type'] ?? '').toString().toLowerCase().trim();
+
+    if (type == 'team_message' && convId.isEmpty && _showTeamChannelTab) {
+      setState(() {
+        _activeConversation = null;
+        _activeTab = 1;
+      });
+      _notifyChatState();
+      await _refreshTeamMessages();
+      return;
+    }
+
+    if (_activeTab != 0) {
+      setState(() => _activeTab = 0);
+    }
+
+    // 1. Direct match by conversationId in loaded list or fresh server fetch
+    if (convId.isNotEmpty) {
+      var target = _conversations
+          .where((c) => c.conversationId.trim() == convId)
+          .firstOrNull;
+      if (target == null) {
+        final refreshed = await _messengerService.getConversations(user: widget.user);
+        if (!mounted) return;
+        if (refreshed.isNotEmpty) {
+          setState(() => _conversations = refreshed);
+        }
+        target = _conversations
+            .where((c) => c.conversationId.trim() == convId)
+            .firstOrNull;
+      }
+      if (target != null) {
+        await _openConversation(target);
+        return;
+      }
+    }
+
+    // 2. Match or create 1:1 conversation by callerId / senderId (e.g. missed call tap)
+    if (peerId.isNotEmpty) {
+      final peerLower = peerId.toLowerCase();
+      final existing = _conversations.where((c) {
+        if (c.isGroup) return false;
+        return _resolvePeerId(c).trim().toLowerCase() == peerLower ||
+            c.otherUserId.trim().toLowerCase() == peerLower ||
+            c.participants.any((p) => p.trim().toLowerCase() == peerLower);
+      }).firstOrNull;
+      if (existing != null) {
+        await _openConversation(existing);
+        return;
+      }
+
+      final contact = _findContactById(peerId);
+      if (contact != null) {
+        await _startNewChatWith(contact);
+        return;
+      }
+
+      final conv = await _messengerService.getOrCreateConversation(
+        user: widget.user,
+        recipientId: peerId,
+      );
+      if (!mounted) return;
+      if (conv != null) {
+        final fallbackName =
+            (payload['callerName'] ?? payload['senderName'] ?? 'Colleague')
+                .toString()
+                .trim();
+        final hydrated = DmConversationModel(
+          conversationId: conv.conversationId,
+          participants: conv.participants,
+          isGroup: conv.isGroup,
+          name: conv.name,
+          scope: conv.scope,
+          createdBy: conv.createdBy,
+          otherUserId: conv.otherUserId.isNotEmpty ? conv.otherUserId : peerId,
+          otherUserName:
+              conv.otherUserName.isNotEmpty ? conv.otherUserName : fallbackName,
+          otherUserRole: conv.otherUserRole,
+          otherUserOnline: conv.otherUserOnline,
+          lastMessage: conv.lastMessage,
+          lastTimestamp: conv.lastTimestamp,
+          unreadCount: conv.unreadCount,
+          publicKeys: conv.publicKeys,
+          participantDetails: conv.participantDetails,
+        );
+        if (!_conversations.any((c) => c.conversationId == hydrated.conversationId)) {
+          setState(() => _conversations.insert(0, hydrated));
+        }
+        await _openConversation(hydrated);
+      }
     }
   }
 
@@ -562,8 +807,13 @@ class _MessengerViewState extends State<MessengerView> {
     );
     final decrypted = await _decryptMessageList(raw, _activeSharedKey);
     if (mounted) {
-      setState(() => _directMessages = decrypted);
-      _scrollToBottom();
+      setState(() {
+        _directMessages = _mergeDirectMessages(
+          _directMessages.where((m) => m.conversationId == conv.conversationId).toList(),
+          decrypted,
+        );
+      });
+      if (_isAtBottom) _scrollToBottom();
     }
   }
 
@@ -874,6 +1124,7 @@ class _MessengerViewState extends State<MessengerView> {
     MessengerStore.instance.dispatch(OpenConversationAction(conv.conversationId));
     setState(() {
       _activeConversation = conv;
+      _directMessages = [];
       _isLoadingDm = true;
       _activeSharedKey = null;
       _e2eActive = false;
@@ -881,7 +1132,6 @@ class _MessengerViewState extends State<MessengerView> {
       _unreadBelowCount = 0;
     });
     MessengerSocketService.instance.emit('dm:join-conversation', {'conversationId': conv.conversationId});
-    MessengerSocketService.instance.emit('dm:read', {'conversationId': conv.conversationId});
     _notifyChatState();
 
     await _setupE2eForConversation(conv);
@@ -902,20 +1152,16 @@ class _MessengerViewState extends State<MessengerView> {
 
     final msgs = await _decryptMessageList(rawMsgs, _activeSharedKey);
 
-    _messengerService.markConversationRead(
-      user: widget.user,
-      conversationId: conv.conversationId,
-    );
-
-    if (!mounted) return;
+    if (!mounted || _activeConversation?.conversationId != conv.conversationId) return;
     setState(() {
-      _directMessages = msgs;
+      _directMessages = _mergeDirectMessages(_directMessages, msgs);
       _isLoadingDm = false;
       _conversations = _conversations
           .map((c) => c.conversationId == conv.conversationId ? c.copyWith(unreadCount: 0) : c)
           .toList();
     });
     _scrollToBottom();
+    _markCurrentConversationRead();
   }
 
   Future<void> _handleSendText({String? overrideText}) async {
@@ -991,14 +1237,7 @@ class _MessengerViewState extends State<MessengerView> {
                   ))
               .copyWith(decryptedContent: text);
           setState(() {
-            final existingIdx = _directMessages.indexWhere((m) =>
-                m.id == msgToDisplay.id ||
-                (sent != null && (m.id == sent.id || m.id.startsWith('local-dm-')) && m.content == msgToDisplay.content));
-            if (existingIdx >= 0) {
-              _directMessages[existingIdx] = msgToDisplay;
-            } else {
-              _directMessages.add(msgToDisplay);
-            }
+            _directMessages = _mergeDirectMessages(_directMessages, [msgToDisplay]);
             _isSending = false;
           });
           _scrollToBottom();
@@ -1293,12 +1532,7 @@ class _MessengerViewState extends State<MessengerView> {
         if (mounted) {
           if (sent != null) {
             setState(() {
-              final existingIdx = _directMessages.indexWhere((m) => m.id == sent.id);
-              if (existingIdx >= 0) {
-                _directMessages[existingIdx] = sent;
-              } else {
-                _directMessages.add(sent);
-              }
+              _directMessages = _mergeDirectMessages(_directMessages, [sent]);
             });
           }
           setState(() => _isSending = false);
@@ -1369,12 +1603,7 @@ class _MessengerViewState extends State<MessengerView> {
         if (mounted) {
           if (sent != null) {
             setState(() {
-              final existingIdx = _directMessages.indexWhere((m) => m.id == sent.id);
-              if (existingIdx >= 0) {
-                _directMessages[existingIdx] = sent;
-              } else {
-                _directMessages.add(sent);
-              }
+              _directMessages = _mergeDirectMessages(_directMessages, [sent]);
             });
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -2980,8 +3209,8 @@ class _MessengerViewState extends State<MessengerView> {
                             itemCount: _directMessages.length,
                             itemBuilder: (_, i) {
                               final msg = _directMessages[i];
-                              final isMine = msg.senderId == _myUserId;
-                              final isRead = msg.readBy.any((uid) => uid != _myUserId);
+                              final isMine = _isFromMe(msg.senderId);
+                              final isRead = msg.readBy.any((uid) => uid.trim().isNotEmpty && !_isFromMe(uid));
                               final isDelivered = isRead || isOnline || !msg.id.startsWith('local');
                               final senderName = _resolveSenderName(msg.senderId, msg.senderName);
                               return GestureDetector(
@@ -3203,30 +3432,51 @@ class _MessengerViewState extends State<MessengerView> {
                     Positioned(
                       bottom: 6,
                       right: 6,
-                      child: Material(
-                        color: Colors.black.withValues(alpha: 0.55),
-                        shape: const CircleBorder(),
-                        child: InkWell(
-                          customBorder: const CircleBorder(),
-                          onTap: () {
-                            MediaDownloadService.instance.downloadMedia(
-                              context: context,
-                              fileName: img.name.isNotEmpty
-                                  ? img.name
-                                  : 'IMG_${DateTime.now().millisecondsSinceEpoch}.jpg',
-                              url: img.resolvedUrl,
-                              isImage: true,
-                            );
-                          },
-                          child: const Padding(
-                            padding: EdgeInsets.all(5),
-                            child: Icon(
-                              Icons.download_rounded,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                          ),
-                        ),
+                      child: ValueListenableBuilder<Map<String, double>>(
+                        valueListenable: MediaDownloadService.instance.progressMap,
+                        builder: (_, progressMap, _) {
+                          final progress = progressMap[img.resolvedUrl];
+                          return Material(
+                            color: Colors.black.withValues(alpha: 0.55),
+                            shape: const CircleBorder(),
+                            child: progress != null
+                                ? Padding(
+                                    padding: const EdgeInsets.all(5),
+                                    child: SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        value: progress > 0.05 ? progress : null,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  )
+                                : InkWell(
+                                    customBorder: const CircleBorder(),
+                                    onTap: () {
+                                      MediaDownloadService.instance.downloadMedia(
+                                        context: context,
+                                        fileName: img.name.isNotEmpty
+                                            ? img.name
+                                            : 'IMG_${DateTime.now().millisecondsSinceEpoch}.jpg',
+                                        url: img.resolvedUrl,
+                                        mimeType: img.type,
+                                        dataUri: img.path.startsWith('data:') ? img.path : null,
+                                        isImage: true,
+                                      );
+                                    },
+                                    child: const Padding(
+                                      padding: EdgeInsets.all(5),
+                                      child: Icon(
+                                        Icons.download_rounded,
+                                        color: Colors.white,
+                                        size: 16,
+                                      ),
+                                    ),
+                                  ),
+                          );
+                        },
                       ),
                     ),
                   ],

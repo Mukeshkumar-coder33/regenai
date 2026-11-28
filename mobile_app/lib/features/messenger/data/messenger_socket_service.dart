@@ -241,6 +241,9 @@ class MessengerSocketService {
         'userId': uid,
         'attempt': attempt?.toString() ?? '',
       });
+      if (_activeConversationId != null && _activeConversationId!.isNotEmpty) {
+        socket.emit('dm:join-conversation', {'conversationId': _activeConversationId});
+      }
     });
 
     socket.onReconnectAttempt((attempt) {
@@ -281,7 +284,14 @@ class MessengerSocketService {
 
     // Messaging, Tasks & Notifications
     socket.on('message:change', (d) => _messageChangeController.add(_asMap(d)));
-    socket.on('dm:change', (d) => _dmChangeController.add(_asMap(d)));
+    socket.on('dm:change', (d) {
+      final mapped = _asMap(d);
+      CommunicationDiagnostics.instance.log('socket:dm_change', {
+        'action': mapped['action'] ?? '',
+        'conversationId': mapped['conversationId'] ?? '',
+      });
+      _dmChangeController.add(mapped);
+    });
     socket.on('dm:key-exchange', (d) => _dmKeyExchangeController.add(_asMap(d)));
     socket.on('notification:new', (d) => _notificationController.add(_asMap(d)));
     socket.on('notification:read', (d) => _notificationReadController.add(_asMap(d)));
@@ -380,6 +390,44 @@ class MessengerSocketService {
     _socket?.emit(event, payload);
   }
 
+  @visibleForTesting
+  void debugInjectRawEvent(String event, dynamic raw) {
+    switch (event) {
+      case 'connection':
+        final connected = raw == true;
+        _isConnected = connected;
+        _connectionController.add(connected);
+        break;
+      case 'dm:change':
+        _dmChangeController.add(_asMap(raw));
+        break;
+      case 'message:change':
+        _messageChangeController.add(_asMap(raw));
+        break;
+      case 'notification:new':
+        _notificationController.add(_asMap(raw));
+        break;
+      case 'call:incoming':
+        _callIncomingController.add(_asMap(raw));
+        break;
+      case 'call:state':
+        _callStateController.add(_asMap(raw));
+        break;
+      case 'call:accepted':
+        _callAcceptedController.add(_asMap(raw));
+        break;
+      case 'call:cancelled':
+        _callCancelledController.add(_asMap(raw));
+        break;
+      case 'call:ended':
+        _callEndedController.add(_asMap(raw));
+        break;
+      case 'meeting:started':
+        _meetingStartedController.add(_asMap(raw));
+        break;
+    }
+  }
+
   Future<dynamic> emitWithAck(
     String event,
     Map<String, dynamic> payload, {
@@ -389,7 +437,14 @@ class MessengerSocketService {
     final completer = Completer<dynamic>();
     _socket!.emitWithAck(event, payload, ack: (response) {
       if (!completer.isCompleted) {
-        completer.complete(response);
+        if (response == null) {
+          completer.complete(null);
+        } else if (response is Map || (response is List && response.any((e) => e is Map))) {
+          final normalized = _asMap(response);
+          completer.complete(normalized.isNotEmpty ? normalized : response);
+        } else {
+          completer.complete(response);
+        }
       }
     });
     return completer.future.timeout(timeout, onTimeout: () => null);

@@ -11,6 +11,7 @@ import {
   getConversationMessages,
   sendDirectMessage,
   uploadMediaAttachment,
+  downloadMediaAttachment,
   markAsRead,
   storePublicKey,
   getConversationKeys,
@@ -49,8 +50,9 @@ const router = express.Router();
 // Authorized Contacts (server-enforced role & company scope)
 router.get('/contacts', getMessengerContacts);
 
-// Multipart media/video/voice upload
+// Multipart media/video/voice upload & authenticated media download
 router.post('/upload', dmUpload.single('file'), uploadMediaAttachment);
+router.get('/media/:filename', downloadMediaAttachment);
 
 // Conversations (1:1 & Group)
 router.post('/conversations', getOrCreateConversation);

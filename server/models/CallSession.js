@@ -50,6 +50,8 @@ const callSessionSchema = new mongoose.Schema({
   reason: { type: String, default: '' },
   offer: { type: mongoose.Schema.Types.Mixed, default: null },
   answer: { type: mongoose.Schema.Types.Mixed, default: null },
+  callerCandidates: { type: [mongoose.Schema.Types.Mixed], default: [] },
+  recipientCandidates: { type: [mongoose.Schema.Types.Mixed], default: [] },
   initiatedAt: { type: Date, default: Date.now },
   ringingAt: { type: Date, default: null },
   acceptedAt: { type: Date, default: null },

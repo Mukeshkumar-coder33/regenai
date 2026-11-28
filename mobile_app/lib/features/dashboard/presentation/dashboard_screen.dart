@@ -85,15 +85,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    DashboardNavigation.navigateToPage = _navigateToPage;
-    if (DashboardNavigation.pendingTargetPage != null) {
-      final target = DashboardNavigation.pendingTargetPage!;
-      DashboardNavigation.pendingTargetPage = null;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _navigateToPage(target);
-      });
-    }
     _currentUser = widget.user;
+    if (!_currentUser.isCompanyAdmin) {
+      DashboardNavigation.navigateToPage = _navigateToPage;
+      if (DashboardNavigation.pendingTargetPage != null) {
+        final target = DashboardNavigation.pendingTargetPage!;
+        DashboardNavigation.pendingTargetPage = null;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _navigateToPage(target);
+        });
+      }
+    }
     _bottomNavSlots = List<String>.from(_defaultSlotIds);
     _loadRoleBottomNavSlots();
     _initRealtimeCommunication(_currentUser);

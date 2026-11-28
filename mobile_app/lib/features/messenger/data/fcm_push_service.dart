@@ -29,7 +29,11 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     final callerId = (data['callerId'] ?? data['senderId'] ?? '').toString();
     final mediaType = (data['mediaType'] ?? (type == 'video_call' ? 'video' : 'voice')).toString();
 
-    if (type == 'voice_call' || type == 'video_call' || type == 'team_meeting') {
+    if (type == 'voice_call' ||
+        type == 'video_call' ||
+        type == 'team_meeting' ||
+        type == 'call' ||
+        type == 'meeting') {
       if (callId.isNotEmpty) {
         // Skip expired wakeup packets older than 50s
         final sentAtMs = int.tryParse((data['sentAt'] ?? '').toString());
@@ -42,14 +46,17 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
           callerId: callerId,
           callerName: callerName,
           mediaType: mediaType,
-          isMeeting: type == 'team_meeting',
+          isMeeting: type == 'team_meeting' || type == 'meeting',
           silent: false,
         );
       }
       return;
     }
 
-    if (type == 'call_cancelled' || type == 'call_ended') {
+    if (type == 'call_cancelled' ||
+        type == 'call_ended' ||
+        type == 'call_accepted' ||
+        type == 'call_rejected') {
       if (callId.isNotEmpty) {
         await CallNotificationService.instance.cancelCallNotification(callId);
       }
@@ -61,9 +68,15 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         await CallNotificationService.instance.cancelCallNotification(callId);
       }
       if (message.notification == null) {
+        final missedId = (data['notificationId'] ??
+                (callId.isNotEmpty
+                    ? 'missed-$callId'
+                    : '${DateTime.now().millisecondsSinceEpoch}'))
+            .toString();
         await CallNotificationService.instance.showMissedCallNotification(
-          id: (data['notificationId'] ?? (callId.isNotEmpty ? callId : '${DateTime.now().millisecondsSinceEpoch}')).toString(),
+          id: missedId,
           callId: callId,
+          callerId: callerId,
           callerName: callerName,
           mediaType: mediaType,
           conversationId: data['conversationId']?.toString(),
@@ -85,6 +98,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
           : (type.isNotEmpty ? '${type.replaceAll('_', ' ')} update' : 'Tap to view in ReGen');
       await CallNotificationService.instance.showMessageNotification(
         id: msgId,
+        senderId: (data['senderId'] ?? data['callerId'] ?? '').toString(),
         senderName: resolvedTitle,
         preview: resolvedBody,
         conversationId: data['conversationId']?.toString(),
@@ -287,10 +301,14 @@ class FcmPushService {
     if (!MessengerSocketService.instance.isConnected) {
       final notifId = (data['notificationId'] ?? message.messageId ?? DateTime.now().millisecondsSinceEpoch).toString();
       if (type == 'missed_call') {
+        final missedId = (data['notificationId'] ??
+                (callId.isNotEmpty ? 'missed-$callId' : notifId))
+            .toString();
         CallNotificationService.instance.showMissedCallNotification(
-          id: callId.isNotEmpty ? callId : notifId,
+          id: missedId,
           callId: callId,
-          callerName: (data['callerName'] ?? 'Someone').toString(),
+          callerId: data['callerId']?.toString() ?? data['senderId']?.toString(),
+          callerName: (data['callerName'] ?? data['senderName'] ?? 'Someone').toString(),
           mediaType: (data['mediaType'] ?? 'voice').toString(),
           conversationId: data['conversationId']?.toString(),
         );
@@ -307,6 +325,7 @@ class FcmPushService {
             : '${type.replaceAll('_', ' ')} update';
         CallNotificationService.instance.showMessageNotification(
           id: notifId,
+          senderId: (data['senderId'] ?? data['callerId'] ?? '').toString(),
           senderName: (data['title'] ?? data['senderName'] ?? message.notification?.title ?? 'ReGen Alert').toString(),
           preview: resolvedPreview,
           conversationId: convId,

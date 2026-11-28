@@ -314,6 +314,7 @@ class MessengerService {
     required String conversationId,
   }) async {
     final headers = await _getHeaders(user: user);
+    headers['x-skip-auto-read'] = '1';
     final url = Uri.parse('${AppConfig.activeBaseUrl}/api/dm/conversations/$conversationId/messages');
     try {
       final res = await _client.get(url, headers: headers).timeout(const Duration(seconds: 10));

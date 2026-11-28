@@ -185,6 +185,46 @@ export const recordAttendance = async (req, res) => {
       io.emit('attendance:change', { action: 'create', id: attendance.id, companyId: attendance.companyId, userId: attendance.userId });
     }
 
+    // Send attendance check-in notification (late alert to employee + check-in summary to company owner/admin)
+    try {
+      const empName = attendance.employeeName || attendance.userName || attendance.userId;
+      const checkInLabel = attendance.checkIn
+        ? new Date(attendance.checkIn).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+        : '';
+      if (attendance.userId && attendance.status === 'late') {
+        await createAndSendNotification({
+          id: `att-late-${attendance.id || attendance._id}`,
+          companyId: attendance.companyId,
+          userId: attendance.userId,
+          type: 'attendance',
+          title: 'Late Check-In Recorded',
+          message: `You checked in late on ${attendance.date}${checkInLabel ? ` at ${checkInLabel}` : ''}.`,
+          metadata: { attendanceId: attendance.id, date: attendance.date, status: 'late' },
+        });
+      }
+      if (attendance.companyId) {
+        const admins = await User.find({
+          companyId: attendance.companyId,
+          role: { $in: ['owner', 'admin'] },
+          userId: { $ne: attendance.userId },
+          status: { $ne: 'inactive' },
+        }).select('userId').lean();
+        for (const adm of admins) {
+          await createAndSendNotification({
+            id: `att-adm-${attendance.id || attendance._id}-${adm.userId}`,
+            companyId: attendance.companyId,
+            userId: adm.userId,
+            type: 'attendance',
+            title: `${attendance.status === 'late' ? 'Late Check-In' : 'Attendance Check-In'}: ${empName}`,
+            message: `${empName} checked in on ${attendance.date}${checkInLabel ? ` at ${checkInLabel}` : ''}${attendance.status === 'late' ? ' (Late)' : ''}.`,
+            senderId: attendance.userId,
+            senderName: empName,
+            metadata: { attendanceId: attendance.id, date: attendance.date, status: attendance.status || 'present' },
+          });
+        }
+      }
+    } catch (_) {}
+
     res.status(201).json(attendance);
   } catch (error) {
     res.status(error.statusCode || 400).json({ 

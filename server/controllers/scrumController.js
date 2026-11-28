@@ -1,6 +1,8 @@
 import ScrumNote from '../models/ScrumNote.js';
+import User from '../models/User.js';
 import { resolveCompanyId } from '../utils/resolveCompanyId.js';
 import { emitToCompany } from '../socket.js';
+import { createAndSendNotification } from './notificationController.js';
 
 export const addScrumNote = async (req, res) => {
   try {
@@ -32,6 +34,33 @@ export const addScrumNote = async (req, res) => {
     const note = new ScrumNote(payload);
     await note.save();
     emitToCompany('scrum:change', note.companyId, { action: 'create', id: note.id });
+
+    try {
+      if (note.companyId) {
+        const authorName = note.userName || note.employeeName || req.user?.name || req.user?.username || 'Team member';
+        const snippet = String(note.title || note.note || note.content || note.description || 'Standup update').trim().slice(0, 120);
+        const admins = await User.find({
+          companyId: note.companyId,
+          role: { $in: ['owner', 'admin'] },
+          userId: { $ne: note.userId },
+          status: { $ne: 'inactive' },
+        }).select('userId').lean();
+        for (const adm of admins) {
+          await createAndSendNotification({
+            id: `scrum-${note.id || note._id}-${adm.userId}`,
+            companyId: note.companyId,
+            userId: adm.userId,
+            type: 'scrum',
+            title: `Scrum Update • ${authorName}`,
+            message: `${authorName}: ${snippet}`,
+            senderId: note.userId || req.user?.userId || '',
+            senderName: authorName,
+            metadata: { scrumId: note.id, status: note.status },
+          });
+        }
+      }
+    } catch (_) {}
+
     res.status(201).json(note);
   } catch (error) {
     res.status(400).json({ message: error.message });

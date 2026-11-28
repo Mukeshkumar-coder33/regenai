@@ -5,8 +5,8 @@ import '../../auth/data/auth_service.dart';
 import '../../auth/data/user_model.dart';
 import '../../company/data/company_model.dart';
 import '../../dashboard/data/dashboard_service.dart';
-import '../../notifications/data/notification_model.dart';
 import '../../notifications/data/notification_service.dart';
+import '../../notifications/data/notification_store.dart';
 
 /// Situation D: Global Super Admin Dashboard
 ///
@@ -58,15 +58,20 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
   List<CompanyModel> _companies = [];
   List<UserModel> _users = [];
   final NotificationService _notificationService = NotificationService();
-  List<NotificationModel> _notifications = [];
   int _selectedNotificationFilter = 0;
-  int get _unreadNotificationCount => _notifications.where((n) => !n.read).length;
+  int get _unreadNotificationCount => NotificationStore.instance.unreadCount;
+
+  void _onNotifStoreChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
 
   @override
   void initState() {
     super.initState();
     _dashboardService = widget.dashboardService ?? DashboardService();
     _authService = widget.authService ?? AuthService();
+    NotificationStore.instance.addListener(_onNotifStoreChanged);
     _loadGlobalData();
   }
 
@@ -84,6 +89,7 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
 
   @override
   void dispose() {
+    NotificationStore.instance.removeListener(_onNotifStoreChanged);
     _searchController.dispose();
     super.dispose();
   }
@@ -111,7 +117,8 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
       final myId = widget.user.userId.isNotEmpty ? widget.user.userId : widget.user.id;
       if (myId.isNotEmpty) {
         _notificationService.getUserNotifications(myId).then((notifs) {
-          if (mounted) setState(() => _notifications = notifs);
+          NotificationStore.instance.setFromList(notifs);
+          if (mounted) setState(() {});
         }).catchError((_) {});
       }
     } catch (e) {
@@ -1120,7 +1127,7 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
     final myId = widget.user.userId.isNotEmpty ? widget.user.userId : widget.user.id;
     if (myId.isNotEmpty) {
       _notificationService.getUserNotifications(myId).then((notifs) {
-        if (mounted) setState(() => _notifications = notifs);
+        NotificationStore.instance.setFromList(notifs);
       }).catchError((_) {});
     }
 
@@ -1131,9 +1138,12 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
       ),
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setSheetState) {
-          final filtered = _notifications.where((n) {
+      builder: (ctx) => ListenableBuilder(
+        listenable: NotificationStore.instance,
+        builder: (ctx, _) => StatefulBuilder(
+          builder: (context, setSheetState) {
+            final currentNotifs = NotificationStore.instance.items;
+            final filtered = currentNotifs.where((n) {
             if (_selectedNotificationFilter == 1 && n.read) return false;
             if (_selectedNotificationFilter == 2 && !n.isTask) return false;
             if (_selectedNotificationFilter == 3 && !n.type.contains('leave')) return false;
@@ -1176,10 +1186,7 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
                         icon: const Icon(Icons.done_all_rounded, color: CeladonColors.primary),
                         onPressed: () async {
                           if (myId.isNotEmpty) {
-                            await _notificationService.markAllAsRead(myId);
-                            for (final n in _notifications) {
-                              n.read = true;
-                            }
+                            await NotificationStore.instance.markAllAsRead(myId);
                             if (mounted) setState(() {});
                             setSheetState(() {});
                           }
@@ -1195,10 +1202,9 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
                         label: const Text('Clear all', style: TextStyle(color: CeladonColors.error, fontSize: 11.5, fontWeight: FontWeight.w700)),
                         onPressed: () async {
                           if (myId.isNotEmpty) {
-                            _notifications.clear();
+                            await NotificationStore.instance.clearAll(myId);
                             if (mounted) setState(() {});
                             setSheetState(() {});
-                            await _notificationService.clearAll(myId);
                           }
                         },
                       ),
@@ -1297,8 +1303,7 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
                                   ),
                                 ),
                                 onDismissed: (_) {
-                                  _notifications.removeWhere((n) => n.id == notif.id);
-                                  _notificationService.deleteNotification(notif.id);
+                                  NotificationStore.instance.deleteNotification(notif.id);
                                   if (mounted) setState(() {});
                                   setSheetState(() {});
                                 },
@@ -1330,18 +1335,14 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
                                       icon: const Icon(Icons.close_rounded, size: 16, color: CeladonColors.textMuted),
                                       tooltip: 'Dismiss',
                                       onPressed: () {
-                                        _notifications.removeWhere((n) => n.id == notif.id);
-                                        _notificationService.deleteNotification(notif.id);
+                                        NotificationStore.instance.deleteNotification(notif.id);
                                         if (mounted) setState(() {});
                                         setSheetState(() {});
                                       },
                                     ),
                                     onTap: () {
-                                      notif.read = true;
+                                      NotificationStore.instance.markAsRead(notif);
                                       if (mounted) setState(() {});
-                                      _notificationService
-                                          .markAsRead(notif.id, mongoId: notif.mongoId)
-                                          .catchError((_) => false);
                                       Navigator.pop(ctx);
                                     },
                                   ),
@@ -1355,6 +1356,7 @@ class _SuperAdminDashboardViewState extends State<SuperAdminDashboardView> {
             ),
           );
         },
+        ),
       ),
     );
   }

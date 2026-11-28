@@ -50,6 +50,8 @@ dependencies:
   pointycastle: ^3.9.1
   file_picker: ^13.4.0
   video_player: ^2.9.5
+  firebase_core: ^3.12.1
+  firebase_messaging: ^15.2.4
 dev_dependencies:
   flutter_test:
     sdk: flutter

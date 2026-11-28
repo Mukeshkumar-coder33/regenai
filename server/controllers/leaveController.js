@@ -8,7 +8,8 @@ import PayrollSetting from '../models/PayrollSetting.js';
 import { getWeeklyOffDays } from '../utils/payrollCalculator.js';
 import mongoose from 'mongoose';
 import { resolveCompanyId } from '../utils/resolveCompanyId.js';
-import { emitToCompany, emitToUser } from '../socket.js';
+import { emitToCompany } from '../socket.js';
+import { createAndSendNotification } from './notificationController.js';
 
 export const DEFAULT_LEAVE_POLICY = {
   casualLeave: {
@@ -436,15 +437,15 @@ export const createLeave = async (req, res) => {
           }).select('userId username').lean();
 
           const targetOwnerId = ownerUser?.userId || comp.ownerId;
-          const notif = new Notification({
+          await createAndSendNotification({
             id: `leave-apply-${leave.id}`,
             companyId: leave.companyId,
             userId: targetOwnerId,
             title: 'Leave Application',
             message: `${leave.employeeName || 'An employee'} applied for ${leave.workingDays} working day(s) ${leave.type} leave (${leave.startDate} to ${leave.endDate}).`,
             type: 'leave',
-            createdAt: new Date().toISOString(),
-            read: false,
+            senderId: leave.userId,
+            senderName: leave.employeeName || '',
             metadata: {
               leaveId: leave.id,
               userId: leave.userId,
@@ -454,8 +455,6 @@ export const createLeave = async (req, res) => {
               endDate: leave.endDate
             }
           });
-          await notif.save();
-          emitToUser(targetOwnerId, 'notification:new', notif);
         }
       }
     } catch (e) {
@@ -581,15 +580,15 @@ export const updateLeaveStatus = async (req, res) => {
     try {
       if (leave.userId) {
         const isApproved = req.body.status === 'approved';
-        const notif = new Notification({
+        await createAndSendNotification({
           id: `leave-status-${leave.id}-${Date.now()}`,
           companyId: leave.companyId,
           userId: leave.userId,
           title: `Leave Application ${isApproved ? 'Approved' : 'Declined'}`,
           message: `Your leave request for ${leave.startDate} to ${leave.endDate} (${leave.workingDays || 1} day(s)) has been ${isApproved ? 'approved' : 'declined'}.${updateFields.remarks ? ' Remarks: ' + updateFields.remarks : ''}`,
           type: 'leave',
-          createdAt: new Date().toISOString(),
-          read: false,
+          senderId: req.user?.userId || '',
+          senderName: req.user?.name || req.user?.username || 'Management',
           metadata: {
             leaveId: leave.id,
             status: leave.status,
@@ -597,8 +596,6 @@ export const updateLeaveStatus = async (req, res) => {
             remarks: updateFields.remarks
           }
         });
-        await notif.save();
-        emitToUser(leave.userId, 'notification:new', notif);
       }
     } catch (e) {
       console.error('Leave update notification error:', e.message);

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import '../../../app/app_config.dart';
 import '../../../core/storage/session_storage.dart';
@@ -150,9 +151,10 @@ class MessengerService {
       if (user.companyId != null && user.companyId!.isNotEmpty) 'companyId': user.companyId,
     });
     try {
+      final hasAttachments = attachments != null && attachments.isNotEmpty;
       final res = await _client
           .post(url, headers: headers, body: body)
-          .timeout(const Duration(seconds: 20));
+          .timeout(Duration(seconds: hasAttachments ? 120 : 20));
       if (res.statusCode == 200 || res.statusCode == 201) {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         return TeamMessageModel.fromJson(data);
@@ -341,6 +343,50 @@ class MessengerService {
     }
   }
 
+  /// Multipart upload for videos, voice notes, photos, and large files (`POST /api/dm/upload`).
+  /// Returns attachment metadata (`path`, `name`, `type`, `size`) or `null` if fallback is needed.
+  Future<Map<String, dynamic>?> uploadMediaBytes({
+    required UserModel user,
+    required Uint8List bytes,
+    required String fileName,
+    required String mimeType,
+  }) async {
+    final storedToken = await SessionStorage.getToken();
+    final token = user.token.isNotEmpty ? user.token : (storedToken ?? '');
+    final url = Uri.parse('${AppConfig.activeBaseUrl}/api/dm/upload');
+    try {
+      final req = http.MultipartRequest('POST', url);
+      if (token.isNotEmpty) {
+        req.headers['Authorization'] = 'Bearer $token';
+      }
+      req.headers['x-portal-view'] = user.isSuperAdmin ? 'superadmin' : 'ems';
+      req.files.add(
+        http.MultipartFile.fromBytes(
+          'file',
+          bytes,
+          filename: fileName,
+        ),
+      );
+      final streamed = await _client.send(req).timeout(const Duration(seconds: 120));
+      final res = await http.Response.fromStream(streamed);
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        final map = jsonDecode(res.body) as Map<String, dynamic>;
+        final path = (map['path'] ?? '').toString();
+        if (path.isNotEmpty) {
+          return {
+            'path': path,
+            'name': (map['name'] ?? fileName).toString(),
+            'type': (map['type'] ?? mimeType).toString(),
+            'size': map['size'] ?? bytes.length,
+          };
+        }
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Send a Direct or Group message (text, E2E ciphertext, or voice attachment)
   /// (`POST /api/dm/conversations/:id/messages`)
   Future<DirectMessageModel?> sendDirectMessage({
@@ -358,6 +404,7 @@ class MessengerService {
     final senderId = user.userId.isNotEmpty ? user.userId : user.id;
     final senderName = user.name.isNotEmpty ? user.name : user.username;
     try {
+      final hasAttachments = attachments != null && attachments.isNotEmpty;
       final res = await _client
           .post(
             url,
@@ -371,11 +418,11 @@ class MessengerService {
               'encrypted': encrypted,
               if (iv.isNotEmpty) 'iv': iv,
               'isVoice': isVoice,
-              if (attachments != null && attachments.isNotEmpty) 'attachments': attachments,
+              if (hasAttachments) 'attachments': attachments,
               'timestamp': DateTime.now().toIso8601String(),
             }),
           )
-          .timeout(const Duration(seconds: 20));
+          .timeout(Duration(seconds: hasAttachments ? 120 : 20));
       if (res.statusCode == 200 || res.statusCode == 201) {
         final raw = jsonDecode(res.body) as Map<String, dynamic>;
         final msgObj = raw['message'] is Map<String, dynamic>

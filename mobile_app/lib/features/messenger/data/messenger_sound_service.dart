@@ -2,15 +2,14 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:audioplayers/audioplayers.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
+import 'communication_diagnostics.dart';
 
 /// App-wide Audio & Ringtone Service for ReGen Messenger
 ///
-/// Provides in-app ringtones (similar to WhatsApp incoming call tone)
-/// and notification sounds (message ping, missed call chime).
-/// Generates offline PCM audio buffers on-the-fly, requiring zero external
-/// assets or network connectivity.
+/// Centralized ringtone & alert player using Android ringtone/notification
+/// AudioContext so incoming calls ring cleanly while preventing duplicate
+/// ringtone instances or timers.
 class MessengerSoundService {
   MessengerSoundService._();
   static final MessengerSoundService instance = MessengerSoundService._();
@@ -18,10 +17,39 @@ class MessengerSoundService {
   AudioPlayer? _ringtonePlayer;
   AudioPlayer? _effectsPlayer;
 
+  bool _isRinging = false;
+  String? _activeCallId;
+  Timer? _ringtoneLoopTimer;
+
+  static Uint8List? _cachedRingtoneWav;
+  static Uint8List? _cachedMessagePingWav;
+  static Uint8List? _cachedMissedCallWav;
+
+  bool get isRinging => _isRinging;
+  String? get activeRingtoneCallId => _activeCallId;
+
   AudioPlayer? _getRingtonePlayer() {
     if (WidgetsBinding.instance.runtimeType.toString().contains('Test')) return null;
     try {
-      _ringtonePlayer ??= AudioPlayer();
+      if (_ringtonePlayer == null) {
+        final player = AudioPlayer();
+        player.setAudioContext(
+          AudioContext(
+            android: const AudioContextAndroid(
+              isSpeakerphoneOn: true,
+              stayAwake: true,
+              contentType: AndroidContentType.sonification,
+              usageType: AndroidUsageType.notificationRingtone,
+              audioFocus: AndroidAudioFocus.gainTransient,
+            ),
+            iOS: AudioContextIOS(
+              category: AVAudioSessionCategory.playback,
+              options: const {AVAudioSessionOptions.mixWithOthers},
+            ),
+          ),
+        );
+        _ringtonePlayer = player;
+      }
       return _ringtonePlayer;
     } catch (_) {
       return null;
@@ -31,27 +59,39 @@ class MessengerSoundService {
   AudioPlayer? _getEffectsPlayer() {
     if (WidgetsBinding.instance.runtimeType.toString().contains('Test')) return null;
     try {
-      _effectsPlayer ??= AudioPlayer();
+      if (_effectsPlayer == null) {
+        final player = AudioPlayer();
+        player.setAudioContext(
+          AudioContext(
+            android: const AudioContextAndroid(
+              isSpeakerphoneOn: false,
+              stayAwake: false,
+              contentType: AndroidContentType.sonification,
+              usageType: AndroidUsageType.notificationEvent,
+              audioFocus: AndroidAudioFocus.gainTransientMayDuck,
+            ),
+          ),
+        );
+        _effectsPlayer = player;
+      }
       return _effectsPlayer;
     } catch (_) {
       return null;
     }
   }
 
-  bool _isRinging = false;
-  Timer? _ringtoneLoopTimer;
+  /// Start playing the incoming call ringtone on repeat for [callId].
+  /// Safe against duplicate calls: never starts two parallel ringtones.
+  Future<void> startIncomingCallRingtone({String? callId}) async {
+    await NotificationPreferences.instance.ensureLoaded();
+    if (_isRinging) {
+      if (callId != null && _activeCallId == callId) return;
+      return;
+    }
 
-  static Uint8List? _cachedRingtoneWav;
-  static Uint8List? _cachedMessagePingWav;
-  static Uint8List? _cachedMissedCallWav;
-
-  bool get isRinging => _isRinging;
-
-  /// Start playing the incoming call ringtone on repeat.
-  /// Stops automatically when [stopRingtone] is called.
-  Future<void> startIncomingCallRingtone() async {
-    if (_isRinging) return;
     _isRinging = true;
+    _activeCallId = callId;
+    CommunicationDiagnostics.instance.log('ringtone:start', {'callId': callId ?? 'unknown'});
 
     try {
       final player = _getRingtonePlayer();
@@ -59,10 +99,8 @@ class MessengerSoundService {
       await player.setReleaseMode(ReleaseMode.stop);
       final wav = _getRingtoneWav();
 
-      // Play immediately
       await player.play(BytesSource(wav));
 
-      // Loop cadence: play 2.2s burst followed by 1.2s silence (classic WhatsApp/phone cadence)
       _ringtoneLoopTimer?.cancel();
       _ringtoneLoopTimer = Timer.periodic(const Duration(milliseconds: 3400), (timer) async {
         if (!_isRinging) {
@@ -74,23 +112,36 @@ class MessengerSoundService {
         } catch (_) {}
       });
     } catch (e) {
-      debugPrint('[MessengerSoundService] startIncomingCallRingtone error: $e');
+      CommunicationDiagnostics.instance.log('ringtone:error', {'error': e.toString()});
     }
   }
 
   /// Immediately stops any active call ringtone.
-  /// MUST be called when attending, answering, declining, or cancelling calls.
-  Future<void> stopRingtone() async {
+  Future<void> stopRingtone({String? reason}) async {
+    final wasRinging = _isRinging;
+    final prevCallId = _activeCallId;
     _isRinging = false;
+    _activeCallId = null;
     _ringtoneLoopTimer?.cancel();
     _ringtoneLoopTimer = null;
     try {
       await _ringtonePlayer?.stop();
     } catch (_) {}
+    if (wasRinging) {
+      CommunicationDiagnostics.instance.log('ringtone:stop', {
+        'callId': prevCallId ?? '',
+        'reason': reason ?? 'stopped',
+      });
+    }
   }
 
-  /// Play a quick pleasant in-app WhatsApp-like message received chime (dual tone ding-dong).
+  /// Play a crisp message chime while respecting sound preferences.
   Future<void> playMessageReceivedTone() async {
+    await NotificationPreferences.instance.ensureLoaded();
+    if (!NotificationPreferences.instance.isPushEnabled ||
+        !NotificationPreferences.instance.isSoundEnabled) {
+      return;
+    }
     try {
       final player = _getEffectsPlayer();
       if (player == null) return;
@@ -99,8 +150,10 @@ class MessengerSoundService {
     } catch (_) {}
   }
 
-  /// Play a missed call alert sound.
+  /// Play a missed call chime while respecting sound preferences.
   Future<void> playMissedCallTone() async {
+    await NotificationPreferences.instance.ensureLoaded();
+    if (!NotificationPreferences.instance.isSoundEnabled) return;
     try {
       final player = _getEffectsPlayer();
       if (player == null) return;
@@ -110,7 +163,7 @@ class MessengerSoundService {
   }
 
   void dispose() {
-    stopRingtone();
+    stopRingtone(reason: 'dispose');
     try {
       _ringtonePlayer?.dispose();
       _effectsPlayer?.dispose();
@@ -119,31 +172,21 @@ class MessengerSoundService {
     _effectsPlayer = null;
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // WAV PCM Audio Synthesis Helpers (Zero Assets Required)
-  // ─────────────────────────────────────────────────────────────
-
-  /// Synthesizes a pleasant dual-frequency phone ring cadence (440Hz + 480Hz)
   static Uint8List _getRingtoneWav() {
     if (_cachedRingtoneWav != null) return _cachedRingtoneWav!;
-
     const sampleRate = 22050;
     const durationSeconds = 2.2;
     const numSamples = (sampleRate * durationSeconds) ~/ 1;
-
     final pcm = Int16List(numSamples);
 
     for (int i = 0; i < numSamples; i++) {
       final t = i / sampleRate;
-      // 2 bursts: 0.0-0.8s on, 0.8-1.0s off, 1.0-1.8s on, 1.8-2.2s off
       final isBurst = (t >= 0.0 && t <= 0.8) || (t >= 1.0 && t <= 1.8);
       if (isBurst) {
-        // Dual tone (standard US/WhatsApp phone ring frequencies: 440 Hz & 480 Hz)
         final s1 = sin(2 * pi * 440 * t);
         final s2 = sin(2 * pi * 480 * t);
         final envelope = min(1.0, (t % 1.0) * 10) * max(0.0, 1.0 - ((t % 1.0) - 0.7) * 10);
-        final sample = ((s1 + s2) * 0.45 * envelope * 32767).toInt().clamp(-32768, 32767);
-        pcm[i] = sample;
+        pcm[i] = ((s1 + s2) * 0.45 * envelope * 32767).toInt().clamp(-32768, 32767);
       } else {
         pcm[i] = 0;
       }
@@ -153,26 +196,21 @@ class MessengerSoundService {
     return _cachedRingtoneWav!;
   }
 
-  /// Synthesizes a crisp WhatsApp-style notification ding (two bright notes: 880Hz then 1320Hz)
   static Uint8List _getMessagePingWav() {
     if (_cachedMessagePingWav != null) return _cachedMessagePingWav!;
-
     const sampleRate = 22050;
     const durationSeconds = 0.35;
     const numSamples = (sampleRate * durationSeconds) ~/ 1;
-
     final pcm = Int16List(numSamples);
 
     for (int i = 0; i < numSamples; i++) {
       final t = i / sampleRate;
       double sampleVal;
       if (t < 0.12) {
-        final env = exp(-t * 22);
-        sampleVal = sin(2 * pi * 880 * t) * env;
+        sampleVal = sin(2 * pi * 880 * t) * exp(-t * 22);
       } else {
         final t2 = t - 0.12;
-        final env = exp(-t2 * 18);
-        sampleVal = sin(2 * pi * 1320 * t2) * env;
+        sampleVal = sin(2 * pi * 1320 * t2) * exp(-t2 * 18);
       }
       pcm[i] = (sampleVal * 0.85 * 32767).toInt().clamp(-32768, 32767);
     }
@@ -181,65 +219,53 @@ class MessengerSoundService {
     return _cachedMessagePingWav!;
   }
 
-  /// Synthesizes a gentle missed-call alert chime (3 descending notes)
   static Uint8List _getMissedCallWav() {
     if (_cachedMissedCallWav != null) return _cachedMissedCallWav!;
-
     const sampleRate = 22050;
     const durationSeconds = 0.6;
     const numSamples = (sampleRate * durationSeconds) ~/ 1;
-
     final pcm = Int16List(numSamples);
 
     for (int i = 0; i < numSamples; i++) {
       final t = i / sampleRate;
-      double freq = 987.77; // B5
+      double freq = 987.77;
       double localT = t;
       if (t >= 0.2 && t < 0.4) {
-        freq = 783.99; // G5
+        freq = 783.99;
         localT = t - 0.2;
       } else if (t >= 0.4) {
-        freq = 659.25; // E5
+        freq = 659.25;
         localT = t - 0.4;
       }
-      final env = exp(-localT * 12);
-      final s = sin(2 * pi * freq * localT) * env;
-      pcm[i] = (s * 0.75 * 32767).toInt().clamp(-32768, 32767);
+      pcm[i] = (sin(2 * pi * freq * localT) * exp(-localT * 12) * 0.75 * 32767).toInt().clamp(-32768, 32767);
     }
 
     _cachedMissedCallWav = _buildWavHeader(pcm, sampleRate);
     return _cachedMissedCallWav!;
   }
 
-  /// Creates a standard 44-byte RIFF WAV header for 16-bit mono PCM data
   static Uint8List _buildWavHeader(Int16List pcmSamples, int sampleRate) {
     final byteDataSize = pcmSamples.length * 2;
     final totalSize = 44 + byteDataSize;
     final buffer = Uint8List(totalSize);
     final view = ByteData.view(buffer.buffer);
 
-    // "RIFF"
     buffer.setRange(0, 4, 'RIFF'.codeUnits);
     view.setUint32(4, totalSize - 8, Endian.little);
-    // "WAVE"
     buffer.setRange(8, 12, 'WAVE'.codeUnits);
-    // "fmt "
     buffer.setRange(12, 16, 'fmt '.codeUnits);
-    view.setUint32(16, 16, Endian.little); // Subchunk1Size
-    view.setUint16(20, 1, Endian.little); // AudioFormat = 1 (PCM)
-    view.setUint16(22, 1, Endian.little); // NumChannels = 1 (Mono)
-    view.setUint32(24, sampleRate, Endian.little); // SampleRate
-    view.setUint32(28, sampleRate * 2, Endian.little); // ByteRate
-    view.setUint16(32, 2, Endian.little); // BlockAlign = 2
-    view.setUint16(34, 16, Endian.little); // BitsPerSample = 16
-    // "data"
+    view.setUint32(16, 16, Endian.little);
+    view.setUint16(20, 1, Endian.little);
+    view.setUint16(22, 1, Endian.little);
+    view.setUint32(24, sampleRate, Endian.little);
+    view.setUint32(28, sampleRate * 2, Endian.little);
+    view.setUint16(32, 2, Endian.little);
+    view.setUint16(34, 16, Endian.little);
     buffer.setRange(36, 40, 'data'.codeUnits);
     view.setUint32(40, byteDataSize, Endian.little);
 
-    // Copy PCM bytes
     final pcmBytes = Uint8List.view(pcmSamples.buffer);
     buffer.setRange(44, totalSize, pcmBytes);
-
     return buffer;
   }
 }

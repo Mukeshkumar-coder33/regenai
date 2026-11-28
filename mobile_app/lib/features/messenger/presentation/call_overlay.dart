@@ -4,6 +4,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../../../core/theme/celadon_colors.dart';
 import '../../dashboard/presentation/dashboard_navigation.dart';
 import '../data/call_notification_service.dart';
+import '../data/communication_diagnostics.dart';
 import '../data/messenger_socket_service.dart';
 import '../data/messenger_sound_service.dart';
 import '../data/webrtc_call_manager.dart';
@@ -75,24 +76,36 @@ class _CallOverlayState extends State<CallOverlay> {
       return;
     }
 
-    // Immediately show native system notification on Android/iOS for non-call alerts
-    // (incoming calls already show a dedicated full-screen call notification via WebRtcCallManager)
+    // Respect user notification settings before displaying alerts or playing sounds
+    if (type == 'project_task' && !NotificationPreferences.instance.isTaskRemindersEnabled) {
+      return;
+    }
+
+    // Play in-app sound & only show Android system tray notification when app is not actively resumed
+    // (avoids duplicate tray + in-app alerts in foreground per Section 8A).
+    final isForegroundResumed = WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+    final callId = notif['callId']?.toString();
     if (type == 'missed_call') {
       MessengerSoundService.instance.playMissedCallTone();
       CallNotificationService.instance.showMissedCallNotification(
         id: id,
-        callerName: title,
+        callId: (callId != null && callId.isNotEmpty) ? callId : id,
+        callerName: notif['senderName']?.toString() ?? title,
         mediaType: notif['mediaType']?.toString() ?? 'voice',
         conversationId: convId,
       );
     } else if (type != 'voice_call' && type != 'video_call' && type != 'team_meeting') {
+      if (!NotificationPreferences.instance.isPushEnabled) return;
       MessengerSoundService.instance.playMessageReceivedTone();
-      CallNotificationService.instance.showMessageNotification(
-        id: id,
-        senderName: title,
-        preview: body.isNotEmpty ? body : 'You have a new update',
-        conversationId: convId,
-      );
+      if (!isForegroundResumed) {
+        CallNotificationService.instance.showMessageNotification(
+          id: id,
+          senderName: title,
+          preview: body.isNotEmpty ? body : 'You have a new update',
+          conversationId: convId,
+          notificationType: type,
+        );
+      }
     }
 
     // Immediately slide down an in-app real-time alert banner across Android, iOS & Web
@@ -142,7 +155,9 @@ class _CallOverlayState extends State<CallOverlay> {
           _buildLiveNotificationBanner(_liveBanner!),
         if (_manager.callPhase == CallPhase.incoming) _buildIncomingCallOverlay(),
         if (_manager.callPhase == CallPhase.calling) _buildOutgoingCallOverlay(),
-        if (_manager.callPhase == CallPhase.connected) _buildActiveCallOverlay(),
+        if (_manager.callPhase == CallPhase.connecting ||
+            _manager.callPhase == CallPhase.connected)
+          _buildActiveCallOverlay(),
         if (_manager.meetingPhase == MeetingPhase.invited) _buildMeetingInviteOverlay(),
         if (_manager.meetingPhase == MeetingPhase.inMeeting) _buildActiveMeetingOverlay(),
       ],
@@ -453,9 +468,13 @@ class _CallOverlayState extends State<CallOverlay> {
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            'Connected • ${WebRtcCallManager.formatDuration(_manager.callDurationSeconds)}',
-                            style: const TextStyle(
-                              color: Color(0xFF6EE7B7),
+                            _manager.callPhase == CallPhase.connecting
+                                ? 'Connecting...'
+                                : 'Connected • ${WebRtcCallManager.formatDuration(_manager.callDurationSeconds)}',
+                            style: TextStyle(
+                              color: _manager.callPhase == CallPhase.connecting
+                                  ? const Color(0xFFFCD34D)
+                                  : const Color(0xFF6EE7B7),
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
                             ),
@@ -494,7 +513,9 @@ class _CallOverlayState extends State<CallOverlay> {
                           ),
                           const SizedBox(width: 10),
                           Text(
-                            WebRtcCallManager.formatDuration(_manager.callDurationSeconds),
+                            _manager.callPhase == CallPhase.connecting
+                                ? 'Connecting...'
+                                : WebRtcCallManager.formatDuration(_manager.callDurationSeconds),
                             style: const TextStyle(
                               color: Colors.white70,
                               fontSize: 12,

@@ -4,6 +4,11 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Activate Google Services Gradle plugin automatically when google-services.json is present
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "com.mukeshkumar_coder33.regen_mobile"
     compileSdk = 37

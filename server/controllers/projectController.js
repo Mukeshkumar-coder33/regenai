@@ -3,6 +3,7 @@ import Task from '../models/Task.js';
 import User from '../models/User.js';
 import Company from '../models/Company.js';
 import Notification from '../models/Notification.js';
+import { createAndSendNotification } from './notificationController.js';
 import { safeRandomUUID } from '../utils/safeRandomUUID.js';
 import { sendReportEmail } from '../utils/mailer.js';
 import {
@@ -102,15 +103,14 @@ export const createProject = async (req, res) => {
       const uId = emp.userId;
       if (!uId) continue;
 
-      await Notification.create({
+      await createAndSendNotification({
         id: safeRandomUUID(),
         companyId,
         userId: uId,
         title: `Added to Project: ${project.name}`,
         message: `You have been assigned as a team member on project "${project.name}".`,
-        type: 'general',
+        type: 'project',
         senderName: creator,
-        createdAt: new Date().toISOString(),
         metadata: { projectId: project.id, projectName: project.name }
       });
     }
@@ -272,7 +272,7 @@ export const createProjectTask = async (req, res) => {
       createdTasks.push(newTask);
 
       // Send project_task notification to employee
-      await Notification.create({
+      await createAndSendNotification({
         id: safeRandomUUID(),
         companyId,
         userId: assignee.userId,
@@ -280,7 +280,6 @@ export const createProjectTask = async (req, res) => {
         message: `You have been assigned "${title.trim()}" in project "${project.name}".`,
         type: 'project_task',
         senderName: assignor,
-        createdAt: new Date().toISOString(),
         metadata: {
           taskId,
           projectId: project.id,

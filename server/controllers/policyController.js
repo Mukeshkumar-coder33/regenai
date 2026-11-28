@@ -2,6 +2,7 @@ import PolicyAcknowledgment from '../models/PolicyAcknowledgment.js';
 import Company from '../models/Company.js';
 import User from '../models/User.js';
 import Notification from '../models/Notification.js';
+import { createAndSendNotification } from './notificationController.js';
 import { safeRandomUUID } from '../utils/safeRandomUUID.js';
 
 /**
@@ -45,17 +46,15 @@ export const syncPolicyAcknowledgmentsForCompany = async (companyId, io) => {
             status: 'pending'
           });
 
-          // Create notification for employee
-          const notifId = safeRandomUUID();
-          await Notification.create({
-            id: notifId,
+          // Create notification & dispatch Socket.IO + FCM for employee
+          await createAndSendNotification({
+            id: safeRandomUUID(),
             companyId: company._id,
             userId: uId,
             title: `New Policy: ${policy.title}`,
             message: `Company policy "${policy.title}" has been published. Please review and acknowledge.`,
             type: 'policy',
             senderName: company.name,
-            createdAt: new Date().toISOString(),
             metadata: {
               policyId: policyIdStr,
               policyTitle: policy.title
@@ -219,15 +218,15 @@ export const acceptPolicy = async (req, res) => {
 
     if (owner) {
       const ownerId = owner.userId || owner.StaffId || owner._id.toString();
-      await Notification.create({
+      await createAndSendNotification({
         id: safeRandomUUID(),
         companyId,
         userId: ownerId,
         title: `Policy Accepted: ${policyTitle}`,
         message: `${user.name || user.username} accepted company policy "${policyTitle}".`,
         type: 'policy',
+        senderId: uId,
         senderName: user.name || user.username,
-        createdAt: new Date().toISOString(),
         metadata: { policyId, employeeId: uId }
       });
     }
@@ -316,15 +315,15 @@ export const declinePolicy = async (req, res) => {
 
     if (owner) {
       const ownerId = owner.userId || owner.StaffId || owner._id.toString();
-      await Notification.create({
+      await createAndSendNotification({
         id: safeRandomUUID(),
         companyId,
         userId: ownerId,
         title: `Policy Declined: ${policyTitle}`,
         message: `${user.name || user.username} declined policy "${policyTitle}". Reason: "${reason.trim()}"`,
         type: 'policy',
+        senderId: uId,
         senderName: user.name || user.username,
-        createdAt: new Date().toISOString(),
         metadata: {
           policyId,
           employeeId: uId,
@@ -396,8 +395,8 @@ export const allowEmployeeWorkForward = async (req, res) => {
     ack.ownerNotes = notes ? notes.trim() : 'Exemption approved by company owner';
     await ack.save();
 
-    // Send notification to the employee that they are allowed to work forward
-    await Notification.create({
+    // Send notification & FCM push to the employee that they are allowed to work forward
+    await createAndSendNotification({
       id: safeRandomUUID(),
       companyId,
       userId: ack.userId,
@@ -405,7 +404,6 @@ export const allowEmployeeWorkForward = async (req, res) => {
       message: `The company owner has reviewed your reason for "${ack.policyTitle}" and approved you to work forward.`,
       type: 'policy',
       senderName: reviewer?.name || 'Company Owner',
-      createdAt: new Date().toISOString(),
       metadata: {
         policyId: ack.policyId,
         status: 'allowed'

@@ -1,9 +1,12 @@
 import mongoose from 'mongoose';
 import Notification from '../models/Notification.js';
 import User from '../models/User.js';
+import SuperAdmin from '../models/SuperAdmin.js';
 import Company from '../models/Company.js';
 import { resolveCompanyId } from '../utils/resolveCompanyId.js';
 import { emitToUser } from '../socket.js';
+import { sendFcmPushToUsers, isFcmConfigured, getFcmStatus } from '../utils/fcmPush.js';
+import { createCorrelationId, logCommEvent, getRecentCommEvents } from '../utils/commLogger.js';
 
 const parseMonthDay = (dob) => {
   if (!dob) return null;
@@ -124,16 +127,40 @@ export const runBirthdayReminderJob = async () => {
   }));
   const result = await Notification.bulkWrite(ops, { ordered: false });
   const created = result?.upsertedCount || 0;
+  if (created > 0) {
+    const upsertedIndices = Object.keys(result.upsertedIds || {}).map(Number);
+    for (const idx of upsertedIndices) {
+      const doc = toInsert[idx];
+      if (!doc) continue;
+      emitToUser(doc.userId, 'notification:new', doc);
+      sendFcmPushToUsers({
+        userIds: [doc.userId],
+        title: doc.title,
+        body: doc.message,
+        channelId: 'regen_messages_v2',
+        data: { notificationId: doc.id, type: 'general' },
+      }).catch(() => {});
+    }
+  }
   return { created, attempted: toInsert.length };
 };
 
 export const createNotification = async (req, res) => {
   try {
+    const role = String(req.user?.role || '').toLowerCase();
+    const isAdmin = ['param', 'owner', 'admin'].includes(role);
     const body = { ...req.body };
+    const reqUid = String(req.user?.userId || '').trim();
+    const targetUid = String(body.userId || reqUid).trim();
+    if (!isAdmin && reqUid && targetUid !== reqUid) {
+      return res.status(403).json({ message: 'Forbidden: cannot create notifications for another user' });
+    }
+    body.userId = targetUid;
     body.companyId = await resolveCompanyId(req, body);
-    const notification = new Notification(body);
-    await notification.save();
-    emitToUser(notification.userId, 'notification:new', notification);
+    const notification = await createAndSendNotification(body);
+    if (!notification) {
+      return res.status(400).json({ message: 'Failed to create notification' });
+    }
     res.status(201).json(notification);
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -215,21 +242,29 @@ export const getUserNotifications = async (req, res) => {
 export const markNotificationRead = async (req, res) => {
   try {
     const rawId = req.params.id;
-    // Find notification by id or _id
+    const role = String(req.user?.role || '').toLowerCase();
+    const isOwnerOrAdmin = ['param', 'owner', 'admin'].includes(role);
+    const ownershipFilter = isOwnerOrAdmin
+      ? (req.companyId && role !== 'param' ? { companyId: req.companyId } : {})
+      : { userId: { $in: [req.user?.userId, req.user?.StaffId, req.user?.id].filter(Boolean).map(String) } };
+
     let notification = await Notification.findOneAndUpdate(
-      { id: rawId },
+      { id: rawId, ...ownershipFilter },
       { $set: { read: true } },
       { new: true }
     );
-    if (!notification) {
-      notification = await Notification.findByIdAndUpdate(
-        rawId,
+    if (!notification && mongoose.isValidObjectId(rawId)) {
+      notification = await Notification.findOneAndUpdate(
+        { _id: rawId, ...ownershipFilter },
         { $set: { read: true } },
         { new: true }
       );
     }
     if (!notification) return res.status(404).json({ message: 'Notification not found' });
     emitToUser(notification.userId, 'notification:read', { id: notification.id, read: true });
+    if (notification.companyId) {
+      emitToUser(req.user?.userId, 'notification:read', { id: notification.id, read: true });
+    }
     res.status(200).json(notification);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -343,13 +378,19 @@ export const deleteNotification = async (req, res) => {
 
 export const createAndSendNotification = async (payload) => {
   try {
+    const rawType = payload.type || 'general';
+    const resolvedTitle = String(payload.title || '').trim() || (payload.senderName ? String(payload.senderName) : 'ReGen Alert');
+    const resolvedMessage =
+      String(payload.message || payload.body || payload.text || '').trim() ||
+      (payload.senderName ? `Update from ${payload.senderName}` : `${rawType.replace(/_/g, ' ')} update`);
+
     const doc = {
       id: payload.id || `notif-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       companyId: payload.companyId,
       userId: payload.userId,
-      title: payload.title,
-      message: payload.message,
-      type: payload.type || 'general',
+      title: resolvedTitle,
+      message: resolvedMessage,
+      type: rawType,
       senderId: payload.senderId,
       senderName: payload.senderName,
       conversationId: payload.conversationId,
@@ -361,7 +402,13 @@ export const createAndSendNotification = async (payload) => {
       read: false
     };
 
-    // Prevent duplicate calls if pending call notification already exists
+    // Deduplicate: return existing notification record if caller supplied an id already persisted
+    if (payload.id) {
+      const existingById = await Notification.findOne({ id: doc.id });
+      if (existingById) return existingById;
+    }
+
+    // Prevent duplicate calls/meetings if pending notification already exists for this user
     if (doc.type === 'voice_call' || doc.type === 'video_call') {
       const existing = await Notification.findOne({
         userId: doc.userId,
@@ -369,6 +416,13 @@ export const createAndSendNotification = async (payload) => {
         actionStatus: 'pending'
       });
       if (existing) return existing;
+    }
+    if (doc.type === 'team_meeting' && doc.meetingId) {
+      const existingMeeting = await Notification.findOne({
+        userId: doc.userId,
+        meetingId: doc.meetingId,
+      });
+      if (existingMeeting) return existingMeeting;
     }
 
     const n = new Notification(doc);
@@ -410,6 +464,37 @@ export const createAndSendNotification = async (payload) => {
     userIdsToNotify.forEach(uid => {
       emitToUser(uid, 'notification:new', n);
     });
+
+    // Trigger FCM push fallback for messages & alerts when recipient devices hold registered tokens
+    // (1:1 calls & team meetings dispatch high-priority call wakeup pushes directly in socket.js)
+    const isCallAlert = ['voice_call', 'video_call', 'team_meeting'].includes(doc.type);
+    if (!isCallAlert) {
+      const correlationId = createCorrelationId('notif');
+      const isMissed = doc.type === 'missed_call';
+      sendFcmPushToUsers({
+        userIds: Array.from(userIdsToNotify),
+        title: doc.title,
+        body: doc.message,
+        channelId: isMissed ? 'regen_missed_calls_v2' : 'regen_messages_v2',
+        highPriority: isMissed || ['text_message', 'voice_message', 'leave', 'project_task', 'attendance', 'task'].includes(doc.type),
+        dataOnly: isMissed,
+        correlationId,
+        data: {
+          notificationId: doc.id,
+          type: doc.type,
+          title: doc.title,
+          body: doc.message,
+          message: doc.message,
+          conversationId: doc.conversationId || '',
+          senderId: doc.senderId || '',
+          senderName: doc.senderName || '',
+          callId: doc.callId || '',
+          meetingId: doc.meetingId || '',
+        },
+      }).catch((err) => {
+        logCommEvent('notif:fcm_error', { correlationId, error: err.message });
+      });
+    }
 
     return n;
   } catch (err) {
@@ -517,22 +602,34 @@ export const registerDeviceToken = async (req, res) => {
     const uid = String(req.user?.userId || '').trim();
     if (!uid) return res.status(401).json({ message: 'Unauthorized' });
 
+    // Remove this device token from any previous account on the same physical device before linking
+    await Promise.all([
+      User.updateMany({ userId: { $ne: uid } }, { $pull: { pushTokens: { token } } }),
+      SuperAdmin.updateMany({ adminId: { $ne: uid } }, { $pull: { pushTokens: { token } } }),
+    ]);
+
     if (req.user?.role === 'param') {
-      const { default: SuperAdmin } = await import('../models/SuperAdmin.js');
       await SuperAdmin.updateOne({ adminId: uid }, { $pull: { pushTokens: { token } } });
       await SuperAdmin.updateOne(
         { adminId: uid },
-        { $push: { pushTokens: { token, platform, updatedAt: new Date() } } }
+        { $push: { pushTokens: { $each: [{ token, platform, updatedAt: new Date() }], $slice: -10 } } }
       );
     } else {
       await User.updateOne({ userId: uid }, { $pull: { pushTokens: { token } } });
       await User.updateOne(
         { userId: uid },
-        { $push: { pushTokens: { token, platform, updatedAt: new Date() } } }
+        { $push: { pushTokens: { $each: [{ token, platform, updatedAt: new Date() }], $slice: -10 } } }
       );
     }
 
-    res.status(200).json({ success: true, message: 'Device token registered' });
+    logCommEvent('fcm:token_registered', {
+      userId: uid,
+      role: req.user?.role || '',
+      platform,
+      tokenPrefix: `${token.slice(0, 8)}...`,
+    });
+
+    res.status(200).json({ success: true, message: 'Device token registered', fcmConfigured: isFcmConfigured() });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -545,13 +642,50 @@ export const unregisterDeviceToken = async (req, res) => {
     if (!uid || !token) return res.status(400).json({ message: 'Token is required' });
 
     if (req.user?.role === 'param') {
-      const { default: SuperAdmin } = await import('../models/SuperAdmin.js');
       await SuperAdmin.updateOne({ adminId: uid }, { $pull: { pushTokens: { token } } });
     } else {
       await User.updateOne({ userId: uid }, { $pull: { pushTokens: { token } } });
     }
 
+    logCommEvent('fcm:token_unregistered', {
+      userId: uid,
+      tokenPrefix: `${token.slice(0, 8)}...`,
+    });
+
     res.status(200).json({ success: true, message: 'Device token removed' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const getCommunicationDiagnostics = async (req, res) => {
+  try {
+    const { getSocketDiagnostics } = await import('../socket.js');
+    const role = String(req.user?.role || '').toLowerCase();
+    const isAdminOrOwner = ['param', 'owner', 'admin'].includes(role);
+    const sockDiag = getSocketDiagnostics();
+    const fcmStatus = getFcmStatus();
+    if (!isAdminOrOwner) {
+      return res.status(200).json({
+        fcmConfigured: fcmStatus.configured,
+        fcmStatus: {
+          configured: fcmStatus.configured,
+          initialized: fcmStatus.initialized,
+          projectId: fcmStatus.projectId,
+        },
+        socket: {
+          initialized: sockDiag.initialized,
+          onlineUserCount: sockDiag.onlineUserCount,
+        },
+        recentEvents: [],
+      });
+    }
+    res.status(200).json({
+      fcmConfigured: fcmStatus.configured,
+      fcmStatus,
+      socket: sockDiag,
+      recentEvents: getRecentCommEvents(80),
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

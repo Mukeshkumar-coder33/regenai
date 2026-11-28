@@ -24,12 +24,11 @@ import '../../calendar/data/leave_service.dart';
 import '../../calendar/presentation/widgets/calendar_item_detail_dialog.dart';
 import '../../dashboard/data/dashboard_service.dart';
 import '../../dashboard/data/leave_model.dart';
-import '../../messenger/data/call_notification_service.dart';
-import '../../messenger/data/messenger_socket_service.dart';
-import '../../messenger/data/webrtc_call_manager.dart';
+import '../../messenger/data/communication_coordinator.dart';
 import '../../messenger/presentation/messenger_view.dart';
 import '../../notifications/data/notification_model.dart';
 import '../../notifications/data/notification_service.dart';
+import '../../notifications/data/notification_store.dart';
 import '../../policies/data/policy_service.dart';
 import '../../tasks/data/task_model.dart';
 import '../../tasks/presentation/tasks_view.dart';
@@ -152,9 +151,14 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
   String _selectedEmployeeDeptFilter = 'all';
   final NotificationService _notificationService = NotificationService();
   List<NotificationModel> _notifications = [];
-  StreamSubscription<Map<String, dynamic>>? _liveNotifSub;
-  int get _unreadNotificationCount =>
-      _notifications.where((n) => !n.read).length;
+  int get _unreadNotificationCount => NotificationStore.instance.unreadCount;
+
+  void _onNotifStoreChanged() {
+    if (!mounted) return;
+    setState(() {
+      _notifications = NotificationStore.instance.items.toList();
+    });
+  }
 
   int _selectedNotificationFilter =
       0; // 0=All, 1=Unread, 2=Tasks, 3=Leave, 4=Attendance, 5=Messenger
@@ -208,24 +212,15 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
     super.initState();
     _dashboardService = widget.dashboardService ?? DashboardService();
     _authService = widget.authService ?? AuthService();
+    _notifications = NotificationStore.instance.items.toList();
+    NotificationStore.instance.addListener(_onNotifStoreChanged);
     _initRealtimeCommunication(widget.user);
     _loadCompanyBottomNavSlots();
     _loadCompanyData();
-    _liveNotifSub = MessengerSocketService.instance.onNotification.listen((raw) {
-      if (!mounted) return;
-      final incoming = NotificationModel.fromJson(raw);
-      if (incoming.id.isEmpty) return;
-      setState(() {
-        _notifications.removeWhere((n) => n.id == incoming.id);
-        _notifications.insert(0, incoming);
-      });
-    });
   }
 
   Future<void> _initRealtimeCommunication(UserModel user) async {
-    WebRtcCallManager.instance.bindUser(user);
-    await CallNotificationService.instance.initialize();
-    await MessengerSocketService.instance.connect(user: user);
+    await CommunicationCoordinator.instance.initializeForUser(user);
   }
 
   Future<void> _loadCompanyBottomNavSlots() async {
@@ -277,7 +272,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
 
   @override
   void dispose() {
-    _liveNotifSub?.cancel();
+    NotificationStore.instance.removeListener(_onNotifStoreChanged);
     _employeeSearchController.dispose();
     _attendanceSearchController.dispose();
     _leaveSearchController.dispose();
@@ -359,7 +354,10 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             final notifs = await _notificationService.getUserNotifications(
               myId,
             );
-            if (mounted) setState(() => _notifications = notifs);
+            NotificationStore.instance.setFromList(notifs);
+            if (mounted) {
+              setState(() => _notifications = NotificationStore.instance.items.toList());
+            }
           } catch (_) {}
         }
         try {
@@ -10547,7 +10545,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       _notificationService
           .getUserNotifications(myId)
           .then((notifs) {
-            if (mounted) setState(() => _notifications = notifs);
+            NotificationStore.instance.setFromList(notifs);
           })
           .catchError((_) {});
     }
@@ -10559,9 +10557,12 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
       ),
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setSheetState) {
-          final filteredList = _notifications.where((n) {
+      builder: (ctx) => ListenableBuilder(
+        listenable: NotificationStore.instance,
+        builder: (ctx, _) => StatefulBuilder(
+          builder: (context, setSheetState) {
+            final currentNotifs = NotificationStore.instance.items;
+            final filteredList = currentNotifs.where((n) {
             if (_selectedNotificationFilter == 1 && n.read) return false;
             if (_selectedNotificationFilter == 2 && !n.isTask) return false;
             if (_selectedNotificationFilter == 3 && !n.type.contains('leave')) {
@@ -10629,11 +10630,9 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                           tooltip: 'Mark all as read',
                           onPressed: () async {
                             if (myId.isNotEmpty) {
-                              await _notificationService.markAllAsRead(myId);
-                              final updated = await _notificationService
-                                  .getUserNotifications(myId);
+                              await NotificationStore.instance.markAllAsRead(myId);
                               if (mounted) {
-                                setState(() => _notifications = updated);
+                                setState(() => _notifications = NotificationStore.instance.items.toList());
                                 setSheetState(() {});
                               }
                             }
@@ -10665,12 +10664,11 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                           ),
                           onPressed: () async {
                             if (myId.isNotEmpty) {
-                              _notifications.clear();
+                              await NotificationStore.instance.clearAll(myId);
                               if (mounted) {
-                                setState(() {});
+                                setState(() => _notifications = NotificationStore.instance.items.toList());
                                 setSheetState(() {});
                               }
-                              await _notificationService.clearAll(myId);
                             }
                           },
                         ),
@@ -10844,9 +10842,8 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                           ),
                                         ),
                                         onDismissed: (_) {
-                                          _notifications.removeWhere((n) => n.id == notif.id);
-                                          _notificationService.deleteNotification(notif.id);
-                                          if (mounted) setState(() {});
+                                          NotificationStore.instance.deleteNotification(notif.id);
+                                          if (mounted) setState(() => _notifications = NotificationStore.instance.items.toList());
                                           setSheetState(() {});
                                         },
                                         child: _buildNotificationCard(
@@ -10859,25 +10856,16 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
                                           ),
                                           isUnread: !notif.read,
                                           onDismiss: () {
-                                            _notifications.removeWhere((n) => n.id == notif.id);
-                                            _notificationService.deleteNotification(notif.id);
-                                            if (mounted) setState(() {});
+                                            NotificationStore.instance.deleteNotification(notif.id);
+                                            if (mounted) setState(() => _notifications = NotificationStore.instance.items.toList());
                                             setSheetState(() {});
                                           },
-                                          onTap: () async {
+                                          onTap: () {
                                           final sheetNav = Navigator.of(ctx);
-                                          if (!notif.read) {
-                                            notif.read = true;
-                                            if (mounted) {
-                                              setState(() {});
-                                              setSheetState(() {});
-                                            }
-                                            _notificationService
-                                                .markAsRead(
-                                                  notif.id,
-                                                  mongoId: notif.mongoId,
-                                                )
-                                                .catchError((_) => false);
+                                          unawaited(NotificationStore.instance.markAsRead(notif));
+                                          if (mounted) {
+                                            setState(() => _notifications = NotificationStore.instance.items.toList());
+                                            setSheetState(() {});
                                           }
                                           sheetNav.pop();
 
@@ -10979,6 +10967,7 @@ class _CompanyDashboardViewState extends State<CompanyDashboardView> {
             ),
           );
         },
+        ),
       ),
     );
   }

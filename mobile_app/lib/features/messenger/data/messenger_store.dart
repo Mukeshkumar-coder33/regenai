@@ -912,6 +912,17 @@ class MessengerStore extends ChangeNotifier {
         }
       }),
 
+      socket.onPresenceSnapshot.listen((payload) {
+        final rawIds = payload['onlineUserIds'];
+        if (rawIds is List) {
+          final ids = rawIds
+              .map((e) => e.toString().trim().toLowerCase())
+              .where((s) => s.isNotEmpty)
+              .toSet();
+          dispatch(SyncOnlineUsersAction(ids));
+        }
+      }),
+
       socket.onPresenceUpdate.listen((payload) {
         final uid = (payload['userId'] ?? '').toString();
         final status = (payload['status'] ?? '').toString().toLowerCase();

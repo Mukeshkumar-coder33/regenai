@@ -137,8 +137,22 @@ export const createMessage = async (req, res) => {
 
     // Notify all other active members in this company immediately
     try {
-      const isVoice = Array.isArray(msg.attachments) && msg.attachments.some((a) => a.type?.startsWith('audio'));
+      const atts = Array.isArray(msg.attachments) ? msg.attachments : [];
+      const isVoice = atts.some((a) => a.type?.startsWith('audio'));
+      const isVideo = atts.some((a) => a.type?.startsWith('video') || /\.(mp4|mov|mkv|webm)$/i.test(String(a.name || a.path || '')));
+      const isImage = atts.some((a) => a.type?.startsWith('image') || /\.(png|jpe?g|gif|webp)$/i.test(String(a.name || a.path || '')));
       const senderName = msg.senderName || req.user?.username || msg.senderId;
+      const cleanText = String(msg.content || '').trim();
+      const bodySummary = isVoice
+        ? (cleanText ? `${senderName} sent a voice message: ${cleanText}` : `${senderName} sent a voice message`)
+        : isVideo
+        ? (cleanText ? `${senderName} sent a video: ${cleanText}` : `${senderName} sent a video`)
+        : isImage
+        ? (cleanText ? `${senderName} sent a photo: ${cleanText}` : `${senderName} sent a photo`)
+        : atts.length > 0
+        ? (cleanText ? `${senderName} sent ${atts[0].name || 'a file'}: ${cleanText}` : `${senderName} sent an attachment: ${atts[0].name || 'file'}`)
+        : (cleanText || `${senderName} posted in Team Channel`);
+
       const members = await User.find({
         companyId: msg.companyId,
         userId: { $ne: msg.senderId },
@@ -147,17 +161,20 @@ export const createMessage = async (req, res) => {
 
       for (const m of members) {
         await createAndSendNotification({
+          id: `team-${msg.messageId || msg._id?.toString()}-${m.userId}`,
           companyId: msg.companyId,
           userId: m.userId,
           type: isVoice ? 'voice_message' : 'text_message',
           title: `Team Channel • ${senderName}`,
-          message: isVoice ? 'Sent a voice message' : (msg.content || 'Sent an attachment'),
+          message: bodySummary,
           senderId: msg.senderId,
           senderName,
           metadata: {
             messageId: msg.messageId || msg._id?.toString(),
             isTeamChannel: true,
             isVoice: !!isVoice,
+            hasVideo: !!isVideo,
+            hasImage: !!isImage,
           },
         });
       }

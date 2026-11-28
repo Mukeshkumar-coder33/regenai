@@ -1,6 +1,8 @@
 import Holiday from '../models/Holiday.js';
+import User from '../models/User.js';
 import { resolveCompanyId } from '../utils/resolveCompanyId.js';
 import { emitToCompany } from '../socket.js';
+import { createAndSendNotification } from './notificationController.js';
 
 export const addHoliday = async (req, res) => {
   try {
@@ -9,6 +11,32 @@ export const addHoliday = async (req, res) => {
     const h = new Holiday(body);
     await h.save();
     emitToCompany('payroll:change', h.companyId, { action: 'holiday_added', date: h.date });
+
+    try {
+      if (h.companyId) {
+        const holidayName = String(h.name || h.title || 'Company Holiday').trim();
+        const actorId = req.user?.userId;
+        const users = await User.find({
+          companyId: h.companyId,
+          status: { $ne: 'inactive' },
+          ...(actorId ? { userId: { $ne: actorId } } : {}),
+        }).select('userId').lean();
+        for (const u of users) {
+          await createAndSendNotification({
+            id: `holiday-${h.id || h._id}-${u.userId}`,
+            companyId: h.companyId,
+            userId: u.userId,
+            type: 'holiday',
+            title: `Holiday Added: ${holidayName}`,
+            message: `${holidayName} has been scheduled on ${h.date}.`,
+            senderId: actorId || '',
+            senderName: req.user?.name || req.user?.username || 'Admin',
+            metadata: { holidayId: h.id, date: h.date, name: holidayName },
+          });
+        }
+      }
+    } catch (_) {}
+
     res.status(201).json(h);
   } catch (error) {
     res.status(400).json({ message: error.message });

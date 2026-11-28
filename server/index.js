@@ -43,12 +43,20 @@ import { authenticateUser } from './auth-integration/dualAuthService.js';
 import { isPgConnected } from './auth-integration/pgClient.js';
 import { syncMongoUserToPg } from './auth-integration/pgSyncService.js';
 import { startDeletionSyncWorker } from './auth-integration/pgDeletionSyncService.js';
+import { initializeFcmStartup } from './utils/fcmPush.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.join(__dirname, '.env') });
+
+const fcmBoot = initializeFcmStartup();
+if (fcmBoot.configured) {
+  console.log(`[FCM] Ready (project=${fcmBoot.projectId}, source=${fcmBoot.source})`);
+} else {
+  console.log(`[FCM] Push disabled (${fcmBoot.error || 'not configured'})`);
+}
 
 const app = express();
 app.set('trust proxy', 1);
@@ -1352,6 +1360,9 @@ app.use((err, req, res, _next) => {
 });
 
 const server = http.createServer(app);
+// Keep-alive longer than Nginx default (65s) to avoid intermittent 502s during Socket.IO polling/REST
+server.keepAliveTimeout = 65000;
+server.headersTimeout = 66000;
 initSocketIO(server);
 
 // Graceful shutdown

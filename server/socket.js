@@ -4,7 +4,7 @@
  * Channels (rooms) are strictly role- & company-scoped:
  *   company:<companyId> — all users in a company get company events
  *   global              — SuperAdmin sees platform monitoring events
- *   user:<userId>       — targeted direct messages, 1:1 calls, notifications
+ *   user:<userId>       — targeted direct messages, 1:1 calls, notifications (across all user ID aliases)
  *   meeting:<meetingId> — authorized group voice/video call room (WebRTC Mesh)
  */
 import { Server } from 'socket.io';
@@ -15,33 +15,47 @@ import SuperAdmin from './models/SuperAdmin.js';
 import Conversation from './models/Conversation.js';
 import DirectMessage from './models/DirectMessage.js';
 import Notification from './models/Notification.js';
+import CallSession, { TERMINAL_CALL_STATES, isValidCallTransition } from './models/CallSession.js';
 import {
   resolveMessengerActor,
   canCommunicate,
   canAccessConversation,
-  normalizeId
+  normalizeId,
 } from './utils/messengerAuth.js';
+import { sendFcmPushToUsers } from './utils/fcmPush.js';
+import { createCorrelationId, logCommEvent } from './utils/commLogger.js';
 
 let io = null;
 
-// In-memory active 1:1 calls cache for reliable WebRTC offer delivery across tabs & notification clicks
-const activeCalls = new Map(); // callId -> { callId, callerId, callerName, recipientId, mediaType, offer, actionStatus, startedAt }
+const CALL_RING_TIMEOUT_MS = 45000;
+
+// In-memory active 1:1 calls cache + timeout handles backed by MongoDB CallSession
+const activeCalls = new Map(); // callId -> call object
+const callTimeoutHandles = new Map(); // callId -> NodeJS.Timeout
 
 // In-memory active group/team meetings ACL cache for strict room authorization
-const activeMeetings = new Map(); // meetingId -> { meetingId, title, hostId, hostName, mediaType, companyId, conversationId, scope, allowedUserIds: Set<string>, createdAt }
+const activeMeetings = new Map();
 
 // In-memory online user tracking (userId -> Set<socket.id>)
 const onlineUserSockets = new Map();
 
-// In-memory active conversation tracking (userId -> conversationId)
-const userActiveConversations = new Map();
+// Per-socket active conversation tracking (socket.id -> { userId, conversationId })
+// Prevents one device/tab disconnect from clearing another device's active chat!
+const socketActiveConversations = new Map();
 
 /**
- * Return whether a user is currently actively viewing a specific conversation.
+ * Return whether any connected socket for [userId] is actively viewing [conversationId].
  */
 export function isUserActiveInConversation(userId, conversationId) {
   if (!userId || !conversationId) return false;
-  return userActiveConversations.get(String(userId)) === String(conversationId);
+  const uid = String(userId);
+  const cid = String(conversationId);
+  for (const entry of socketActiveConversations.values()) {
+    if (entry.userId === uid && entry.conversationId === cid) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -49,6 +63,35 @@ export function isUserActiveInConversation(userId, conversationId) {
  */
 export function getOnlineUserIds() {
   return new Set(onlineUserSockets.keys());
+}
+
+/**
+ * Return redacted communication diagnostics for debugging.
+ */
+export function getSocketDiagnostics() {
+  const connectedUsers = {};
+  for (const [uid, sockSet] of onlineUserSockets.entries()) {
+    connectedUsers[uid] = sockSet.size;
+  }
+  const activeCallStates = [];
+  for (const c of activeCalls.values()) {
+    activeCallStates.push({
+      callId: c.callId,
+      correlationId: c.correlationId,
+      state: c.state || c.actionStatus,
+      mediaType: c.mediaType,
+      startedAt: c.startedAt,
+    });
+  }
+  return {
+    initialized: io !== null,
+    onlineUserCount: onlineUserSockets.size,
+    totalSockets: io ? io.engine.clientsCount : 0,
+    connectedUsers,
+    activeCallsCount: activeCalls.size,
+    activeCalls: activeCallStates,
+    activeMeetingsCount: activeMeetings.size,
+  };
 }
 
 /**
@@ -65,21 +108,23 @@ async function resolveUserRooms(identifier) {
       User.findOne({
         $or: [
           { userId: strId },
+          { StaffId: strId },
           { username: strId },
-          ...(isOid ? [{ _id: new mongoose.Types.ObjectId(strId) }] : [])
-        ]
-      }).select('_id userId username companyId').lean(),
+          ...(isOid ? [{ _id: new mongoose.Types.ObjectId(strId) }] : []),
+        ],
+      }).select('_id userId StaffId username companyId').lean(),
       SuperAdmin.findOne({
         $or: [
           { adminId: strId },
           { username: strId },
-          ...(isOid ? [{ _id: new mongoose.Types.ObjectId(strId) }] : [])
-        ]
-      }).select('_id adminId username').lean()
+          ...(isOid ? [{ _id: new mongoose.Types.ObjectId(strId) }] : []),
+        ],
+      }).select('_id adminId username').lean(),
     ]);
 
     if (u) {
       if (u.userId) rooms.add(`user:${u.userId}`);
+      if (u.StaffId) rooms.add(`user:${u.StaffId}`);
       if (u._id) rooms.add(`user:${u._id.toString()}`);
       if (u.username) rooms.add(`user:${u.username}`);
     }
@@ -88,7 +133,7 @@ async function resolveUserRooms(identifier) {
       if (sa._id) rooms.add(`user:${sa._id.toString()}`);
       if (sa.username) rooms.add(`user:${sa.username}`);
     }
-  } catch {}
+  } catch (_) {}
   return rooms;
 }
 
@@ -104,6 +149,191 @@ function broadcastToRooms(roomSet, event, payload) {
   broadcaster.emit(event, payload);
 }
 
+function clearCallTimer(callId) {
+  const t = callTimeoutHandles.get(callId);
+  if (t) {
+    clearTimeout(t);
+    callTimeoutHandles.delete(callId);
+  }
+}
+
+async function transitionCallSession(callId, toState, updates = {}) {
+  if (!callId) return { ok: false, reason: 'missing_call_id', call: null };
+  let memCall = activeCalls.get(callId);
+  let dbCall = null;
+
+  if (!memCall) {
+    dbCall = await CallSession.findOne({ callId }).lean();
+    if (dbCall) {
+      memCall = {
+        callId: dbCall.callId,
+        correlationId: dbCall.correlationId,
+        callerId: dbCall.callerId,
+        callerName: dbCall.callerName,
+        recipientId: dbCall.recipientId,
+        recipientName: dbCall.recipientName,
+        companyId: dbCall.companyId,
+        mediaType: dbCall.mediaType,
+        offer: dbCall.offer,
+        answer: dbCall.answer,
+        state: dbCall.state,
+        actionStatus: dbCall.state === 'accepted' ? 'accepted' : 'pending',
+        startedAt: dbCall.initiatedAt ? new Date(dbCall.initiatedAt).getTime() : Date.now(),
+        expiresAt: dbCall.expiresAt ? new Date(dbCall.expiresAt).getTime() : Date.now() + CALL_RING_TIMEOUT_MS,
+      };
+    }
+  }
+
+  if (!memCall) {
+    return { ok: false, reason: 'not_found', call: null };
+  }
+
+  const fromState = memCall.state || 'initiated';
+  if (TERMINAL_CALL_STATES.has(fromState) || !isValidCallTransition(fromState, toState)) {
+    return { ok: false, reason: `invalid_transition:${fromState}->${toState}`, call: memCall };
+  }
+
+  Object.assign(memCall, updates, { state: toState });
+  if (toState === 'accepted') {
+    memCall.actionStatus = 'accepted';
+    memCall.acceptedAt = memCall.acceptedAt || new Date().toISOString();
+  }
+  if (TERMINAL_CALL_STATES.has(toState)) {
+    clearCallTimer(callId);
+    activeCalls.delete(callId);
+  } else {
+    activeCalls.set(callId, memCall);
+  }
+
+  const dbSet = {
+    state: toState,
+    ...updates,
+    ...(toState === 'ringing' ? { ringingAt: new Date() } : {}),
+    ...(toState === 'accepted' ? { acceptedAt: new Date() } : {}),
+    ...(TERMINAL_CALL_STATES.has(toState) ? { endedAt: new Date() } : {}),
+  };
+
+  await CallSession.updateOne({ callId }, { $set: dbSet }).catch(() => {});
+
+  logCommEvent('call:state_transition', {
+    callId,
+    correlationId: memCall.correlationId,
+    from: fromState,
+    to: toState,
+    callerId: memCall.callerId,
+    recipientId: memCall.recipientId,
+  });
+
+  return { ok: true, call: memCall, previousState: fromState };
+}
+
+function scheduleCallTimeout(callId) {
+  clearCallTimer(callId);
+  const handle = setTimeout(async () => {
+    try {
+      callTimeoutHandles.delete(callId);
+      const res = await transitionCallSession(callId, 'missed', { reason: 'timeout' });
+      if (!res.ok || !res.call) return;
+      const call = res.call;
+
+      logCommEvent('call:timeout', {
+        callId,
+        correlationId: call.correlationId,
+        callerId: call.callerId,
+        recipientId: call.recipientId,
+      });
+
+      await Notification.updateOne(
+        { id: `call-notif-${callId}` },
+        { $set: { actionStatus: 'missed', read: true } }
+      ).catch(() => {});
+
+      const [callerRooms, recipientRooms] = await Promise.all([
+        resolveUserRooms(call.callerId),
+        resolveUserRooms(call.recipientId),
+      ]);
+      const allRooms = new Set([...callerRooms, ...recipientRooms]);
+
+      broadcastToRooms(allRooms, 'call:state', {
+        callId,
+        correlationId: call.correlationId,
+        state: 'missed',
+        reason: 'timeout',
+      });
+      broadcastToRooms(allRooms, 'call:cancelled', {
+        callId,
+        correlationId: call.correlationId,
+        callerId: call.callerId,
+        reason: 'timeout',
+        wasPending: true,
+      });
+      broadcastToRooms(allRooms, 'call:ended', {
+        callId,
+        correlationId: call.correlationId,
+        endedBy: 'system',
+        reason: 'timeout',
+        wasPending: true,
+      });
+
+      const missedNotif = new Notification({
+        id: `missed-${Date.now()}-${callId}`,
+        companyId: call.companyId || null,
+        userId: call.recipientId,
+        title: `Missed ${call.mediaType === 'video' ? 'Video' : 'Voice'} Call`,
+        message: `${call.callerName || 'Someone'} called you`,
+        type: 'missed_call',
+        senderId: call.callerId,
+        senderName: call.callerName || 'Someone',
+        callId,
+        metadata: { mediaType: call.mediaType || 'voice', callId, reason: 'timeout' },
+        createdAt: new Date().toISOString(),
+        read: false,
+      });
+      await missedNotif.save().catch(() => {});
+      broadcastToRooms(recipientRooms, 'notification:new', missedNotif);
+
+      await Promise.all([
+        sendFcmPushToUsers({
+          userIds: Array.from(recipientRooms).map((r) => r.replace(/^user:/, '')),
+          dataOnly: true,
+          highPriority: true,
+          correlationId: call.correlationId,
+          ttlSeconds: 30,
+          data: {
+            type: 'call_cancelled',
+            callId,
+            reason: 'timeout',
+            callerId: call.callerId,
+            callerName: call.callerName || 'Someone',
+            mediaType: call.mediaType || 'voice',
+          },
+        }),
+        sendFcmPushToUsers({
+          userIds: Array.from(recipientRooms).map((r) => r.replace(/^user:/, '')),
+          title: `Missed ${call.mediaType === 'video' ? 'Video' : 'Voice'} Call`,
+          body: `${call.callerName || 'Someone'} called you`,
+          channelId: 'regen_missed_calls_v2',
+          highPriority: true,
+          dataOnly: true,
+          correlationId: call.correlationId,
+          data: {
+            type: 'missed_call',
+            callId,
+            callerId: call.callerId,
+            callerName: call.callerName || 'Someone',
+            mediaType: call.mediaType || 'voice',
+          },
+        }),
+      ]);
+    } catch (err) {
+      logCommEvent('call:timeout_error', { callId, error: err.message });
+    }
+  }, CALL_RING_TIMEOUT_MS);
+
+  if (typeof handle.unref === 'function') handle.unref();
+  callTimeoutHandles.set(callId, handle);
+}
+
 /**
  * Initialise Socket.IO on an existing HTTP server.
  * Call once from index.js after `app.listen()`.
@@ -111,25 +341,56 @@ function broadcastToRooms(roomSet, event, payload) {
 export function initSocketIO(httpServer) {
   io = new Server(httpServer, {
     cors: { origin: '*', methods: ['GET', 'POST'] },
-    path: '/ws', // matches existing website frontend/src/hooks/useSocket.js
+    path: '/ws', // matches website frontend & Flutter
     transports: ['websocket', 'polling'],
+    pingInterval: 20000,
+    pingTimeout: 20000,
+    allowEIO3: true,
+    connectionStateRecovery: {
+      maxDisconnectionDuration: 2 * 60 * 1000,
+      skipMiddlewares: false,
+    },
   });
 
   // ── Auth middleware ──────────────────────────────────────────────
   io.use(async (socket, next) => {
+    const corr = createCorrelationId('auth');
     try {
       const token = socket.handshake.auth?.token || socket.handshake.query?.token;
-      if (!token) return next(new Error('Authentication required'));
+      if (!token) {
+        logCommEvent('socket:auth_rejected', { correlationId: corr, reason: 'missing_token' });
+        return next(new Error('Authentication required'));
+      }
 
       const secret = process.env.JWT_SECRET;
       if (!secret) return next(new Error('Server misconfigured'));
 
       const decoded = jwt.verify(token, secret);
       const actor = await resolveMessengerActor(decoded.userId, decoded.role);
-      if (!actor) return next(new Error('Invalid session'));
+      if (!actor) {
+        logCommEvent('socket:auth_rejected', { correlationId: corr, userId: decoded.userId, reason: 'invalid_session' });
+        return next(new Error('Invalid session'));
+      }
       if (actor.role !== 'param' && actor.status === 'inactive') {
+        logCommEvent('socket:auth_rejected', { correlationId: corr, userId: actor.userId, reason: 'suspended' });
         return next(new Error('Account suspended'));
       }
+
+      // Enforce tokenVersion check against DB (reject stale JWTs after password change/suspension/logout)
+      let currentTokenVersion = 0;
+      if (actor.role === 'param') {
+        const sa = await SuperAdmin.findOne({ adminId: actor.userId }).select('tokenVersion').lean();
+        currentTokenVersion = Number(sa?.tokenVersion || 0);
+      } else {
+        const dbUser = await User.findOne({ userId: actor.userId }).select('tokenVersion').lean();
+        currentTokenVersion = Number(dbUser?.tokenVersion || 0);
+      }
+      if (Number(decoded.tokenVersion || 0) !== currentTokenVersion) {
+        logCommEvent('socket:auth_rejected', { correlationId: corr, userId: actor.userId, reason: 'token_version_mismatch' });
+        return next(new Error('Session expired'));
+      }
+
+      socket.userRooms = await resolveUserRooms(actor.userId);
 
       socket.user = {
         userId: actor.userId,
@@ -141,25 +402,33 @@ export function initSocketIO(httpServer) {
         isOwnerOrAdmin: actor.isOwnerOrAdmin,
         isEmployee: actor.isEmployee,
         status: actor.status,
+        deviceId: String(socket.handshake.auth?.deviceId || socket.id),
       };
 
       next();
     } catch (err) {
+      logCommEvent('socket:auth_failed', { correlationId: corr, error: err.message });
       next(new Error('Invalid token'));
     }
   });
 
   // ── Connection handler ───────────────────────────────────────────
-  io.on('connection', async (socket) => {
-    const { userId, role, companyId } = socket.user;
+  io.on('connection', (socket) => {
+    if (!socket.user || !socket.user.userId) {
+      logCommEvent('socket:missing_user_guard', { socketId: socket.id, recovered: socket.recovered === true });
+      socket.disconnect(true);
+      return;
+    }
+    const { userId, role, companyId, deviceId } = socket.user;
+    const connCorr = createCorrelationId('conn');
 
     // Join global room for SuperAdmin
     if (role === 'param') {
       socket.join('global');
     }
 
-    // Join all user identifier alias rooms
-    const myRooms = await resolveUserRooms(userId);
+    // Join all pre-resolved user identifier alias rooms synchronously before registering listeners
+    const myRooms = socket.userRooms instanceof Set ? socket.userRooms : new Set([`user:${userId}`]);
     myRooms.forEach((room) => socket.join(room));
 
     // Join company room (strictly validated from DB via socket.user.companyId)
@@ -167,7 +436,7 @@ export function initSocketIO(httpServer) {
       socket.join(`company:${companyId}`);
     }
 
-    // Track online presence
+    // Track online presence per device socket
     if (!onlineUserSockets.has(userId)) {
       onlineUserSockets.set(userId, new Set());
     }
@@ -175,8 +444,21 @@ export function initSocketIO(httpServer) {
     const wasOffline = userSockets.size === 0;
     userSockets.add(socket.id);
 
+    logCommEvent('socket:connected', {
+      correlationId: connCorr,
+      userId,
+      role,
+      socketId: socket.id,
+      deviceId,
+      transport: socket.conn?.transport?.name || 'unknown',
+      recovered: socket.recovered === true,
+      deviceCount: userSockets.size,
+      roomsCount: myRooms.size,
+    });
+
     if (wasOffline) {
-      const presencePayload = { userId, online: true, lastActive: new Date().toISOString() };
+      const nowIso = new Date().toISOString();
+      const presencePayload = { userId, online: true, status: 'online', lastActive: nowIso };
       if (companyId) {
         io.to(`company:${companyId}`).emit('presence:update', presencePayload);
       }
@@ -185,18 +467,79 @@ export function initSocketIO(httpServer) {
       }
     }
 
-    // ── Active Conversation Tracking (WhatsApp-like presence & notification suppression) ──
+    // Send live presence snapshot to the newly connected socket so indicators populate immediately
+    socket.emit('presence:snapshot', {
+      onlineUserIds: Array.from(onlineUserSockets.keys()),
+      timestamp: new Date().toISOString(),
+    });
+
+    // Helper: push any pending incoming calls targeting this user on connect/reconnect/sync
+    const syncPendingCallsToSocket = async () => {
+      try {
+        const aliasUserIds = Array.from(myRooms).map((r) => r.replace(/^user:/, ''));
+        const pendingCalls = await CallSession.find({
+          recipientId: { $in: aliasUserIds },
+          state: { $in: ['initiated', 'ringing'] },
+          expiresAt: { $gt: new Date() },
+        }).sort({ initiatedAt: -1 }).lean();
+
+        for (const call of pendingCalls) {
+          if (!activeCalls.has(call.callId)) {
+            activeCalls.set(call.callId, {
+              ...call,
+              startedAt: call.initiatedAt ? new Date(call.initiatedAt).getTime() : Date.now(),
+              expiresAt: call.expiresAt ? new Date(call.expiresAt).getTime() : Date.now() + CALL_RING_TIMEOUT_MS,
+            });
+          }
+          if (call.state === 'initiated') {
+            await CallSession.updateOne(
+              { callId: call.callId, state: 'initiated' },
+              { $set: { state: 'ringing', ringingAt: new Date() } }
+            ).catch(() => {});
+            const cached = activeCalls.get(call.callId);
+            if (cached && cached.state === 'initiated') cached.state = 'ringing';
+            const callerRooms = await resolveUserRooms(call.callerId);
+            broadcastToRooms(callerRooms, 'call:state', {
+              callId: call.callId,
+              correlationId: call.correlationId,
+              state: 'ringing',
+              recipientId: userId,
+            });
+          }
+          socket.emit('call:incoming', {
+            callId: call.callId,
+            correlationId: call.correlationId,
+            callerId: call.callerId,
+            callerName: call.callerName || 'Someone',
+            mediaType: call.mediaType || 'voice',
+            offer: call.offer,
+            recoveredOnSync: true,
+          });
+          logCommEvent('call:synced_on_connect', {
+            callId: call.callId,
+            correlationId: call.correlationId,
+            recipientId: userId,
+            socketId: socket.id,
+          });
+        }
+      } catch (err) {
+        logCommEvent('call:sync_error', { userId, error: err.message });
+      }
+    };
+
+    // ── Active Conversation Tracking ───────────────────────────────
     socket.on('dm:join-conversation', (data) => {
       const convId = data?.conversationId ? String(data.conversationId) : null;
       if (convId) {
-        userActiveConversations.set(String(userId), convId);
+        socketActiveConversations.set(socket.id, { userId: String(userId), conversationId: convId });
       }
     });
 
     socket.on('dm:leave-conversation', (data) => {
       const convId = data?.conversationId ? String(data.conversationId) : null;
-      if (!convId || userActiveConversations.get(String(userId)) === convId) {
-        userActiveConversations.delete(String(userId));
+      const current = socketActiveConversations.get(socket.id);
+      if (current && (!convId || current.conversationId === convId)) {
+        socketActiveConversations.delete(socket.id);
       }
     });
 
@@ -219,71 +562,134 @@ export function initSocketIO(httpServer) {
           });
         }
       } catch (err) {
-        console.error('[Socket] dm:read error:', err.message);
+        logCommEvent('dm:read_error', { userId, error: err.message });
       }
     });
 
-    // ── 1-to-1 WebRTC Call Signaling (with server-side role & company validation) ──
-    socket.on('call:initiate', async (data) => {
+    // ── Authoritative 1-to-1 WebRTC Call Signaling ─────────────────
+    socket.on('call:initiate', async (data, ackCallback) => {
+      const correlationId = createCorrelationId('call');
       try {
         const { callId, recipientId, mediaType, offer } = data || {};
         const targetId = normalizeId(recipientId);
-        if (!targetId || !callId) return;
-
-        // Server-side authorization check (never trust client recipientId)
-        const targetActor = await resolveMessengerActor(targetId);
-        const authCheck = canCommunicate(socket.user, targetActor);
-        if (!authCheck.allowed) {
-          socket.emit('call:rejected', {
-            callId,
-            recipientId: targetId,
-            reason: authCheck.reason || 'unauthorized',
-          });
+        if (!targetId || !callId) {
+          if (typeof ackCallback === 'function') ackCallback({ ok: false, reason: 'invalid_payload' });
           return;
         }
 
-        const callerName = socket.user?.name || socket.user?.username || 'Someone';
-        const type = mediaType === 'video' ? 'video_call' : 'voice_call';
+        // Idempotency / duplicate protection for existing callId
+        const existingDb = await CallSession.findOne({ callId }).lean();
+        if (existingDb) {
+          if (TERMINAL_CALL_STATES.has(existingDb.state)) {
+            socket.emit('call:state', { callId, state: existingDb.state, reason: existingDb.reason || 'expired' });
+            if (typeof ackCallback === 'function') ackCallback({ ok: false, state: existingDb.state, reason: 'already_terminal' });
+            return;
+          }
+          if (typeof ackCallback === 'function') ackCallback({ ok: true, callId, state: existingDb.state, deduplicated: true });
+          return;
+        }
 
-        // Cache active call offer in memory for notification clicks / tab transitions
-        activeCalls.set(callId, {
+        const targetActor = await resolveMessengerActor(targetId);
+        const authCheck = canCommunicate(socket.user, targetActor);
+        if (!authCheck.allowed) {
+          logCommEvent('call:unauthorized', { callId, correlationId, callerId: userId, targetId, reason: authCheck.reason });
+          socket.emit('call:rejected', {
+            callId,
+            correlationId,
+            recipientId: targetId,
+            reason: authCheck.reason || 'unauthorized',
+          });
+          if (typeof ackCallback === 'function') ackCallback({ ok: false, reason: authCheck.reason || 'unauthorized' });
+          return;
+        }
+
+        // Busy check: if recipient already has an active accepted call, fail fast with busy
+        const busyCall = await CallSession.findOne({
+          state: 'accepted',
+          expiresAt: { $gt: new Date(Date.now() - 3600000) },
+          $or: [
+            { callerId: targetActor.userId },
+            { recipientId: targetActor.userId },
+          ],
+        }).lean();
+
+        const callerName = socket.user?.name || socket.user?.username || 'Someone';
+        const callMediaType = mediaType === 'video' ? 'video' : 'voice';
+        const notifType = callMediaType === 'video' ? 'video_call' : 'voice_call';
+        const targetRooms = await resolveUserRooms(targetActor.userId);
+        const recipientSocketCount = Array.from(targetRooms).reduce((cnt, roomName) => {
+          const room = io?.sockets?.adapter?.rooms?.get(roomName);
+          return cnt + (room ? room.size : 0);
+        }, 0);
+
+        if (busyCall && busyCall.callId !== callId) {
+          logCommEvent('call:recipient_busy', { callId, correlationId, callerId: userId, recipientId: targetActor.userId });
+          socket.emit('call:rejected', {
+            callId,
+            correlationId,
+            recipientId: targetActor.userId,
+            reason: 'busy',
+          });
+          if (typeof ackCallback === 'function') ackCallback({ ok: false, reason: 'busy' });
+          return;
+        }
+
+        const initialState = recipientSocketCount > 0 ? 'ringing' : 'initiated';
+        const now = Date.now();
+        const expiresAt = new Date(now + CALL_RING_TIMEOUT_MS);
+
+        const callRecord = {
           callId,
+          correlationId,
           callerId: userId,
           callerName,
           recipientId: targetActor.userId,
-          mediaType: mediaType || 'voice',
+          recipientName: targetActor.name || targetActor.username || '',
+          companyId: socket.user.companyId || targetActor.companyId || null,
+          mediaType: callMediaType,
           offer,
+          state: initialState,
           actionStatus: 'pending',
-          startedAt: Date.now(),
-        });
+          startedAt: now,
+          expiresAt: expiresAt.getTime(),
+        };
 
-        // Auto-clean active call after 60s if not answered
-        setTimeout(() => {
-          const call = activeCalls.get(callId);
-          if (call && call.actionStatus !== 'accepted') {
-            activeCalls.delete(callId);
-          }
-        }, 60000);
+        activeCalls.set(callId, callRecord);
+        await CallSession.create({
+          callId,
+          correlationId,
+          callerId: userId,
+          callerName,
+          recipientId: targetActor.userId,
+          recipientName: callRecord.recipientName,
+          companyId: callRecord.companyId,
+          mediaType: callMediaType,
+          state: initialState,
+          offer,
+          initiatedAt: new Date(now),
+          ...(initialState === 'ringing' ? { ringingAt: new Date(now) } : {}),
+          expiresAt,
+        }).catch(() => {});
 
-        const targetRooms = await resolveUserRooms(targetActor.userId);
+        scheduleCallTimeout(callId);
 
         // Persist notification for recipient
         const notifId = `call-notif-${callId}`;
-        const existing = await Notification.findOne({ id: notifId });
-        let notif = existing;
-        if (!existing) {
+        const existingNotif = await Notification.findOne({ id: notifId });
+        let notif = existingNotif;
+        if (!existingNotif) {
           notif = new Notification({
             id: notifId,
-            companyId: socket.user.companyId || targetActor.companyId || null,
+            companyId: callRecord.companyId,
             userId: targetActor.userId,
-            title: mediaType === 'video' ? 'Incoming Video Call' : 'Incoming Voice Call',
+            title: callMediaType === 'video' ? 'Incoming Video Call' : 'Incoming Voice Call',
             message: `${callerName} is calling you...`,
-            type,
+            type: notifType,
             senderId: userId,
             senderName: callerName,
             callId,
             actionStatus: 'pending',
-            metadata: { mediaType: mediaType || 'voice', callerName, callerId: userId },
+            metadata: { mediaType: callMediaType, callerName, callerId: userId, correlationId },
             createdAt: new Date().toISOString(),
             read: false,
           });
@@ -292,93 +698,306 @@ export function initSocketIO(httpServer) {
 
         const incomingPayload = {
           callId,
+          correlationId,
           callerId: userId,
           callerName,
-          mediaType: mediaType || 'voice',
+          mediaType: callMediaType,
           offer,
         };
 
+        logCommEvent('call:initiate', {
+          callId,
+          correlationId,
+          callerId: userId,
+          recipientId: targetActor.userId,
+          mediaType: callMediaType,
+          state: initialState,
+          recipientOnlineSockets: recipientSocketCount,
+        });
+
+        socket.emit('call:state', { callId, correlationId, state: initialState });
         broadcastToRooms(targetRooms, 'notification:new', notif);
         broadcastToRooms(targetRooms, 'call:incoming', incomingPayload);
-      } catch (err) {
-        console.error('[Socket] call:initiate error:', err.message);
-      }
-    });
 
-    // Client requests offer for active call (e.g. when opening from notification)
-    socket.on('call:get-active', (data, callback) => {
-      const call = activeCalls.get(data?.callId);
-      if (typeof callback === 'function') {
-        if (call && (call.recipientId === userId || call.callerId === userId)) {
-          callback(call);
-        } else {
-          callback(null);
-        }
-      }
-    });
-
-    socket.on('call:accept', async (data) => {
-      try {
-        const { callId, callerId, answer } = data || {};
-        if (!callerId) return;
-
-        const call = callId ? activeCalls.get(callId) : null;
-        if (call && call.recipientId !== userId && call.callerId !== userId) {
-          return; // Unauthorized participant
-        }
-
-        if (callId) {
-          if (call) {
-            call.actionStatus = 'accepted';
-            call.acceptedAt = Date.now();
-          }
-          await Notification.updateOne(
-            { id: `call-notif-${callId}` },
-            { $set: { actionStatus: 'accepted', read: true } }
+        // Always dispatch FCM high-priority wakeup fallback (receiver deduplicates by callId if socket already delivered)
+        const targetIds = Array.from(targetRooms).map((r) => r.replace(/^user:/, ''));
+        sendFcmPushToUsers({
+          userIds: targetIds,
+          title: callMediaType === 'video' ? 'Incoming Video Call' : 'Incoming Voice Call',
+          body: `${callerName} is calling you...`,
+          channelId: 'regen_incoming_calls_v2',
+          highPriority: true,
+          dataOnly: true,
+          ttlSeconds: 45,
+          collapseKey: `call_${callId}`,
+          correlationId,
+          data: {
+            type: notifType,
+            callId,
+            correlationId,
+            callerId: userId,
+            callerName,
+            mediaType: callMediaType,
+            sentAt: String(now),
+          },
+        }).then((pushRes) => {
+          CallSession.updateOne(
+            { callId },
+            {
+              $set: {
+                pushDispatched: pushRes.sentCount > 0,
+                pushResult: `sent=${pushRes.sentCount},failed=${pushRes.failedCount},configured=${pushRes.configured}`,
+              },
+            }
           ).catch(() => {});
-        }
+        }).catch(() => {});
 
-        const targetRooms = await resolveUserRooms(callerId);
-        broadcastToRooms(targetRooms, 'call:accepted', {
+        if (typeof ackCallback === 'function') {
+          ackCallback({ ok: true, callId, correlationId, state: initialState, recipientOnlineSockets: recipientSocketCount });
+        }
+      } catch (err) {
+        logCommEvent('call:initiate_error', { correlationId, error: err.message });
+        if (typeof ackCallback === 'function') ackCallback({ ok: false, reason: 'server_error' });
+      }
+    });
+
+    // Receiver device acknowledges incoming call UI/ringtone started
+    socket.on('call:ringing', async (data) => {
+      try {
+        const { callId } = data || {};
+        if (!callId) return;
+        const res = await transitionCallSession(callId, 'ringing');
+        if (!res.ok || !res.call) return;
+        const callerRooms = await resolveUserRooms(res.call.callerId);
+        broadcastToRooms(callerRooms, 'call:state', {
           callId,
+          correlationId: res.call.correlationId,
+          state: 'ringing',
           recipientId: userId,
-          answer,
         });
       } catch (err) {
-        console.error('[Socket] call:accept error:', err.message);
+        logCommEvent('call:ringing_error', { userId, error: err.message });
+      }
+    });
+
+    // Client requests offer & authoritative status for active call (or syncs pending calls after reconnect/resume)
+    socket.on('call:get-active', async (data, callback) => {
+      try {
+        const callId = data?.callId;
+        if (!callId) {
+          if (typeof callback === 'function') callback(null);
+          return;
+        }
+        let call = activeCalls.get(callId);
+        if (!call) {
+          call = await CallSession.findOne({ callId }).lean();
+        }
+        if (typeof callback === 'function') {
+          if (
+            call &&
+            (call.recipientId === userId || call.callerId === userId) &&
+            !TERMINAL_CALL_STATES.has(call.state) &&
+            (!call.expiresAt || new Date(call.expiresAt).getTime() > Date.now())
+          ) {
+            callback(call);
+          } else {
+            callback(null);
+          }
+        }
+      } catch (_) {
+        if (typeof callback === 'function') callback(null);
+      }
+    });
+
+    socket.on('call:sync', async (data, callback) => {
+      try {
+        await syncPendingCallsToSocket();
+        const checkCallId = data?.callId ? String(data.callId) : null;
+        let checkState = null;
+        let callSnapshot = null;
+        if (checkCallId) {
+          const mem = activeCalls.get(checkCallId);
+          if (mem) {
+            checkState = mem.state;
+            callSnapshot = mem;
+          } else {
+            const db = await CallSession.findOne({ callId: checkCallId }).lean();
+            checkState = db?.state || 'ended';
+            callSnapshot = db || null;
+          }
+        }
+        if (typeof callback === 'function') {
+          const isParticipant =
+            callSnapshot &&
+            (callSnapshot.callerId === userId || callSnapshot.recipientId === userId);
+          callback({
+            ok: true,
+            callId: checkCallId,
+            state: checkState,
+            ...(isParticipant && callSnapshot
+              ? {
+                  answer: callSnapshot.answer || null,
+                  offer: callSnapshot.offer || null,
+                  callerId: callSnapshot.callerId,
+                  callerName: callSnapshot.callerName,
+                  recipientId: callSnapshot.recipientId,
+                  mediaType: callSnapshot.mediaType || 'voice',
+                  acceptedAt: callSnapshot.acceptedAt || null,
+                }
+              : {}),
+          });
+        }
+      } catch (_) {
+        if (typeof callback === 'function') callback({ ok: false });
+      }
+    });
+
+    socket.on('call:accept', async (data, ackCallback) => {
+      try {
+        const { callId, callerId, answer, deviceId } = data || {};
+        if (!callerId || !callId) {
+          if (typeof ackCallback === 'function') ackCallback({ ok: false, reason: 'invalid_payload' });
+          return;
+        }
+
+        const existingDb = activeCalls.get(callId) || (await CallSession.findOne({ callId }).lean());
+        if (!existingDb) {
+          socket.emit('call:ended', { callId, endedBy: 'system', reason: 'expired' });
+          if (typeof ackCallback === 'function') ackCallback({ ok: false, reason: 'expired' });
+          return;
+        }
+
+        if (existingDb.recipientId !== userId && existingDb.callerId !== userId) {
+          if (typeof ackCallback === 'function') ackCallback({ ok: false, reason: 'unauthorized' });
+          return;
+        }
+
+        if (TERMINAL_CALL_STATES.has(existingDb.state) || (existingDb.expiresAt && new Date(existingDb.expiresAt).getTime() < Date.now())) {
+          socket.emit('call:ended', { callId, endedBy: 'system', reason: existingDb.state || 'expired' });
+          if (typeof ackCallback === 'function') ackCallback({ ok: false, reason: existingDb.state || 'expired' });
+          return;
+        }
+
+        const res = await transitionCallSession(callId, 'accepted', { answer });
+        if (!res.ok) {
+          socket.emit('call:ended', { callId, endedBy: 'system', reason: res.reason });
+          if (typeof ackCallback === 'function') ackCallback({ ok: false, reason: res.reason });
+          return;
+        }
+
+        await Notification.updateOne(
+          { id: `call-notif-${callId}` },
+          { $set: { actionStatus: 'accepted', read: true } }
+        ).catch(() => {});
+
+        const [callerRooms, receiverRooms] = await Promise.all([
+          resolveUserRooms(callerId),
+          resolveUserRooms(userId),
+        ]);
+        const acceptedByDeviceId = String(deviceId || '');
+
+        broadcastToRooms(callerRooms, 'call:accepted', {
+          callId,
+          correlationId: res.call.correlationId,
+          recipientId: userId,
+          answer,
+          acceptedBySocketId: socket.id,
+          acceptedByDeviceId,
+        });
+
+        // Broadcast authoritative accepted state + answer to caller and receiver devices
+        broadcastToRooms(callerRooms, 'call:state', {
+          callId,
+          correlationId: res.call.correlationId,
+          state: 'accepted',
+          recipientId: userId,
+          answer,
+          acceptedBySocketId: socket.id,
+          acceptedByDeviceId,
+        });
+
+        broadcastToRooms(receiverRooms, 'call:state', {
+          callId,
+          correlationId: res.call.correlationId,
+          state: 'accepted',
+          acceptedBySocketId: socket.id,
+          acceptedByDeviceId,
+        });
+
+        // Cancel background incoming call notifications on other receiver devices
+        sendFcmPushToUsers({
+          userIds: Array.from(receiverRooms).map((r) => r.replace(/^user:/, '')),
+          dataOnly: true,
+          highPriority: true,
+          ttlSeconds: 15,
+          correlationId: res.call.correlationId,
+          data: {
+            type: 'call_cancelled',
+            callId,
+            reason: 'accepted_elsewhere',
+            acceptedBySocketId: socket.id,
+            acceptedByDeviceId,
+          },
+        }).catch(() => {});
+
+        if (typeof ackCallback === 'function') ackCallback({ ok: true, callId, state: 'accepted' });
+      } catch (err) {
+        logCommEvent('call:accept_error', { userId, error: err.message });
+        if (typeof ackCallback === 'function') ackCallback({ ok: false, reason: 'server_error' });
       }
     });
 
     socket.on('call:reject', async (data) => {
       try {
         const { callId, callerId, reason } = data || {};
-        if (!callerId) return;
+        if (!callerId || !callId) return;
 
-        // Never terminate an already accepted call from duplicate reject packets
-        const existingCall = activeCalls.get(callId);
-        if (existingCall?.actionStatus === 'accepted') {
+        const existingCall = activeCalls.get(callId) || (await CallSession.findOne({ callId }).lean());
+        if (!existingCall) return;
+        if (existingCall.state === 'accepted' || TERMINAL_CALL_STATES.has(existingCall.state)) {
+          return; // Never terminate an already accepted or terminal call from duplicate reject packets
+        }
+        if (existingCall.recipientId !== userId && existingCall.callerId !== userId) {
           return;
         }
-        if (existingCall && existingCall.recipientId !== userId && existingCall.callerId !== userId) {
-          return;
-        }
 
-        if (callId) {
-          activeCalls.delete(callId);
-          await Notification.updateOne(
-            { id: `call-notif-${callId}` },
-            { $set: { actionStatus: 'rejected', read: true } }
-          ).catch(() => {});
-        }
+        const res = await transitionCallSession(callId, 'rejected', { reason: reason || 'declined' });
+        if (!res.ok) return;
 
-        const targetRooms = await resolveUserRooms(callerId);
-        broadcastToRooms(targetRooms, 'call:rejected', {
+        await Notification.updateOne(
+          { id: `call-notif-${callId}` },
+          { $set: { actionStatus: 'rejected', read: true } }
+        ).catch(() => {});
+
+        const [callerRooms, receiverRooms] = await Promise.all([
+          resolveUserRooms(callerId),
+          resolveUserRooms(userId),
+        ]);
+        const allRooms = new Set([...callerRooms, ...receiverRooms]);
+
+        broadcastToRooms(callerRooms, 'call:rejected', {
           callId,
+          correlationId: res.call.correlationId,
           recipientId: userId,
           reason: reason || 'declined',
         });
+        broadcastToRooms(allRooms, 'call:state', {
+          callId,
+          correlationId: res.call.correlationId,
+          state: 'rejected',
+          reason: reason || 'declined',
+        });
+
+        sendFcmPushToUsers({
+          userIds: Array.from(receiverRooms).map((r) => r.replace(/^user:/, '')),
+          dataOnly: true,
+          highPriority: true,
+          ttlSeconds: 15,
+          correlationId: res.call.correlationId,
+          data: { type: 'call_cancelled', callId, reason: reason || 'declined' },
+        }).catch(() => {});
       } catch (err) {
-        console.error('[Socket] call:reject error:', err.message);
+        logCommEvent('call:reject_error', { userId, error: err.message });
       }
     });
 
@@ -386,9 +1005,14 @@ export function initSocketIO(httpServer) {
       try {
         const { targetUserId, signal, callId } = data || {};
         const targetId = normalizeId(targetUserId);
-        if (!targetId) return;
+        if (!targetId || !callId) return;
 
-        // Validate authorization on ICE/SDP signal forwarding
+        // Validate call isn't already terminal (prevent late signaling resurrecting expired calls)
+        const existing = activeCalls.get(callId) || (await CallSession.findOne({ callId }).select('state').lean());
+        if (existing && TERMINAL_CALL_STATES.has(existing.state)) {
+          return;
+        }
+
         const targetActor = await resolveMessengerActor(targetId);
         const authCheck = canCommunicate(socket.user, targetActor);
         if (!authCheck.allowed) return;
@@ -400,61 +1024,115 @@ export function initSocketIO(httpServer) {
           callId,
         });
       } catch (err) {
-        console.error('[Socket] call:signal error:', err.message);
+        logCommEvent('call:signal_error', { userId, error: err.message });
       }
     });
 
     socket.on('call:end', async (data) => {
       try {
-        const { targetUserId, callId } = data || {};
-        const existingCall = callId ? activeCalls.get(callId) : null;
-        const wasPending = existingCall && existingCall.actionStatus === 'pending';
-        if (callId) {
-          activeCalls.delete(callId);
-          await Notification.updateOne(
-            { id: `call-notif-${callId}` },
-            { $set: { actionStatus: wasPending ? 'missed' : 'ended', read: true } }
-          ).catch(() => {});
+        const { targetUserId, callId, reason } = data || {};
+        if (!callId) return;
+
+        const existingCall = activeCalls.get(callId) || (await CallSession.findOne({ callId }).lean());
+        if (!existingCall || TERMINAL_CALL_STATES.has(existingCall.state)) {
+          return;
         }
-        if (targetUserId) {
-          const targetRooms = await resolveUserRooms(targetUserId);
-          broadcastToRooms(targetRooms, 'call:ended', {
+
+        const wasPending = existingCall.state === 'initiated' || existingCall.state === 'ringing';
+        const nextState = wasPending ? 'cancelled' : 'ended';
+        const res = await transitionCallSession(callId, nextState, { reason: reason || (wasPending ? 'cancelled' : 'hangup') });
+        if (!res.ok) return;
+
+        await Notification.updateOne(
+          { id: `call-notif-${callId}` },
+          { $set: { actionStatus: wasPending ? 'missed' : 'ended', read: true } }
+        ).catch(() => {});
+
+        const otherPartyId = normalizeId(targetUserId) || (existingCall.callerId === userId ? existingCall.recipientId : existingCall.callerId);
+        const [otherRooms, myUserRooms] = await Promise.all([
+          otherPartyId ? resolveUserRooms(otherPartyId) : Promise.resolve(new Set()),
+          resolveUserRooms(userId),
+        ]);
+        const allRooms = new Set([...otherRooms, ...myUserRooms]);
+
+        broadcastToRooms(allRooms, 'call:state', {
+          callId,
+          correlationId: res.call.correlationId,
+          state: nextState,
+          endedBy: userId,
+          wasPending,
+        });
+        broadcastToRooms(allRooms, 'call:ended', {
+          callId,
+          correlationId: res.call.correlationId,
+          endedBy: userId,
+          wasPending,
+          reason: nextState,
+        });
+        if (wasPending) {
+          broadcastToRooms(allRooms, 'call:cancelled', {
             callId,
-            endedBy: userId,
-            wasPending,
-          });
-          broadcastToRooms(targetRooms, 'call:cancelled', {
-            callId,
+            correlationId: res.call.correlationId,
             callerId: userId,
-            wasPending,
+            wasPending: true,
+            reason: 'cancelled',
           });
-          if (wasPending) {
-            const callerName = socket.user?.name || socket.user?.username || 'Someone';
-            const mediaType = existingCall?.mediaType || 'voice';
-            const missedNotif = new Notification({
-              id: `missed-${Date.now()}-${callId}`,
-              companyId: socket.user.companyId || null,
-              userId: targetUserId,
-              title: `Missed ${mediaType === 'video' ? 'Video' : 'Voice'} Call`,
-              message: `${callerName} called you`,
+        }
+
+        if (wasPending && otherPartyId) {
+          const callerName = socket.user?.name || socket.user?.username || 'Someone';
+          const mediaType = existingCall?.mediaType || 'voice';
+          const missedNotif = new Notification({
+            id: `missed-${Date.now()}-${callId}`,
+            companyId: socket.user.companyId || null,
+            userId: existingCall.recipientId,
+            title: `Missed ${mediaType === 'video' ? 'Video' : 'Voice'} Call`,
+            message: `${callerName} called you`,
+            type: 'missed_call',
+            senderId: userId,
+            senderName: callerName,
+            callId,
+            metadata: { mediaType, callId },
+            createdAt: new Date().toISOString(),
+            read: false,
+          });
+          await missedNotif.save().catch(() => {});
+          broadcastToRooms(otherRooms, 'notification:new', missedNotif);
+
+          const recipientIds = Array.from(otherRooms).map((r) => r.replace(/^user:/, ''));
+          sendFcmPushToUsers({
+            userIds: recipientIds,
+            dataOnly: true,
+            highPriority: true,
+            ttlSeconds: 20,
+            correlationId: res.call.correlationId,
+            data: { type: 'call_cancelled', callId, reason: 'cancelled' },
+          }).catch(() => {});
+          sendFcmPushToUsers({
+            userIds: recipientIds,
+            title: `Missed ${mediaType === 'video' ? 'Video' : 'Voice'} Call`,
+            body: `${callerName} called you`,
+            channelId: 'regen_missed_calls_v2',
+            highPriority: true,
+            dataOnly: true,
+            correlationId: res.call.correlationId,
+            data: {
               type: 'missed_call',
-              senderId: userId,
-              senderName: callerName,
-              metadata: { mediaType, callId },
-              createdAt: new Date().toISOString(),
-              read: false,
-            });
-            await missedNotif.save().catch(() => {});
-            broadcastToRooms(targetRooms, 'notification:new', missedNotif);
-          }
+              callId,
+              callerId: userId,
+              callerName,
+              mediaType,
+            },
+          }).catch(() => {});
         }
       } catch (err) {
-        console.error('[Socket] call:end error:', err.message);
+        logCommEvent('call:end_error', { userId, error: err.message });
       }
     });
 
     // ── Group / Team Voice & Video Meeting Signaling (WebRTC Mesh with ACLs) ──
     socket.on('meeting:start', async (data) => {
+      const correlationId = createCorrelationId('mtg');
       try {
         const { meetingId, title, mediaType, conversationId, participantIds } = data || {};
         if (!meetingId) return;
@@ -466,7 +1144,6 @@ export function initSocketIO(httpServer) {
         let meetingScope = socket.user.isSuperAdmin ? 'superadmin_owners' : 'company';
         let meetingCompanyId = socket.user.companyId || null;
 
-        // Case 1: Group call tied to a specific Conversation (validates membership)
         if (conversationId && mongoose.isValidObjectId(conversationId)) {
           const convo = await Conversation.findById(conversationId).lean();
           const access = canAccessConversation(socket.user, convo);
@@ -485,9 +1162,7 @@ export function initSocketIO(httpServer) {
               if (target && target.status !== 'inactive') invitedActors.push(target);
             }
           }
-        }
-        // Case 2: Explicit participant list (e.g. SuperAdmin calling selected company owners, or ad-hoc group call)
-        else if (Array.isArray(participantIds) && participantIds.length > 0) {
+        } else if (Array.isArray(participantIds) && participantIds.length > 0) {
           for (const rawPid of participantIds) {
             const pid = normalizeId(rawPid);
             if (!pid || pid === userId) continue;
@@ -502,9 +1177,7 @@ export function initSocketIO(httpServer) {
             socket.emit('meeting:error', { meetingId, message: 'No authorized participants selected' });
             return;
           }
-        }
-        // Case 3: Company-wide Team Meeting (existing website behavior)
-        else if (meetingCompanyId) {
+        } else if (meetingCompanyId) {
           const isOid = mongoose.isValidObjectId(meetingCompanyId);
           const companyFilter = isOid
             ? { $in: [meetingCompanyId, new mongoose.Types.ObjectId(meetingCompanyId)] }
@@ -531,6 +1204,7 @@ export function initSocketIO(httpServer) {
         const meetingTitle = title || (effectiveMediaType === 'voice' ? 'Group Voice Call' : 'Team Meeting');
         activeMeetings.set(meetingId, {
           meetingId,
+          correlationId,
           title: meetingTitle,
           hostId: userId,
           hostName,
@@ -544,6 +1218,7 @@ export function initSocketIO(httpServer) {
 
         const meetingPayload = {
           meetingId,
+          correlationId,
           title: meetingTitle,
           hostId: userId,
           hostName,
@@ -552,8 +1227,17 @@ export function initSocketIO(httpServer) {
           conversationId: conversationId || null,
         };
 
-        // Notify every authorized participant directly
+        logCommEvent('meeting:start', {
+          meetingId,
+          correlationId,
+          hostId: userId,
+          invitedCount: invitedActors.length,
+          mediaType: effectiveMediaType,
+        });
+
+        const pushRecipientIds = [];
         for (const m of invitedActors) {
+          pushRecipientIds.push(m.userId);
           const notif = new Notification({
             id: `meeting-notif-${meetingId}-${m.userId}`,
             companyId: meetingCompanyId || m.companyId || null,
@@ -582,12 +1266,69 @@ export function initSocketIO(httpServer) {
           broadcastToRooms(targetRooms, 'meeting:started', meetingPayload);
         }
 
-        // For company-wide meetings without explicit subset, also emit to company room (website parity)
+        if (pushRecipientIds.length > 0) {
+          sendFcmPushToUsers({
+            userIds: pushRecipientIds,
+            title: meetingTitle,
+            body: `${hostName} started a ${effectiveMediaType === 'voice' ? 'group voice call' : 'team video call'}`,
+            channelId: 'regen_incoming_calls_v2',
+            highPriority: true,
+            dataOnly: true,
+            ttlSeconds: 45,
+            correlationId,
+            data: {
+              type: 'team_meeting',
+              meetingId,
+              callId: meetingId,
+              callerId: userId,
+              callerName: hostName,
+              title: meetingTitle,
+              mediaType: effectiveMediaType,
+              conversationId: conversationId || '',
+            },
+          }).catch(() => {});
+        }
+
         if (!conversationId && (!Array.isArray(participantIds) || participantIds.length === 0) && meetingCompanyId) {
           io.to(`company:${meetingCompanyId}`).emit('meeting:started', meetingPayload);
         }
       } catch (err) {
-        console.error('[Socket] meeting:start error:', err.message);
+        logCommEvent('meeting:start_error', { correlationId, error: err.message });
+      }
+    });
+
+    socket.on('meeting:get-active', (data, callback) => {
+      try {
+        const meetingId = data?.meetingId ? String(data.meetingId) : null;
+        if (!meetingId) {
+          if (typeof callback === 'function') callback(null);
+          return;
+        }
+        const meeting = activeMeetings.get(meetingId);
+        if (!meeting) {
+          if (typeof callback === 'function') callback(null);
+          return;
+        }
+        const inAllowList = meeting.allowedUserIds?.has(userId);
+        const sameCompanyTeamMeeting =
+          meeting.scope === 'company' && companyId && meeting.companyId === companyId;
+        if (!inAllowList && !sameCompanyTeamMeeting) {
+          if (typeof callback === 'function') callback(null);
+          return;
+        }
+        if (typeof callback === 'function') {
+          callback({
+            meetingId: meeting.meetingId,
+            title: meeting.title,
+            hostId: meeting.hostId,
+            hostName: meeting.hostName,
+            mediaType: meeting.mediaType || 'video',
+            companyId: meeting.companyId || null,
+            conversationId: meeting.conversationId || null,
+          });
+        }
+      } catch (_) {
+        if (typeof callback === 'function') callback(null);
       }
     });
 
@@ -596,7 +1337,6 @@ export function initSocketIO(httpServer) {
         const { meetingId, userInfo } = data || {};
         if (!meetingId) return;
 
-        // Server-side meeting room authorization check
         const meeting = activeMeetings.get(meetingId);
         if (meeting) {
           const inAllowList = meeting.allowedUserIds.has(userId);
@@ -644,7 +1384,7 @@ export function initSocketIO(httpServer) {
           users: existingUsers,
         });
       } catch (err) {
-        console.error('[Socket] meeting:join error:', err.message);
+        logCommEvent('meeting:join_error', { userId, error: err.message });
       }
     });
 
@@ -653,8 +1393,6 @@ export function initSocketIO(httpServer) {
         const { targetUserId, signal, meetingId } = data || {};
         const targetId = normalizeId(targetUserId);
         if (!targetId || !meetingId) return;
-
-        // Ensure caller is actually in this meeting room
         if (!socket.rooms.has(`meeting:${meetingId}`)) return;
 
         const targetActor = await resolveMessengerActor(targetId);
@@ -669,7 +1407,7 @@ export function initSocketIO(httpServer) {
           meetingId,
         });
       } catch (err) {
-        console.error('[Socket] meeting:signal error:', err.message);
+        logCommEvent('meeting:signal_error', { userId, error: err.message });
       }
     });
 
@@ -682,7 +1420,6 @@ export function initSocketIO(httpServer) {
         userId,
       });
 
-      // Clean up meeting ACL if room is now empty
       try {
         const remaining = await io.in(`meeting:${meetingId}`).fetchSockets();
         if (remaining.length === 0) {
@@ -691,62 +1428,63 @@ export function initSocketIO(httpServer) {
       } catch {}
     });
 
-    socket.on('disconnect', () => {
-      // Clean up active conversation tracking
-      userActiveConversations.delete(String(userId));
+    socket.on('disconnect', (reason) => {
+      // Remove only THIS socket's active conversation tracking (preserves other devices/tabs)
+      socketActiveConversations.delete(socket.id);
 
-      // Clean up pending unanswered calls initiated by this user
-      for (const [cId, cInfo] of activeCalls.entries()) {
-        if (cInfo.callerId === userId && cInfo.actionStatus !== 'accepted') {
-          activeCalls.delete(cId);
-        }
-      }
-
-      // Clean up presence tracking
       const sockets = onlineUserSockets.get(userId);
+      let remainingSockets = 0;
       if (sockets) {
         sockets.delete(socket.id);
+        remainingSockets = sockets.size;
         if (sockets.size === 0) {
           onlineUserSockets.delete(userId);
-          const presencePayload = { userId, online: false, lastActive: new Date().toISOString() };
+          const nowIso = new Date().toISOString();
+          const presencePayload = { userId, online: false, status: 'offline', lastActive: nowIso };
           if (companyId) {
             io.to(`company:${companyId}`).emit('presence:update', presencePayload);
           }
           if (socket.user.isOwnerOrAdmin || socket.user.isSuperAdmin) {
             io.to('global').emit('presence:update', presencePayload);
           }
+          // Update persistent lastActive timestamp cleanly
+          if (role === 'param') {
+            SuperAdmin.updateOne({ adminId: userId }, { $set: { lastActive: new Date() } }).catch(() => {});
+          } else {
+            User.updateOne({ userId }, { $set: { lastActive: new Date() } }).catch(() => {});
+          }
         }
       }
+
+      logCommEvent('socket:disconnected', {
+        userId,
+        socketId: socket.id,
+        reason,
+        remainingSockets,
+      });
     });
+
+    // Run pending-call sync asynchronously AFTER all socket handlers are registered
+    void syncPendingCallsToSocket();
   });
 
   return io;
 }
 
-/**
- * Get the current Socket.IO server instance.
- */
 export function getIO() {
   return io;
 }
 
-/**
- * Emit a real-time event to all users in a company.
- */
 export function emitToCompany(event, companyId, payload = {}) {
   if (!io) return;
   if (companyId) {
     io.to(`company:${companyId.toString()}`).emit(event, payload);
   }
-  // SuperAdmin monitoring events (never leak private DMs into global)
   if (!event.startsWith('dm:')) {
     io.to('global').emit(event, payload);
   }
 }
 
-/**
- * Emit a real-time event directly to a specific user (deduplicated across alias rooms).
- */
 export async function emitToUser(userId, event, payload = {}) {
   if (!io || !userId) return;
   const targetRooms = await resolveUserRooms(userId);

@@ -1,16 +1,18 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../auth/data/user_model.dart';
 import 'call_notification_service.dart';
+import 'communication_diagnostics.dart';
 import 'messenger_model.dart';
 import 'messenger_socket_service.dart';
 import 'messenger_sound_service.dart';
 
-enum CallPhase { idle, incoming, calling, connected }
+enum CallPhase { idle, incoming, calling, connecting, connected }
 
 enum MeetingPhase { idle, invited, inMeeting }
 
@@ -19,7 +21,7 @@ class MeetingParticipantState {
   final String username;
   final RTCVideoRenderer renderer;
   final bool hasVideo;
-  final String connectionStatus; // 'connecting' | 'connected' | 'disconnected'
+  final String connectionStatus;
 
   const MeetingParticipantState({
     required this.userId,
@@ -42,11 +44,14 @@ class MeetingParticipantState {
 
 /// App-wide WebRTC Call & Group Meeting Manager (1:1 P2P + Group Mesh)
 ///
-/// Mirrors website `frontend/src/components/CallManager.jsx` and `server/socket.js`
-/// event-for-event so Android, iOS, and Web users can call each other seamlessly.
+/// Bound at application/dashboard lifecycle level — independent of MessengerView.
+/// Enforces single-instance call state, terminal call deduplication, automatic
+/// call state synchronization on reconnect, and guaranteed ringtone cleanup.
 class WebRtcCallManager extends ChangeNotifier {
   WebRtcCallManager._();
   static final WebRtcCallManager instance = WebRtcCallManager._();
+
+  static const Duration _ringTimeoutDuration = Duration(seconds: 48);
 
   static const Map<String, dynamic> _iceConfig = {
     'iceServers': [
@@ -59,6 +64,7 @@ class WebRtcCallManager extends ChangeNotifier {
   UserModel? _currentUser;
   bool _listenersAttached = false;
   final List<StreamSubscription<dynamic>> _subs = [];
+  final Set<String> _handledTerminalCallIds = <String>{};
 
   // ── 1-to-1 Call State ──────────────────────────────────────────
   CallPhase _callPhase = CallPhase.idle;
@@ -73,6 +79,26 @@ class WebRtcCallManager extends ChangeNotifier {
   int _callDurationSeconds = 0;
   String? _statusMessage;
   Timer? _callTimer;
+  Timer? _ringTimeoutTimer;
+  bool _isAccepting = false;
+  bool _remoteDescriptionSet = false;
+  String? _appliedAnswerCallId;
+
+  @visibleForTesting
+  static bool Function()? foregroundCheckOverride;
+
+  bool get isForegroundResumed {
+    if (foregroundCheckOverride != null) return foregroundCheckOverride!();
+    if (kIsWeb) return true;
+    return WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+  }
+
+  bool isCallLocallyAcceptedOrActive(String cid) {
+    if (cid.isEmpty || _callId != cid) return false;
+    return _isAccepting ||
+        _callPhase == CallPhase.connecting ||
+        _callPhase == CallPhase.connected;
+  }
 
   MediaStream? _localStream;
   RTCPeerConnection? _peerConnection;
@@ -136,14 +162,33 @@ class WebRtcCallManager extends ChangeNotifier {
     return '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
   }
 
+  void _markCallTerminal(String? callId) {
+    if (callId == null || callId.isEmpty) return;
+    _handledTerminalCallIds.add(callId);
+    if (_handledTerminalCallIds.length > 250) {
+      _handledTerminalCallIds.remove(_handledTerminalCallIds.first);
+    }
+  }
+
   void bindUser(UserModel user) {
+    final prevUid = _myUserId;
+    final nextUid = user.userId.isNotEmpty ? user.userId : user.id;
     _currentUser = user;
+
+    if (prevUid.isNotEmpty && prevUid != nextUid) {
+      _cleanupCall();
+      leaveGroupMeeting();
+      _handledTerminalCallIds.clear();
+    }
+
     if (_listenersAttached) return;
     _listenersAttached = true;
 
     final socket = MessengerSocketService.instance;
     _subs.addAll([
+      socket.onConnectionChange.listen(_handleSocketConnectionChange),
       socket.onCallIncoming.listen(_handleIncomingCall),
+      socket.onCallState.listen(_handleCallState),
       socket.onCallAccepted.listen(_handleCallAccepted),
       socket.onCallRejected.listen(_handleCallRejected),
       socket.onCallCancelled.listen(_handleCallCancelled),
@@ -156,6 +201,73 @@ class WebRtcCallManager extends ChangeNotifier {
       socket.onMeetingUserLeft.listen(_handleMeetingUserLeft),
       socket.onMeetingError.listen(_handleMeetingError),
     ]);
+    CommunicationDiagnostics.instance.log('call_mgr:bound', {'userId': nextUid});
+  }
+
+  void _handleSocketConnectionChange(bool connected) {
+    if (!connected) return;
+    // Sync authoritative call state immediately whenever socket connects/reconnects
+    final currentCid = _callId;
+    MessengerSocketService.instance
+        .emitWithAck('call:sync', {'callId': ?currentCid})
+        .then((resp) {
+      if (resp is Map && currentCid != null && _callId == currentCid) {
+        final state = (resp['state'] ?? '').toString();
+        if (['rejected', 'cancelled', 'missed', 'ended', 'failed'].contains(state)) {
+          CommunicationDiagnostics.instance.log('call_mgr:sync_cleanup_stale', {
+            'callId': currentCid,
+            'serverState': state,
+          });
+          _markCallTerminal(currentCid);
+          _cleanupCall();
+        } else if (state == 'accepted' &&
+            (_callPhase == CallPhase.calling || _callPhase == CallPhase.connecting) &&
+            resp['answer'] is Map &&
+            !_remoteDescriptionSet) {
+          unawaited(_handleCallAccepted(Map<String, dynamic>.from(resp)));
+        }
+      }
+    });
+  }
+
+  void _promoteToConnectedIfReady(String callId, {String source = 'ice'}) {
+    if (_callId != callId) return;
+    if (_callPhase == CallPhase.connected) return;
+    if (_callPhase != CallPhase.connecting && _callPhase != CallPhase.calling) return;
+    _ringTimeoutTimer?.cancel();
+    _callPhase = CallPhase.connected;
+    if (_callTimer == null) {
+      _startCallDurationTimer();
+    }
+    CommunicationDiagnostics.instance.log('call_mgr:connected', {
+      'callId': callId,
+      'source': source,
+    });
+    notifyListeners();
+  }
+
+  void _attachPeerConnectionStateListeners(RTCPeerConnection pc, String callId) {
+    pc.onConnectionState = (RTCPeerConnectionState state) {
+      if (_callId != callId) return;
+      CommunicationDiagnostics.instance.log('call_mgr:pc_state', {
+        'callId': callId,
+        'state': state.name,
+      });
+      if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+        _promoteToConnectedIfReady(callId, source: 'pc_connected');
+      }
+    };
+    pc.onIceConnectionState = (RTCIceConnectionState state) {
+      if (_callId != callId) return;
+      CommunicationDiagnostics.instance.log('call_mgr:ice_state', {
+        'callId': callId,
+        'state': state.name,
+      });
+      if (state == RTCIceConnectionState.RTCIceConnectionStateConnected ||
+          state == RTCIceConnectionState.RTCIceConnectionStateCompleted) {
+        _promoteToConnectedIfReady(callId, source: state.name);
+      }
+    };
   }
 
   void clearStatusMessage() {
@@ -165,7 +277,6 @@ class WebRtcCallManager extends ChangeNotifier {
     }
   }
 
-  /// Request microphone (and camera if video) runtime permissions on Android/iOS.
   Future<({bool granted, bool videoAllowed, String? error})>
   _requestMediaPermissions({required bool requireVideo}) async {
     if (kIsWeb ||
@@ -209,7 +320,6 @@ class WebRtcCallManager extends ChangeNotifier {
       });
     } catch (_) {
       if (video) {
-        // Audio-only fallback when camera is unavailable
         return await navigator.mediaDevices.getUserMedia({
           'audio': true,
           'video': false,
@@ -229,6 +339,27 @@ class WebRtcCallManager extends ChangeNotifier {
     } catch (_) {}
   }
 
+  void _startRingTimeoutWatchdog(String callId) {
+    _ringTimeoutTimer?.cancel();
+    _ringTimeoutTimer = Timer(_ringTimeoutDuration, () async {
+      if (_callId != callId) return;
+      if (_callPhase != CallPhase.incoming && _callPhase != CallPhase.calling) {
+        return;
+      }
+      CommunicationDiagnostics.instance.log('call_mgr:local_timeout', {
+        'callId': callId,
+        'phase': _callPhase.name,
+      });
+      if (_callPhase == CallPhase.calling) {
+        await endCall();
+      } else {
+        _markCallTerminal(callId);
+        _statusMessage = 'Missed call from ${_peerName ?? 'Someone'}';
+        await _cleanupCall();
+      }
+    });
+  }
+
   // ═══════════════════════════════════════════════════════════════
   // 1-TO-1 VOICE & VIDEO CALLS
   // ═══════════════════════════════════════════════════════════════
@@ -240,11 +371,14 @@ class WebRtcCallManager extends ChangeNotifier {
   }) async {
     final socket = MessengerSocketService.instance;
     if (!socket.isConnected) {
-      _statusMessage =
-          'Connecting to real-time server... please try again in a moment.';
-      notifyListeners();
-      socket.ensureConnected();
-      return;
+      final connected = await socket.waitUntilConnected(
+        timeout: const Duration(seconds: 4),
+      );
+      if (!connected) {
+        _statusMessage = 'Real-time server unavailable. Check internet connection.';
+        notifyListeners();
+        return;
+      }
     }
     if (_callPhase != CallPhase.idle ||
         _meetingPhase == MeetingPhase.inMeeting) {
@@ -275,19 +409,27 @@ class WebRtcCallManager extends ChangeNotifier {
       final pc = await createPeerConnection(_iceConfig);
       _peerConnection = pc;
       _pendingCandidates.clear();
+      _remoteDescriptionSet = false;
+      _appliedAnswerCallId = null;
 
       for (final track in stream.getTracks()) {
         await pc.addTrack(track, stream);
       }
 
+      final newCallId = 'call-${DateTime.now().millisecondsSinceEpoch}';
+      _attachPeerConnectionStateListeners(pc, newCallId);
+
       pc.onTrack = (RTCTrackEvent event) {
         if (event.streams.isNotEmpty) {
           _remoteRenderer?.srcObject = event.streams.first;
+        }
+        if (_remoteDescriptionSet) {
+          _promoteToConnectedIfReady(newCallId, source: 'on_track');
+        } else {
           notifyListeners();
         }
       };
 
-      final newCallId = 'call-${DateTime.now().millisecondsSinceEpoch}';
       pc.onIceCandidate = (RTCIceCandidate candidate) {
         if (candidate.candidate != null) {
           socket.emit('call:signal', {
@@ -319,8 +461,15 @@ class WebRtcCallManager extends ChangeNotifier {
       _isSpeakerOn = effectiveVideo;
       _callPhase = CallPhase.calling;
       _statusMessage = null;
+      _startRingTimeoutWatchdog(newCallId);
       await _setAudioOutput(speaker: _isSpeakerOn);
       notifyListeners();
+
+      CommunicationDiagnostics.instance.log('call_mgr:outgoing_start', {
+        'callId': newCallId,
+        'recipientId': recipientId,
+        'mediaType': _callMediaType,
+      });
 
       socket.emit('call:initiate', {
         'callId': newCallId,
@@ -334,36 +483,202 @@ class WebRtcCallManager extends ChangeNotifier {
     }
   }
 
-  Future<void> acceptIncomingCall() async {
-    await MessengerSoundService.instance.stopRingtone();
-    if (_callPhase != CallPhase.incoming ||
-        _callId == null ||
-        _peerId == null) {
+  /// Triggered from FCM push / Android notification tap / Accept action button
+  /// when app was backgrounded, locked, or freshly launched.
+  Future<void> handleExternalCallWakeup({
+    required String callId,
+    String? callerId,
+    String? callerName,
+    String mediaType = 'voice',
+    bool autoAccept = false,
+  }) async {
+    if (callId.isEmpty || _handledTerminalCallIds.contains(callId)) {
+      await CallNotificationService.instance.cancelCallNotification(callId);
+      await MessengerSoundService.instance.stopRingtone(reason: 'external_terminal');
+      return;
+    }
+
+    CommunicationDiagnostics.instance.log('call_mgr:external_wakeup', {
+      'callId': callId,
+      'autoAccept': autoAccept,
+    });
+
+    final socket = MessengerSocketService.instance;
+    await socket.waitUntilConnected(timeout: const Duration(seconds: 5));
+
+    final active = await socket.emitWithAck('call:get-active', {'callId': callId});
+    if (active is! Map || active['offer'] is! Map) {
+      CommunicationDiagnostics.instance.log('call_mgr:external_wakeup_expired', {'callId': callId});
+      _markCallTerminal(callId);
+      await CallNotificationService.instance.cancelCallNotification(callId);
+      await MessengerSoundService.instance.stopRingtone(reason: 'wakeup_expired');
+      if (_callId == callId) {
+        await _cleanupCall();
+      }
+      return;
+    }
+
+    final resolvedCallerId = (active['callerId'] ?? callerId ?? '').toString();
+    final resolvedCallerName = (active['callerName'] ?? callerName ?? 'Colleague').toString();
+    final resolvedMedia = (active['mediaType'] ?? mediaType).toString();
+    final resolvedOffer = Map<String, dynamic>.from(active['offer'] as Map);
+
+    if (_callPhase == CallPhase.idle) {
+      _handleIncomingCall({
+        'callId': callId,
+        'callerId': resolvedCallerId,
+        'callerName': resolvedCallerName,
+        'mediaType': resolvedMedia,
+        'offer': resolvedOffer,
+      });
+    } else if (_callId == callId && _pendingOffer == null) {
+      _pendingOffer = resolvedOffer;
+    }
+
+    if (autoAccept && _callId == callId && _callPhase == CallPhase.incoming) {
+      await acceptIncomingCall();
+    }
+  }
+
+  Future<void> handleExternalCallCancelled(String callId, {String reason = ''}) async {
+    if (callId.isEmpty) return;
+    await CallNotificationService.instance.cancelCallNotification(callId);
+    if (reason == 'accepted_elsewhere' && isCallLocallyAcceptedOrActive(callId)) {
+      CommunicationDiagnostics.instance.log('call_mgr:ignored_accepted_elsewhere', {
+        'callId': callId,
+        'phase': _callPhase.name,
+      });
+      return;
+    }
+    _markCallTerminal(callId);
+    if (_callId == callId) {
+      await _cleanupCall();
+    } else {
+      await MessengerSoundService.instance.stopRingtone(reason: 'fcm_cancelled');
+    }
+  }
+
+  /// Triggered from FCM push / Android notification tap for group calls in background or terminated state.
+  Future<void> handleExternalMeetingWakeup({
+    required String meetingId,
+    String title = 'Group Call',
+    String? hostId,
+    String hostName = 'Colleague',
+    String mediaType = 'video',
+    String? conversationId,
+    bool autoJoin = false,
+  }) async {
+    if (meetingId.isEmpty) return;
+    if (_activeMeeting?.meetingId == meetingId &&
+        (_meetingPhase == MeetingPhase.inMeeting || _meetingPhase == MeetingPhase.invited)) {
+      if (autoJoin && _meetingPhase == MeetingPhase.invited && _activeMeeting != null) {
+        await joinGroupMeeting(_activeMeeting!);
+      }
+      return;
+    }
+
+    final socket = MessengerSocketService.instance;
+    await socket.waitUntilConnected(timeout: const Duration(seconds: 5));
+    final active = await socket.emitWithAck('meeting:get-active', {'meetingId': meetingId});
+    if (active is! Map) {
+      await CallNotificationService.instance.cancelCallNotification(meetingId);
+      await MessengerSoundService.instance.stopRingtone(reason: 'meeting_expired');
+      return;
+    }
+
+    final invite = MeetingInvitePayload(
+      meetingId: meetingId,
+      title: (active['title'] ?? title).toString(),
+      hostId: (active['hostId'] ?? hostId ?? '').toString(),
+      hostName: (active['hostName'] ?? hostName).toString(),
+      mediaType: (active['mediaType'] ?? mediaType).toString(),
+      conversationId: active['conversationId']?.toString() ?? conversationId,
+    );
+
+    if (autoJoin) {
+      await joinGroupMeeting(invite);
+      return;
+    }
+    if (_callPhase == CallPhase.idle && _meetingPhase == MeetingPhase.idle) {
+      _activeMeeting = invite;
+      _meetingPhase = MeetingPhase.invited;
+      notifyListeners();
+    }
+  }
+
+  Future<void> rejectExternalMeeting(String meetingId) async {
+    if (meetingId.isEmpty) return;
+    await MessengerSoundService.instance.stopRingtone(reason: 'meeting_declined');
+    await CallNotificationService.instance.cancelCallNotification(meetingId);
+    if (_activeMeeting?.meetingId == meetingId && _meetingPhase == MeetingPhase.invited) {
+      _activeMeeting = null;
+      _meetingPhase = MeetingPhase.idle;
+      notifyListeners();
+    }
+  }
+
+  Future<void> rejectExternalCall({required String callId, String? callerId}) async {
+    if (callId.isEmpty) return;
+    _markCallTerminal(callId);
+    await MessengerSoundService.instance.stopRingtone(reason: 'notif_decline');
+    await CallNotificationService.instance.cancelCallNotification(callId);
+    if (_callId == callId) {
+      await rejectIncomingCall();
       return;
     }
     final socket = MessengerSocketService.instance;
-    await CallNotificationService.instance.cancelCallNotification(_callId!);
-    await CallNotificationService.instance.cancelAllCallNotifications();
-
-    final wantVideo = _callMediaType == 'video';
-    final perm = await _requestMediaPermissions(requireVideo: wantVideo);
-    if (!perm.granted) {
-      _statusMessage = perm.error;
-      rejectIncomingCall();
-      return;
+    if (!socket.isConnected) {
+      await socket.waitUntilConnected(timeout: const Duration(seconds: 3));
     }
+    if (callerId != null && callerId.isNotEmpty) {
+      socket.emit('call:reject', {
+        'callId': callId,
+        'callerId': callerId,
+        'reason': 'declined',
+      });
+    }
+  }
+
+  Future<void> acceptIncomingCall() async {
+    if (_isAccepting) return;
+    _isAccepting = true;
+    await MessengerSoundService.instance.stopRingtone(reason: 'accepted');
+    _ringTimeoutTimer?.cancel();
 
     try {
+      if (_callPhase != CallPhase.incoming ||
+          _callId == null ||
+          _peerId == null) {
+        return;
+      }
+      final currentCallId = _callId!;
+      final socket = MessengerSocketService.instance;
+      await CallNotificationService.instance.cancelCallNotification(currentCallId);
+      await CallNotificationService.instance.cancelAllCallNotifications();
+
+      if (!socket.isConnected) {
+        await socket.waitUntilConnected(timeout: const Duration(seconds: 4));
+      }
+
+      final wantVideo = _callMediaType == 'video';
+      final perm = await _requestMediaPermissions(requireVideo: wantVideo);
+      if (!perm.granted) {
+        _statusMessage = perm.error;
+        await rejectIncomingCall();
+        return;
+      }
+
       Map<String, dynamic>? offer = _pendingOffer;
       if (offer == null) {
         final active = await socket.emitWithAck('call:get-active', {
-          'callId': _callId,
+          'callId': currentCallId,
         });
         if (active is Map && active['offer'] is Map) {
           offer = Map<String, dynamic>.from(active['offer'] as Map);
         }
       }
       if (offer == null) {
+        _markCallTerminal(currentCallId);
         _statusMessage = 'Call expired before connection.';
         await _cleanupCall();
         return;
@@ -379,8 +694,17 @@ class WebRtcCallManager extends ChangeNotifier {
       await _remoteRenderer!.initialize();
       _localRenderer!.srcObject = stream;
 
+      _isMuted = false;
+      _isVideoOff = !effectiveVideo;
+      _isSpeakerOn = effectiveVideo;
+      _callPhase = CallPhase.connecting;
+      await _setAudioOutput(speaker: _isSpeakerOn);
+      notifyListeners();
+
       final pc = await createPeerConnection(_iceConfig);
       _peerConnection = pc;
+      _remoteDescriptionSet = false;
+      _attachPeerConnectionStateListeners(pc, currentCallId);
 
       for (final track in stream.getTracks()) {
         await pc.addTrack(track, stream);
@@ -389,6 +713,10 @@ class WebRtcCallManager extends ChangeNotifier {
       pc.onTrack = (RTCTrackEvent event) {
         if (event.streams.isNotEmpty) {
           _remoteRenderer?.srcObject = event.streams.first;
+        }
+        if (_remoteDescriptionSet) {
+          _promoteToConnectedIfReady(currentCallId, source: 'on_track');
+        } else {
           notifyListeners();
         }
       };
@@ -415,9 +743,12 @@ class WebRtcCallManager extends ChangeNotifier {
           offer['type']?.toString() ?? 'offer',
         ),
       );
+      _remoteDescriptionSet = true;
 
       for (final c in List<RTCIceCandidate>.from(_pendingCandidates)) {
-        await pc.addCandidate(c);
+        try {
+          await pc.addCandidate(c);
+        } catch (_) {}
       }
       _pendingCandidates.clear();
 
@@ -425,32 +756,31 @@ class WebRtcCallManager extends ChangeNotifier {
       await pc.setLocalDescription(answer);
 
       socket.emit('call:accept', {
-        'callId': _callId,
+        'callId': currentCallId,
         'callerId': _peerId,
         'answer': {'sdp': answer.sdp, 'type': answer.type},
       });
 
-      _isMuted = false;
-      _isVideoOff = !effectiveVideo;
-      _isSpeakerOn = effectiveVideo;
-      _callPhase = CallPhase.connected;
-      _startCallDurationTimer();
-      await _setAudioOutput(speaker: _isSpeakerOn);
-      notifyListeners();
+      CommunicationDiagnostics.instance.log('call_mgr:accepted', {'callId': currentCallId});
     } catch (e) {
       _statusMessage = 'Failed to accept call: $e';
       await _cleanupCall();
+    } finally {
+      _isAccepting = false;
     }
   }
 
   Future<void> rejectIncomingCall({String reason = 'declined'}) async {
-    await MessengerSoundService.instance.stopRingtone();
-    if (_callId != null && _peerId != null) {
-      await CallNotificationService.instance.cancelCallNotification(_callId!);
+    final cid = _callId;
+    final pid = _peerId;
+    _markCallTerminal(cid);
+    await MessengerSoundService.instance.stopRingtone(reason: reason);
+    if (cid != null && pid != null) {
+      await CallNotificationService.instance.cancelCallNotification(cid);
       await CallNotificationService.instance.cancelAllCallNotifications();
       MessengerSocketService.instance.emit('call:reject', {
-        'callId': _callId,
-        'callerId': _peerId,
+        'callId': cid,
+        'callerId': pid,
         'reason': reason,
       });
     }
@@ -458,13 +788,16 @@ class WebRtcCallManager extends ChangeNotifier {
   }
 
   Future<void> endCall() async {
-    await MessengerSoundService.instance.stopRingtone();
-    if (_callId != null && _peerId != null) {
-      await CallNotificationService.instance.cancelCallNotification(_callId!);
+    final cid = _callId;
+    final pid = _peerId;
+    _markCallTerminal(cid);
+    await MessengerSoundService.instance.stopRingtone(reason: 'hangup');
+    if (cid != null && pid != null) {
+      await CallNotificationService.instance.cancelCallNotification(cid);
       await CallNotificationService.instance.cancelAllCallNotifications();
       MessengerSocketService.instance.emit('call:end', {
-        'callId': _callId,
-        'targetUserId': _peerId,
+        'callId': cid,
+        'targetUserId': pid,
       });
     }
     await _cleanupCall();
@@ -517,7 +850,9 @@ class WebRtcCallManager extends ChangeNotifier {
   }
 
   Future<void> _cleanupCall() async {
-    await MessengerSoundService.instance.stopRingtone();
+    await MessengerSoundService.instance.stopRingtone(reason: 'cleanup');
+    _ringTimeoutTimer?.cancel();
+    _ringTimeoutTimer = null;
     _callTimer?.cancel();
     _callTimer = null;
     if (_callId != null) {
@@ -552,6 +887,8 @@ class WebRtcCallManager extends ChangeNotifier {
     _peerId = null;
     _peerName = null;
     _pendingOffer = null;
+    _remoteDescriptionSet = false;
+    _appliedAnswerCallId = null;
     _isMuted = false;
     _isVideoOff = false;
     _isSpeakerOn = false;
@@ -563,6 +900,22 @@ class WebRtcCallManager extends ChangeNotifier {
   void _handleIncomingCall(Map<String, dynamic> data) {
     final incoming = IncomingCallPayload.fromMap(data);
     if (incoming.callId.isEmpty || incoming.callerId.isEmpty) return;
+
+    // Ignore stale/duplicate events for already-terminal calls
+    if (_handledTerminalCallIds.contains(incoming.callId)) {
+      CommunicationDiagnostics.instance.log('call_mgr:ignored_terminal_incoming', {
+        'callId': incoming.callId,
+      });
+      return;
+    }
+
+    // Deduplicate identical callId delivered across Socket + FCM or reconnect sync
+    if (_callId == incoming.callId) {
+      if (_pendingOffer == null && incoming.offer != null) {
+        _pendingOffer = incoming.offer;
+      }
+      return;
+    }
 
     if (_callPhase != CallPhase.idle ||
         _meetingPhase == MeetingPhase.inMeeting) {
@@ -581,24 +934,77 @@ class WebRtcCallManager extends ChangeNotifier {
     _pendingOffer = incoming.offer;
     _callPhase = CallPhase.incoming;
     _statusMessage = null;
+    _startRingTimeoutWatchdog(incoming.callId);
     notifyListeners();
 
-    // Start in-app ringing sound (plays looping cadence)
-    MessengerSoundService.instance.startIncomingCallRingtone();
+    // Inform backend immediately that receiver is ringing
+    MessengerSocketService.instance.emit('call:ringing', {'callId': incoming.callId});
 
-    // Show native device notification (ringtone + vibration + full-screen intent)
-    CallNotificationService.instance.showIncomingCallNotification(
-      callId: incoming.callId,
-      callerName: incoming.callerName,
-      mediaType: incoming.mediaType,
-    );
+    // Start in-app looping ringtone; only show OS tray notification when app is not actively resumed in foreground
+    MessengerSoundService.instance.startIncomingCallRingtone(callId: incoming.callId);
+    if (!isForegroundResumed) {
+      CallNotificationService.instance.showIncomingCallNotification(
+        callId: incoming.callId,
+        callerId: incoming.callerId,
+        callerName: incoming.callerName,
+        mediaType: incoming.mediaType,
+        silent: true,
+      );
+    }
+  }
+
+  Future<void> _handleCallState(Map<String, dynamic> data) async {
+    final cid = (data['callId'] ?? '').toString();
+    final state = (data['state'] ?? '').toString();
+    if (cid.isEmpty || cid != _callId) return;
+
+    if (state == 'accepted') {
+      if (_callPhase == CallPhase.incoming && !_isAccepting) {
+        // Accepted on another device of the same user -> stop ringing here immediately!
+        _markCallTerminal(cid);
+        await _cleanupCall();
+        return;
+      }
+      if ((_callPhase == CallPhase.calling || _callPhase == CallPhase.connecting) &&
+          !_remoteDescriptionSet &&
+          data['answer'] is Map) {
+        await _handleCallAccepted(data);
+        return;
+      }
+    }
+
+    if (['rejected', 'cancelled', 'missed', 'ended', 'failed'].contains(state)) {
+      _markCallTerminal(cid);
+      final wasIncoming = _callPhase == CallPhase.incoming;
+      final callerName = _peerName ?? 'Someone';
+      final mediaType = _callMediaType;
+      await _cleanupCall();
+      if (wasIncoming && state == 'missed') {
+        await MessengerSoundService.instance.playMissedCallTone();
+        await CallNotificationService.instance.showMissedCallNotification(
+          id: cid,
+          callId: cid,
+          callerName: callerName,
+          mediaType: mediaType,
+        );
+      }
+    }
   }
 
   Future<void> _handleCallAccepted(Map<String, dynamic> data) async {
-    await MessengerSoundService.instance.stopRingtone();
+    final cid = data['callId']?.toString();
+    if (_callId != null && cid != null && cid != _callId) return;
+    if (cid != null && _appliedAnswerCallId == cid) return;
+
+    await MessengerSoundService.instance.stopRingtone(reason: 'peer_accepted');
+    _ringTimeoutTimer?.cancel();
     if (_peerConnection == null) return;
     final rawAnswer = data['answer'];
     if (rawAnswer is! Map) return;
+    if (_callPhase == CallPhase.calling) {
+      _callPhase = CallPhase.connecting;
+      notifyListeners();
+    }
     try {
       await _peerConnection!.setRemoteDescription(
         RTCSessionDescription(
@@ -606,13 +1012,24 @@ class WebRtcCallManager extends ChangeNotifier {
           rawAnswer['type']?.toString() ?? 'answer',
         ),
       );
+      _remoteDescriptionSet = true;
+      _appliedAnswerCallId = cid ?? _callId;
       for (final c in List<RTCIceCandidate>.from(_pendingCandidates)) {
-        await _peerConnection!.addCandidate(c);
+        try {
+          await _peerConnection!.addCandidate(c);
+        } catch (_) {}
       }
       _pendingCandidates.clear();
-      _callPhase = CallPhase.connected;
-      _startCallDurationTimer();
-      notifyListeners();
+      // If peer connection already reached connected/completed during negotiation, promote immediately
+      final connState = _peerConnection!.connectionState;
+      final iceState = _peerConnection!.iceConnectionState;
+      if (connState == RTCPeerConnectionState.RTCPeerConnectionStateConnected ||
+          iceState == RTCIceConnectionState.RTCIceConnectionStateConnected ||
+          iceState == RTCIceConnectionState.RTCIceConnectionStateCompleted) {
+        _promoteToConnectedIfReady(_callId ?? cid ?? '', source: 'answer_ready');
+      } else {
+        notifyListeners();
+      }
     } catch (e) {
       _statusMessage = 'WebRTC handshake error: $e';
       await _cleanupCall();
@@ -620,6 +1037,9 @@ class WebRtcCallManager extends ChangeNotifier {
   }
 
   Future<void> _handleCallRejected(Map<String, dynamic> data) async {
+    final cid = data['callId']?.toString();
+    if (_callId != null && cid != null && cid != _callId) return;
+    _markCallTerminal(cid);
     final reason = (data['reason'] ?? 'declined').toString();
     _statusMessage = reason == 'busy'
         ? '${_peerName ?? 'User'} is on another call'
@@ -628,6 +1048,9 @@ class WebRtcCallManager extends ChangeNotifier {
   }
 
   Future<void> _handleCallSignal(Map<String, dynamic> data) async {
+    final cid = data['callId']?.toString();
+    if (_callId != null && cid != null && cid != _callId) return;
+
     final signal = data['signal'];
     if (signal is! Map) return;
     final rawCand = signal['candidate'];
@@ -639,7 +1062,7 @@ class WebRtcCallManager extends ChangeNotifier {
       rawCand['sdpMLineIndex'] is int ? rawCand['sdpMLineIndex'] as int : null,
     );
 
-    if (_peerConnection != null && _callPhase == CallPhase.connected) {
+    if (_peerConnection != null && _remoteDescriptionSet) {
       try {
         await _peerConnection!.addCandidate(candidate);
       } catch (_) {}
@@ -649,19 +1072,24 @@ class WebRtcCallManager extends ChangeNotifier {
   }
 
   Future<void> _handleCallEnded(Map<String, dynamic> data) async {
-    await MessengerSoundService.instance.stopRingtone();
+    final endedCallId = data['callId']?.toString();
+    if (_callId != null && endedCallId != null && _callId != endedCallId) return;
+    _markCallTerminal(endedCallId ?? _callId);
+
+    await MessengerSoundService.instance.stopRingtone(reason: 'call_ended');
     final wasIncoming = _callPhase == CallPhase.incoming;
     final callerName = _peerName ?? 'Someone';
     final mediaType = _callMediaType;
-    final callId = _callId;
-    _statusMessage = wasIncoming
-        ? 'Missed call from $callerName'
-        : 'Call ended';
+    final callId = _callId ?? endedCallId;
+    if (_callId != null) {
+      _statusMessage = wasIncoming ? 'Missed call from $callerName' : 'Call ended';
+    }
     await _cleanupCall();
-    if (wasIncoming) {
+    if (wasIncoming && callId != null) {
       await MessengerSoundService.instance.playMissedCallTone();
       await CallNotificationService.instance.showMissedCallNotification(
-        id: callId ?? '${DateTime.now().millisecondsSinceEpoch}',
+        id: callId,
+        callId: callId,
         callerName: callerName,
         mediaType: mediaType,
       );
@@ -675,17 +1103,21 @@ class WebRtcCallManager extends ChangeNotifier {
         _callId != cancelledCallId) {
       return;
     }
-    await MessengerSoundService.instance.stopRingtone();
+    _markCallTerminal(cancelledCallId ?? _callId);
+    await MessengerSoundService.instance.stopRingtone(reason: 'call_cancelled');
     final wasIncoming = _callPhase == CallPhase.incoming;
     final callerName = _peerName ?? 'Someone';
     final mediaType = _callMediaType;
-    final callId = _callId;
-    _statusMessage = 'Missed call from $callerName';
+    final callId = _callId ?? cancelledCallId;
+    if (_callId != null) {
+      _statusMessage = 'Missed call from $callerName';
+    }
     await _cleanupCall();
-    if (wasIncoming) {
+    if (wasIncoming && callId != null) {
       await MessengerSoundService.instance.playMissedCallTone();
       await CallNotificationService.instance.showMissedCallNotification(
-        id: callId ?? '${DateTime.now().millisecondsSinceEpoch}',
+        id: callId,
+        callId: callId,
         callerName: callerName,
         mediaType: mediaType,
       );
@@ -693,7 +1125,7 @@ class WebRtcCallManager extends ChangeNotifier {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // GROUP VOICE & VIDEO CALLS (WEBRTC MESH — EXACT WEBSITE PROTOCOL)
+  // GROUP VOICE & VIDEO CALLS
   // ═══════════════════════════════════════════════════════════════
 
   Future<void> startGroupMeeting({
@@ -704,10 +1136,12 @@ class WebRtcCallManager extends ChangeNotifier {
   }) async {
     final socket = MessengerSocketService.instance;
     if (!socket.isConnected) {
-      _statusMessage = 'Connecting to real-time server... please try again.';
-      notifyListeners();
-      socket.ensureConnected();
-      return;
+      final ok = await socket.waitUntilConnected(timeout: const Duration(seconds: 4));
+      if (!ok) {
+        _statusMessage = 'Real-time server unavailable. Check internet connection.';
+        notifyListeners();
+        return;
+      }
     }
 
     final meetingId = 'meeting-${DateTime.now().millisecondsSinceEpoch}';
@@ -736,11 +1170,14 @@ class WebRtcCallManager extends ChangeNotifier {
   Future<void> joinGroupMeeting(MeetingInvitePayload invite) async {
     final socket = MessengerSocketService.instance;
     if (!socket.isConnected) {
-      _statusMessage = 'Real-time connection unavailable.';
-      notifyListeners();
-      return;
+      final ok = await socket.waitUntilConnected(timeout: const Duration(seconds: 4));
+      if (!ok) {
+        _statusMessage = 'Real-time connection unavailable.';
+        notifyListeners();
+        return;
+      }
     }
-    await MessengerSoundService.instance.stopRingtone();
+    await MessengerSoundService.instance.stopRingtone(reason: 'join_meeting');
     await CallNotificationService.instance.cancelCallNotification(
       invite.meetingId,
     );
@@ -789,7 +1226,7 @@ class WebRtcCallManager extends ChangeNotifier {
   }
 
   void dismissMeetingInvite() {
-    MessengerSoundService.instance.stopRingtone();
+    MessengerSoundService.instance.stopRingtone(reason: 'dismiss_meeting');
     if (_activeMeeting != null) {
       CallNotificationService.instance.cancelCallNotification(
         _activeMeeting!.meetingId,
@@ -801,7 +1238,7 @@ class WebRtcCallManager extends ChangeNotifier {
   }
 
   Future<void> leaveGroupMeeting() async {
-    await MessengerSoundService.instance.stopRingtone();
+    await MessengerSoundService.instance.stopRingtone(reason: 'leave_meeting');
     _meetingTimer?.cancel();
     _meetingTimer = null;
 
@@ -969,6 +1406,7 @@ class WebRtcCallManager extends ChangeNotifier {
   void _handleMeetingStarted(Map<String, dynamic> data) {
     final invite = MeetingInvitePayload.fromMap(data);
     if (invite.meetingId.isEmpty || invite.hostId == _myUserId) return;
+    if (_activeMeeting?.meetingId == invite.meetingId) return;
     if (_meetingPhase == MeetingPhase.inMeeting ||
         _callPhase != CallPhase.idle) {
       return;
@@ -978,13 +1416,17 @@ class WebRtcCallManager extends ChangeNotifier {
     _meetingPhase = MeetingPhase.invited;
     notifyListeners();
 
-    MessengerSoundService.instance.startIncomingCallRingtone();
-    CallNotificationService.instance.showIncomingCallNotification(
-      callId: invite.meetingId,
-      callerName: invite.hostName,
-      mediaType: invite.mediaType,
-      isMeeting: true,
-    );
+    MessengerSoundService.instance.startIncomingCallRingtone(callId: invite.meetingId);
+    if (!isForegroundResumed) {
+      CallNotificationService.instance.showIncomingCallNotification(
+        callId: invite.meetingId,
+        callerId: invite.hostId,
+        callerName: invite.hostName,
+        mediaType: invite.mediaType,
+        isMeeting: true,
+        silent: true,
+      );
+    }
   }
 
   Future<void> _handleMeetingUserJoined(Map<String, dynamic> data) async {
@@ -1128,16 +1570,18 @@ class WebRtcCallManager extends ChangeNotifier {
     leaveGroupMeeting();
   }
 
-  /// Tear down active sessions on user logout.
+  /// Tear down active call state & listeners on user logout or account switch.
   Future<void> resetOnLogout() async {
     await _cleanupCall();
     await leaveGroupMeeting();
+    _handledTerminalCallIds.clear();
     for (final s in _subs) {
       s.cancel();
     }
     _subs.clear();
     _listenersAttached = false;
     _currentUser = null;
+    CommunicationDiagnostics.instance.log('call_mgr:reset_logout');
   }
 
   @override

@@ -1,0 +1,25 @@
+# Environment & Firebase Admin / Private Credentials (NEVER COMMIT)
+.env
+.env.*
+!.env.example
+firebase-service-account.json
+*firebase-adminsdk*.json
+*service-account*.json
+*.pem
+*.key
+*.p8
+*.p12
+*.crt
+secrets/
+
+# Dependencies & Build/Runtime Artifacts
+node_modules/
+package-lock.json
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+uploads/
+tmp/
+temp/
+.DS_Store

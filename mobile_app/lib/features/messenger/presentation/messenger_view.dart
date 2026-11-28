@@ -1328,7 +1328,13 @@ class _MessengerViewState extends State<MessengerView> {
     if (_isSending) return;
     setState(() => _isSending = true);
 
-    final attPayload = media.toBackendAttachment();
+    final uploaded = await _messengerService.uploadMediaBytes(
+      user: widget.user,
+      bytes: media.bytes,
+      fileName: media.name,
+      mimeType: media.mimeType,
+    );
+    final attPayload = uploaded ?? media.toBackendAttachment();
     final contentText = media.defaultMessageText;
 
     try {
@@ -3372,8 +3378,7 @@ class _MessengerViewState extends State<MessengerView> {
                 shape: const CircleBorder(),
                 child: InkWell(
                   customBorder: const CircleBorder(),
-                  onTap: _openVoiceToTextModal,
-                  onLongPress: _handleOpenVoiceRecorder,
+                  onTap: _isSending ? null : _handleOpenVoiceRecorder,
                   child: const Padding(
                     padding: EdgeInsets.all(7.5),
                     child: Icon(Icons.mic_rounded, color: CeladonColors.primary, size: 17.5),

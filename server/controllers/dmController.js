@@ -223,6 +223,24 @@ export const createGroupConversation = async (req, res) => {
       senderId: actor.userId,
     });
 
+    // Notify invited peers that they were added to a new group
+    const groupTitle = convo.name;
+    for (const pid of verifiedParticipantIds) {
+      if (pid === actor.userId) continue;
+      await createAndSendNotification({
+        id: `grp-${convo._id.toString()}-${pid}`,
+        companyId: convo.companyId || null,
+        userId: pid,
+        type: 'text_message',
+        title: `New Group: ${groupTitle}`,
+        message: `${actor.name || actor.username} added you to "${groupTitle}"`,
+        senderId: actor.userId,
+        senderName: actor.name || actor.username,
+        conversationId: convo._id.toString(),
+        metadata: { isGroup: true, groupName: groupTitle },
+      });
+    }
+
     res.status(201).json(convo);
   } catch (error) {
     console.error('[DM] createGroupConversation error:', error);
@@ -464,6 +482,75 @@ export const storeUserConversationKey = async (req, res) => {
   }
 };
 
+// ─── Multipart media / video / voice file upload ───────────────
+export const uploadMediaAttachment = async (req, res) => {
+  try {
+    const actor = await resolveMessengerActor(req.user?.userId, req.user?.role);
+    if (!actor) return res.status(401).json({ message: 'Unauthorized' });
+    if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+
+    const relPath = `/assets/${req.file.filename}`;
+    const originalName = req.file.originalname || req.file.filename;
+    const lower = originalName.toLowerCase();
+    const mime =
+      req.file.mimetype && req.file.mimetype !== 'application/octet-stream'
+        ? req.file.mimetype
+        : lower.endsWith('.mp4')
+        ? 'video/mp4'
+        : lower.endsWith('.mov')
+        ? 'video/quicktime'
+        : lower.endsWith('.webm')
+        ? 'video/webm'
+        : lower.endsWith('.m4a')
+        ? 'audio/mp4'
+        : lower.endsWith('.aac')
+        ? 'audio/aac'
+        : 'application/octet-stream';
+
+    res.status(201).json({
+      path: relPath,
+      name: originalName,
+      type: mime,
+      size: req.file.size,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+function describeAttachmentsSummary(attachments, contentText, { isVoice, encrypted, senderName, isGroup }) {
+  const list = Array.isArray(attachments) ? attachments : [];
+  const trimmed = String(contentText || '').trim();
+  const prefix = isGroup && senderName ? `${senderName}: ` : '';
+  const verbPrefix = senderName ? `${senderName} ` : '';
+
+  if (isVoice) {
+    return trimmed && !encrypted ? `${verbPrefix}sent a voice message: ${trimmed}` : `${verbPrefix}sent a voice message`;
+  }
+  const hasVideo = list.some((a) => String(a?.type || '').startsWith('video') || /\.(mp4|mov|mkv|webm)$/i.test(String(a?.name || a?.path || '')));
+  if (hasVideo) {
+    return trimmed && !encrypted ? `${verbPrefix}sent a video: ${trimmed}` : `${verbPrefix}sent a video`;
+  }
+  const imageCount = list.filter((a) => String(a?.type || '').startsWith('image') || /\.(png|jpe?g|gif|webp)$/i.test(String(a?.name || a?.path || ''))).length;
+  if (imageCount > 0) {
+    const label = imageCount > 1 ? `${imageCount} photos` : 'a photo';
+    return trimmed && !encrypted ? `${verbPrefix}sent ${label}: ${trimmed}` : `${verbPrefix}sent ${label}`;
+  }
+  if (list.length > 0) {
+    const firstName = list[0]?.name || 'file';
+    return trimmed && !encrypted
+      ? `${verbPrefix}sent ${firstName}: ${trimmed}`
+      : `${verbPrefix}sent an attachment: ${firstName}`;
+  }
+  if (encrypted) {
+    return `${verbPrefix}sent an encrypted message`;
+  }
+  if (trimmed) {
+    return `${prefix}${trimmed}`;
+  }
+  return `${verbPrefix}sent a message`;
+}
+
 // ─── Send a direct or group message ─────────────────────────────
 export const sendDirectMessage = async (req, res) => {
   try {
@@ -519,14 +606,25 @@ export const sendDirectMessage = async (req, res) => {
 
     const isVoice =
       body.isVoice ||
-      (Array.isArray(body.attachments) &&
-        body.attachments.some((a) => a.type?.startsWith('audio') || a.isVoice));
+      (Array.isArray(msg.attachments) &&
+        msg.attachments.some((a) => a.type?.startsWith('audio') || a.isVoice));
+    const hasVideo =
+      Array.isArray(msg.attachments) &&
+      msg.attachments.some((a) => a.type?.startsWith('video') || /\.(mp4|mov|mkv|webm)$/i.test(String(a.name || a.path || '')));
+    const hasImage =
+      Array.isArray(msg.attachments) &&
+      msg.attachments.some((a) => a.type?.startsWith('image') || /\.(png|jpe?g|gif|webp)$/i.test(String(a.name || a.path || '')));
 
+    const senderDisplay = actor.name || actor.username || 'Teammate';
     const preview = body.encrypted
       ? '🔒 Encrypted message'
       : isVoice
       ? '🎤 Voice message'
-      : body.content || '[attachment]';
+      : hasVideo
+      ? (body.content ? `🎥 ${body.content}` : '🎥 Video')
+      : hasImage
+      ? (body.content ? `📷 ${body.content}` : '📷 Photo')
+      : body.content || (msg.attachments?.[0]?.name ? `📎 ${msg.attachments[0].name}` : '[attachment]');
     convo.lastMessage = { content: preview, senderId: myId, timestamp: msg.createdAt };
     await convo.save();
 
@@ -555,26 +653,33 @@ export const sendDirectMessage = async (req, res) => {
       }
     }
 
+    const notificationMessage = describeAttachmentsSummary(msg.attachments, body.content, {
+      isVoice,
+      encrypted: !!body.encrypted,
+      senderName: senderDisplay,
+      isGroup: !!convo.isGroup,
+    });
+
     // Notify ONLY inactive participants (suppresses redundant sound/vibration/notification when actively in conversation)
     for (const recipientId of inactiveRecipients) {
       await createAndSendNotification({
+        id: `dm-${msg._id.toString()}-${recipientId}`,
         companyId: convo.companyId || null,
         userId: recipientId,
         type: isVoice ? 'voice_message' : 'text_message',
-        title: convo.isGroup ? `${convo.name} • ${actor.name}` : actor.name,
-        message: isVoice
-          ? 'Sent a voice message'
-          : body.encrypted
-          ? '🔒 Encrypted message'
-          : body.content || 'Sent an attachment',
+        title: convo.isGroup ? `${convo.name} • ${senderDisplay}` : senderDisplay,
+        message: notificationMessage,
         senderId: myId,
-        senderName: actor.name,
+        senderName: senderDisplay,
         conversationId: convo._id.toString(),
         metadata: {
           messageId: msg._id.toString(),
           isVoice: !!isVoice,
+          hasVideo: !!hasVideo,
+          hasImage: !!hasImage,
           encrypted: !!body.encrypted,
           isGroup: !!convo.isGroup,
+          groupName: convo.isGroup ? convo.name : undefined,
         },
       });
     }

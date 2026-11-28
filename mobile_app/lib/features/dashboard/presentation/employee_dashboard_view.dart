@@ -11,9 +11,9 @@ import '../../attendance/data/work_schedule_model.dart';
 import '../../auth/data/user_model.dart';
 import '../../calendar/data/holiday_model.dart';
 import '../../messenger/data/call_notification_service.dart';
-import '../../messenger/data/messenger_socket_service.dart';
 import '../../notifications/data/notification_model.dart';
 import '../../notifications/data/notification_service.dart';
+import '../../notifications/data/notification_store.dart';
 import '../../tasks/data/task_model.dart';
 import '../data/dashboard_service.dart';
 import '../data/leave_model.dart';
@@ -87,10 +87,16 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> with Auto
   WorkScheduleModel _workSchedule = const WorkScheduleModel();
   List<HolidayModel> _holidays = [];
   int _selectedNotificationFilter = 0; // 0=All, 1=Unread, 2=Tasks, 3=Leave, 4=Attendance, 5=Messenger
-  StreamSubscription<Map<String, dynamic>>? _liveNotifSub;
   Timer? _taskTicker;
 
-  int get _unreadNotificationCount => _notifications.where((n) => !n.read).length;
+  int get _unreadNotificationCount => NotificationStore.instance.unreadCount;
+
+  void _onNotifStoreChanged() {
+    if (!mounted) return;
+    setState(() {
+      _notifications = NotificationStore.instance.items.toList();
+    });
+  }
 
   @override
   void initState() {
@@ -100,17 +106,9 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> with Auto
     _dashboardService = (widget.dashboardService is DashboardService)
         ? widget.dashboardService as DashboardService
         : DashboardService();
+    _notifications = NotificationStore.instance.items.toList();
+    NotificationStore.instance.addListener(_onNotifStoreChanged);
     _loadDashboardData();
-
-    _liveNotifSub = MessengerSocketService.instance.onNotification.listen((raw) {
-      if (!mounted) return;
-      final incoming = NotificationModel.fromJson(raw);
-      if (incoming.id.isEmpty) return;
-      setState(() {
-        _notifications.removeWhere((n) => n.id == incoming.id);
-        _notifications.insert(0, incoming);
-      });
-    });
 
     if (!WidgetsBinding.instance.runtimeType.toString().contains('Test')) {
       _taskTicker = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -138,7 +136,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> with Auto
   @override
   void dispose() {
     _scrollController.dispose();
-    _liveNotifSub?.cancel();
+    NotificationStore.instance.removeListener(_onNotifStoreChanged);
     _taskTicker?.cancel();
     super.dispose();
   }
@@ -264,7 +262,8 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> with Auto
             ? payrollPayload['payroll'] as Map<String, dynamic>
             : null;
         _payrollHistory = rawHist.whereType<Map<String, dynamic>>().toList();
-        _notifications = notifs;
+        NotificationStore.instance.setFromList(notifs);
+        _notifications = NotificationStore.instance.items.toList();
         _workSchedule = schedule;
         _holidays = holidayList;
         if (_selectedYear < _joiningYear) {
@@ -314,11 +313,8 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> with Auto
         read: false,
         createdAt: now.toIso8601String(),
       );
-      if (mounted) {
-        setState(() {
-          _notifications.removeWhere((n) => n.id == taskNotif.id);
-          _notifications.insert(0, taskNotif);
-        });
+      if (mounted && !_notifications.any((n) => n.id == taskNotif.id)) {
+        NotificationStore.instance.ingestRawNotification(taskNotif.toJson());
       }
     } catch (_) {}
   }
@@ -737,7 +733,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> with Auto
     final myId = _profileUser.userId.isNotEmpty ? _profileUser.userId : _profileUser.id;
     if (myId.isNotEmpty) {
       _notificationService.getUserNotifications(myId).then((notifs) {
-        if (mounted) setState(() => _notifications = notifs);
+        NotificationStore.instance.setFromList(notifs);
       }).catchError((_) {});
     }
 
@@ -748,9 +744,12 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> with Auto
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
       ),
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setSheetState) {
-          final filtered = _notifications.where((n) {
+      builder: (ctx) => ListenableBuilder(
+        listenable: NotificationStore.instance,
+        builder: (ctx, _) => StatefulBuilder(
+          builder: (context, setSheetState) {
+            final currentNotifs = NotificationStore.instance.items;
+            final filtered = currentNotifs.where((n) {
             if (_selectedNotificationFilter == 1 && n.read) return false;
             if (_selectedNotificationFilter == 2 && !n.isTask) return false;
             if (_selectedNotificationFilter == 3 && !n.type.contains('leave')) return false;
@@ -795,11 +794,12 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> with Auto
                         icon: const Icon(Icons.done_all_rounded, color: CeladonColors.primary),
                         onPressed: () async {
                           if (myId.isNotEmpty) {
-                            await _notificationService.markAllAsRead(myId);
-                            for (final n in _notifications) {
-                              n.read = true;
+                            await NotificationStore.instance.markAllAsRead(myId);
+                            if (mounted) {
+                              setState(() {
+                                _notifications = NotificationStore.instance.items.toList();
+                              });
                             }
-                            if (mounted) setState(() {});
                             setSheetState(() {});
                           }
                         },
@@ -814,10 +814,13 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> with Auto
                         label: const Text('Clear all', style: TextStyle(color: CeladonColors.error, fontSize: 11.5, fontWeight: FontWeight.w700)),
                         onPressed: () async {
                           if (myId.isNotEmpty) {
-                            _notifications.clear();
-                            if (mounted) setState(() {});
+                            await NotificationStore.instance.clearAll(myId);
+                            if (mounted) {
+                              setState(() {
+                                _notifications = NotificationStore.instance.items.toList();
+                              });
+                            }
                             setSheetState(() {});
-                            await _notificationService.clearAll(myId);
                           }
                         },
                       ),
@@ -918,9 +921,10 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> with Auto
                                   ),
                                 ),
                                 onDismissed: (_) {
-                                  _notifications.removeWhere((n) => n.id == notif.id);
-                                  _notificationService.deleteNotification(notif.id);
-                                  if (mounted) setState(() {});
+                                  NotificationStore.instance.deleteNotification(notif.id);
+                                  if (mounted) {
+                                    setState(() => _notifications = NotificationStore.instance.items.toList());
+                                  }
                                   setSheetState(() {});
                                 },
                                 child: Material(
@@ -951,18 +955,18 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> with Auto
                                       icon: const Icon(Icons.close_rounded, size: 16, color: CeladonColors.textMuted),
                                       tooltip: 'Dismiss',
                                       onPressed: () {
-                                        _notifications.removeWhere((n) => n.id == notif.id);
-                                        _notificationService.deleteNotification(notif.id);
-                                        if (mounted) setState(() {});
+                                        NotificationStore.instance.deleteNotification(notif.id);
+                                        if (mounted) {
+                                          setState(() => _notifications = NotificationStore.instance.items.toList());
+                                        }
                                         setSheetState(() {});
                                       },
                                     ),
                                     onTap: () {
-                                      notif.read = true;
-                                      if (mounted) setState(() {});
-                                      _notificationService
-                                          .markAsRead(notif.id, mongoId: notif.mongoId)
-                                          .catchError((_) => false);
+                                      NotificationStore.instance.markAsRead(notif);
+                                      if (mounted) {
+                                        setState(() => _notifications = NotificationStore.instance.items.toList());
+                                      }
                                       Navigator.pop(ctx);
                                       if (notif.isMessenger) {
                                         _navigateToPage('messenger');
@@ -997,6 +1001,7 @@ class _EmployeeDashboardViewState extends State<EmployeeDashboardView> with Auto
             ),
           );
         },
+        ),
       ),
     );
   }

@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import '../../../app/app_config.dart';
 import '../../auth/presentation/login_screen.dart';
 
 import 'package:flutter/material.dart';
@@ -13,11 +12,7 @@ import '../../attendance/presentation/attendance_view.dart';
 import '../../auth/data/user_model.dart';
 import '../../calendar/presentation/calendar_view.dart';
 import '../../company/presentation/company_dashboard_view.dart';
-import '../../messenger/data/call_notification_service.dart';
-import '../../messenger/data/messenger_service.dart';
-import '../../messenger/data/messenger_socket_service.dart';
-import '../../messenger/data/messenger_store.dart';
-import '../../messenger/data/webrtc_call_manager.dart';
+import '../../messenger/data/communication_coordinator.dart';
 import '../../messenger/presentation/messenger_view.dart';
 import '../../policies/data/policy_service.dart';
 import '../../profile/presentation/app_drawer.dart';
@@ -51,8 +46,7 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen>
-    with WidgetsBindingObserver {
+class _DashboardScreenState extends State<DashboardScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   int _currentTabIndex = 0;
   late UserModel _currentUser;
@@ -91,7 +85,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     DashboardNavigation.navigateToPage = _navigateToPage;
     if (DashboardNavigation.pendingTargetPage != null) {
       final target = DashboardNavigation.pendingTargetPage!;
@@ -109,43 +102,21 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
-  StreamSubscription<Map<String, dynamic>>? _notifSub;
-
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     if (DashboardNavigation.navigateToPage == _navigateToPage) {
       DashboardNavigation.navigateToPage = null;
     }
-    _notifSub?.cancel();
-    MessengerSocketService.instance.disconnect();
+    // Note: Do NOT disconnect MessengerSocketService here — CommunicationCoordinator
+    // owns the app-level socket lifecycle so route transitions/rebuilds never kill calls.
     super.dispose();
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      AppConfig.resolveBestBackend(forceProbe: true).then((_) async {
-        final sameServer = await SessionStorage.isSessionValidForCurrentServer();
-        if (!sameServer) {
-          if (mounted) {
-            await _handleLogout();
-          }
-          return;
-        }
-        MessengerSocketService.instance.ensureConnected();
-      });
-    }
-  }
-
   Future<void> _initRealtimeCommunication(UserModel user) async {
-    WebRtcCallManager.instance.bindUser(user);
-    await CallNotificationService.instance.initialize(
-      onTap: (payload) {
-        DashboardNavigation.handleNotificationTap(payload);
-      },
+    await CommunicationCoordinator.instance.initializeForUser(
+      user,
+      onSessionInvalidated: _handleLogout,
     );
-    await MessengerSocketService.instance.connect(user: user);
   }
 
   String get _effectiveUserId =>
@@ -346,11 +317,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Future<void> _handleLogout() async {
-    await WebRtcCallManager.instance.resetOnLogout();
-    MessengerSocketService.instance.disconnect();
-    MessengerStore.instance.reset();
-    MessengerService.clearKeysCache();
-    await CallNotificationService.instance.cancelAll();
+    await CommunicationCoordinator.instance.shutdownOnLogout();
     await SessionStorage.clearSession();
     try {
       widget.onLogout();

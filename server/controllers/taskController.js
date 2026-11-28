@@ -2,7 +2,8 @@ import Task from '../models/Task.js';
 import User from '../models/User.js';
 import Company from '../models/Company.js';
 import { resolveCompanyId } from '../utils/resolveCompanyId.js';
-import { emitToCompany, emitToUser } from '../socket.js';
+import { emitToCompany } from '../socket.js';
+import { createAndSendNotification } from './notificationController.js';
 import { sendReportEmail } from '../utils/mailer.js';
 import {
   assertCompanyReportAccess,
@@ -27,22 +28,17 @@ export const createTask = async (req, res) => {
       try {
         const docCount = (task.attachments && task.attachments.length) || 0;
         const docMsg = docCount > 0 ? ` (with ${docCount} attached document${docCount > 1 ? 's' : ''})` : '';
-        const notificationPayload = {
+        await createAndSendNotification({
           id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
           userId: task.assignedTo,
           companyId: task.companyId,
           title: 'New Task Assigned',
           message: `You have been assigned: ${task.title}${docMsg}`,
           type: 'project_task',
+          senderId: req.user?.userId || '',
+          senderName: task.assignorName || req.user?.name || req.user?.username || '',
           metadata: { taskId: task.id, type: 'task_assigned' },
-          createdAt: new Date().toISOString(),
-          read: false
-        };
-        const { default: Notification } = await import('../models/Notification.js');
-        const n = new Notification(notificationPayload);
-        await n.save();
-        // Emit exclusively to the assigned employee (never broadcast company-wide)
-        await emitToUser(task.assignedTo, 'notification:new', n);
+        });
       } catch (e) {
         console.error(e);
       }
@@ -209,7 +205,6 @@ export const updateTask = async (req, res) => {
 
     const task = await Task.findOneAndUpdate(findFilter, req.body, { new: true });
     if (!task) return res.status(404).json({ message: 'Task not found' });
-    const { default: Notification } = await import('../models/Notification.js');
 
     // ------------------------------------------------------------------------
     // NOTIFICATIONS: Company Owner, Admins & Task Assignee
@@ -339,20 +334,17 @@ export const updateTask = async (req, res) => {
 
       if (notifTitle && notifMessage && recipientUserIds.size > 0) {
         for (const recipientId of recipientUserIds) {
-          const nDoc = new Notification({
+          await createAndSendNotification({
             id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
             userId: recipientId,
             companyId: task.companyId,
             title: notifTitle,
             message: notifMessage,
             type: 'project_task',
+            senderId: req.user?.userId || '',
+            senderName: req.user?.name || req.user?.username || '',
             metadata: notifMeta,
-            createdAt: new Date().toISOString(),
-            read: false
           });
-          await nDoc.save();
-          // Emit strictly to the target recipient user — NOT broadcast to the whole company!
-          await emitToUser(recipientId, 'notification:new', nDoc);
         }
       }
     } catch (notifErr) {

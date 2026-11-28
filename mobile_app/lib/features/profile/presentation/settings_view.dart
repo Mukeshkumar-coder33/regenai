@@ -6,6 +6,7 @@ import '../../../core/theme/celadon_colors.dart';
 import '../../../core/widgets/regen_page_header.dart';
 import '../../../core/widgets/server_connection_dialog.dart';
 import '../../auth/data/user_model.dart';
+import '../../messenger/data/communication_diagnostics.dart';
 
 /// Screen: App & Profile Settings Screen
 ///
@@ -38,6 +39,7 @@ class SettingsView extends StatefulWidget {
 
 class _SettingsViewState extends State<SettingsView> {
   bool _pushNotifications = true;
+  bool _soundAlerts = true;
   bool _emailAlerts = true;
   bool _biometricLogin = false;
   bool _taskReminders = true;
@@ -56,6 +58,19 @@ class _SettingsViewState extends State<SettingsView> {
         ? List<String>.from(widget.currentSlots!)
         : List<String>.from(_defaultSlots);
     _loadSlots();
+    _loadNotificationPrefs();
+  }
+
+  Future<void> _loadNotificationPrefs() async {
+    final prefs = NotificationPreferences.instance;
+    await prefs.ensureLoaded();
+    if (!mounted) return;
+    setState(() {
+      _pushNotifications = prefs.isPushEnabled;
+      _soundAlerts = prefs.isSoundEnabled;
+      _emailAlerts = prefs.isEmailAlertsEnabled;
+      _taskReminders = prefs.isTaskRemindersEnabled;
+    });
   }
 
   @override
@@ -194,9 +209,23 @@ class _SettingsViewState extends State<SettingsView> {
                 _buildSwitchTile(
                   icon: Icons.notifications_active_outlined,
                   title: 'Push Notifications',
-                  subtitle: 'Receive real-time alerts for task assignments',
+                  subtitle: 'Receive real-time alerts for calls, messages and tasks',
                   value: _pushNotifications,
-                  onChanged: (val) => setState(() => _pushNotifications = val),
+                  onChanged: (val) async {
+                    setState(() => _pushNotifications = val);
+                    await NotificationPreferences.instance.setPushEnabled(val);
+                  },
+                ),
+                const Divider(color: CeladonColors.divider),
+                _buildSwitchTile(
+                  icon: Icons.volume_up_outlined,
+                  title: 'Message & Call Sounds',
+                  subtitle: 'Play notification tones for incoming messages',
+                  value: _soundAlerts,
+                  onChanged: (val) async {
+                    setState(() => _soundAlerts = val);
+                    await NotificationPreferences.instance.setSoundEnabled(val);
+                  },
                 ),
                 const Divider(color: CeladonColors.divider),
                 _buildSwitchTile(
@@ -204,7 +233,10 @@ class _SettingsViewState extends State<SettingsView> {
                   title: 'Email Alerts',
                   subtitle: 'Receive daily summaries and leave approvals',
                   value: _emailAlerts,
-                  onChanged: (val) => setState(() => _emailAlerts = val),
+                  onChanged: (val) async {
+                    setState(() => _emailAlerts = val);
+                    await NotificationPreferences.instance.setEmailAlertsEnabled(val);
+                  },
                 ),
                 const Divider(color: CeladonColors.divider),
                 _buildSwitchTile(
@@ -212,7 +244,10 @@ class _SettingsViewState extends State<SettingsView> {
                   title: 'Task Reminders',
                   subtitle: 'Get notified 15 minutes before scheduled meetings',
                   value: _taskReminders,
-                  onChanged: (val) => setState(() => _taskReminders = val),
+                  onChanged: (val) async {
+                    setState(() => _taskReminders = val);
+                    await NotificationPreferences.instance.setTaskRemindersEnabled(val);
+                  },
                 ),
               ]),
               const SizedBox(height: 20),

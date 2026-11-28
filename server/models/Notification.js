@@ -13,6 +13,7 @@ const notificationSchema = new mongoose.Schema({
       'voice_message',
       'voice_call',
       'video_call',
+      'missed_call',
       'team_meeting',
       'general',
       'payment',
@@ -22,6 +23,9 @@ const notificationSchema = new mongoose.Schema({
       'attendance',
       'policy',
       'project_task',
+      'project',
+      'scrum',
+      'holiday',
       'leave'
     ],
     default: 'general'
